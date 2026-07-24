@@ -112,11 +112,8 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
             // bcf_expr, which __mark_reg_known CLEARED when the branch made
             // it const (:2500). Mirror: a linked reg synced to a tnum-const
             // drops its stale symbolic binding, so its next reference (or a
-            // later spill/fill of it) materializes the bcf_val literal.
-            // Measured (dsr 0x3ab6225aafb79e84@937): the ==5 narrowing must
-            // wipe slot -0x130's spilled AND-chain expr so the pc-688
-            // re-fill restores an unbound const and crossing 2 records the
-            // kernel's folded `0x5 == 0x5`.
+            // later spill/fill of it) materializes the bcf_val literal —
+            // matching the kernel's folded const-vs-const conds.
             if now_const
                 && let Some(idx) = r.bcf_idx()
                 && let Some(bcf) = state.bcf.as_mut()
@@ -143,8 +140,8 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
             // so left's refined range applies to the slot SHIFTED by
             // (slot_off - left_off). Without the shift a branch on an
             // add-const reg (e.g. r8 = slot + 30) writes r8's range raw
-            // into the base slot — an unsound tightening (to_wep pc357:
-            // slot[0,65535] -> [30,65535]).
+            // into the base slot — an unsound tightening
+            // (slot[0,65535] -> [30,65535]).
             let delta = slot.scalar_id_off.unwrap_or(0).saturating_sub(left_off);
             let (lo, hi, tnum) = if delta == 0 {
                 (lo, hi, tnum)

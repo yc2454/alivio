@@ -38,9 +38,8 @@ pub struct VerifierConfig {
 
     /// BCF-mode complexity budget (see `max_insn`). Higher than the kernel's
     /// 1M because BCF generation is offline and explores past rejects to
-    /// discharge them. Empirically several calico functions converge between
-    /// 1M–4M (they abort spuriously at the kernel's 1M); a few outliers need
-    /// far more (those need pruning-efficiency work, not just budget).
+    /// discharge them. Some real-world functions converge between 1M–4M
+    /// (they abort spuriously at the kernel's 1M).
     /// Tunable via `--bcf-max-insn`; a CLI `--max-insn` override sets BOTH.
     pub bcf_max_insn: usize,
 
@@ -56,11 +55,10 @@ pub struct VerifierConfig {
     /// Maximum states to keep per PC for pruning. Kernel-absent hard
     /// FIFO ceiling (the privileged kernel bounds per-insn state lists
     /// via miss/hit eviction + clean_verifier_state, not a fixed cap).
-    /// Keeping it at 8 for now: fully removing it (→0) regresses the
-    /// large cilium objects into timeouts because zovia lacks
-    /// clean_verifier_state, so uncapped lists explode. The cap is a
-    /// crutch for that missing mechanism — see the pruning trajectory
-    /// (clean_verifier_state must land BEFORE this cap can be removed).
+    /// Kept at 8: fully removing it (→0) times out large objects
+    /// because zovia lacks clean_verifier_state, so uncapped lists
+    /// explode. The cap is a crutch for that missing mechanism
+    /// (clean_verifier_state must land before the cap can be removed).
     pub max_states_per_pc: usize,
 
     /// Log heartbeat interval
@@ -140,7 +138,7 @@ impl Default for VerifierConfig {
             verbosity: 1,
             max_insn: 1_000_000, // 1 million instructions to match modern kernel limits
             // Offline BCF generation budget (4× the kernel runtime cap).
-            // Recovers calico functions that converge in 1M–4M but abort
+            // Recovers functions that converge in 1M–4M but abort
             // spuriously at the kernel's 1M; see `max_insn` doc.
             bcf_max_insn: 4_000_000,
             domain_mode: DomainMode::Zone,
@@ -175,7 +173,7 @@ impl Default for VerifierConfig {
     }
 }
 
-/// All-faithful mirror knob resolution (2026-06-12, repr-19 19/19 gate).
+/// All-faithful mirror knob resolution.
 ///
 /// The kernel-faithful BCF behaviors (kernel push order, kernel-shape
 /// caching, faithful precision/fold/prenarrow, both-folds + anchor-union

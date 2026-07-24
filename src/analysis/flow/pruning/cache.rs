@@ -203,14 +203,9 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
     // NOT_INIT — unconditionally; there is no spilled-slot-anchor
     // exemption (slots carry their own self-contained value, and the
     // dynamic live-stack query above governs slot survival
-    // independently). The former `slot_anchored` carve-out (pre-
-    // live_stack-port stopgap) kept statically-dead regs alive in
-    // cached states, making them stricter than the kernel's:
-    // to_lo_fib_no_log_co-re_v6 pc754/0xf00d1f29 — kernel's 762
-    // checkpoint has r8=NOT_INIT (cleaned) and HITs the ip6680
-    // arrival (probe #145 [ZK sv2]); zovia kept r8=[6,6] (later
-    // precise via the 1297-demand walk) and MISSed on the tnum dim,
-    // diverging the whole add schedule after add #451.
+    // independently). Keeping statically-dead regs alive in cached
+    // states would make them stricter than the kernel's and block
+    // subsumption HITs the kernel gets.
     let inner_live = frame_live
         .last()
         .map(|(r, _)| r.clone())
@@ -254,8 +249,7 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
 /// Without this, zovia subsumes the kernel's *second* route to
 /// the same reject against the first route's cached ancestor and
 /// never emits the second route's distinct path-unreachable
-/// bundle entry (cilium bpf_wireguard pc246 route-B:
-/// 448B/0xf4f14bfbef845f45). The chain (not all-states-at-pc) is
+/// bundle entry. The chain (not all-states-at-pc) is
 /// the faithful analog — only this path's ancestors, like the
 /// kernel's `parents[]` vstate chain.
 ///

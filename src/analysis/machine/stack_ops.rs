@@ -33,10 +33,8 @@ impl State {
         //       value: covered bytes become STACK_MISC (STACK_ZERO when the
         //       source register is a known null, which the kernel also forces
         //       precise).
-        // zovia previously recorded a value-carrying Spill slot for (d) too,
-        // so two paths the kernel keeps apart on byte kinds (SPILL vs MISC)
-        // subsumed each other (from_nat_fib pc619 fp-24: 8-byte spill @1648
-        // vs unaligned 4-byte store @1368 — the d53 first-divergence).
+        // The SPILL-vs-MISC byte-kind distinction matters for state
+        // subsumption: the kernel keeps such paths apart on byte kinds.
         if !(is_aligned && (matches!(reg_type, RegType::ScalarValue) || size == MemSize::U64)) {
             let is_null =
                 matches!(reg_type, RegType::ScalarValue) && self.domain.proven_zero(reg);
@@ -306,14 +304,7 @@ impl State {
         // remainder bytes go through `mark_stack_slot_misc`
         // (verifier.c:1665), NOT `scrub_spilled_slot`: **STACK_ZERO and
         // STACK_INVALID are PRESERVED**, only other kinds become
-        // STACK_MISC. zovia's old loop misc'd Zero bytes too, so an
-        // aligned u32 spill next to a known-zero u32 store (insn 26/27 of
-        // from_tnl_fib_no_log_v6 c16: [fp-36]=0 then u32 spill at fp-40)
-        // produced [S,S,S,S,M,M,M,M] where the kernel keeps
-        // [S,S,S,S,Z,Z,Z,Z] — the 2551-cache byte flip that HIT-killed
-        // the 607-route arm (0x8170abde8cb5e828). Stale SPILL residue
-        // still becomes MISC (to_wep pc1017, the original reason for
-        // this loop).
+        // STACK_MISC. Stale SPILL residue still becomes MISC.
         if is_aligned && size.bytes() < 8 {
             for b in (offset + size.bytes() as i16)..(offset + 8) {
                 if matches!(
@@ -712,11 +703,8 @@ impl State {
             // fill of this offset reuses it — the kernel's bt walk demands
             // the SLOT (not the transient reg) and materializes it once;
             // each fill then carries the one expr via copy_register_state.
-            // Measured on bcc ksnoop c20-O1: kernel goal 0x357a84611c9e93b9
-            // reuses one var for `[r10-0x98]` across two loop iterations
-            // (sole delta vs zovia's 0x86a47b06bd690958 twin). Kernel
-            // `!tnum_is_const` guard mirrored; replay_share_slot_vars is
-            // set only inside slot-share replay variants.
+            // Kernel `!tnum_is_const` guard mirrored; replay_share_slot_vars
+            // is set only inside slot-share replay variants.
             if spilled.bcf_expr.is_none()
                 && matches!(spilled.reg_type, RegType::ScalarValue)
                 && self.domain.get_fixed_value(dst).is_none()
@@ -734,12 +722,7 @@ impl State {
                 // already materialized the value earlier in this replay
                 // (the anchor-held copy, minted lazily at its first use),
                 // ADOPT that expr for the slot instead of minting a second
-                // var. Measured: bcc ksnoop c20-O2 kretprobe @682 (kernel
-                // MISS 0x8ad35a53d2c7d5e6) — the kernel goal shares v1
-                // across ALL THREE loop-iteration equalities including the
-                // anchor-held first use; zovia's twin 4d22ca4445163d06
-                // shared only from the first in-window fill on (sole
-                // delta).
+                // var, so the slot and all copies share one var.
                 let adopted: Option<u32> = pre_fill_dst_binding.or_else(|| {
                     spilled.scalar_id.and_then(|sid| {
                         Reg::ALL.iter().find_map(|&r| {
@@ -907,10 +890,8 @@ impl State {
         // None. The null-check propagates the slot's *type*
         // OrNull→Value, but without re-establishing the offset the
         // filled pointer had none and `interval_check_map_access` fell
-        // back to the (unbounded) scalar bounds → an in-bounds
-        // `value[k]` load was rejected "Unsafe variable map access
-        // range [1, 2^32+1]" (cilium lb4/6_reverse_nat, ct/snat —
-        // ~23 FR). Default the offset to 0 here (the kernel preserves
+        // back to the (unbounded) scalar bounds, rejecting in-bounds
+        // `value[k]` loads. Default the offset to 0 here (the kernel preserves
         // PTR_TO_MAP_VALUE off/var_off/range across spill/fill, and a
         // fresh value pointer is off 0); the `Interval` arm below
         // overrides with the precise captured offset when a spill was

@@ -272,8 +272,7 @@ pub(crate) fn transfer_alu(
                 // the kernel drops the link entirely. Applied in BOTH base and
                 // BCF mode — a faithful kernel feature; BCF should mirror it.
                 // It enables loop convergence (fewer trajectories), though the
-                // regsafe off/flag match is subsumption-strictening; net BCF
-                // bundle effect under study (calico-19 size + VM-load gate).
+                // regsafe off/flag match is subsumption-strictening.
                 let already_add_const = state.scalar_id_off(dst).is_some();
                 if already_add_const || *k > i32::MAX as i64 {
                     state.clear_scalar_id(dst);
@@ -346,8 +345,7 @@ pub(crate) fn transfer_alu(
         // 32-bit tnum's unsigned min/max meet the POST-zext 64-bit view
         // ([0, 0xffffffff]) and never poison the pre-zext signed range.
         // handle_add/handle_sub skip their in-handler sync for W32
-        // interval mode to preserve this ordering (bcc ksnoop
-        // 0x7b883057f2f77b41 — the s32=[-1,254] loop-guard bounds).
+        // interval mode to preserve this ordering.
         if matches!(op, AluOp::Add | AluOp::Sub) && state.domain.is_interval_mode() {
             crate::analysis::transfer::alu::helpers::sync_tnum_to_bounds(&mut state, dst);
         }

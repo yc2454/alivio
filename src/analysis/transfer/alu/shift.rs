@@ -112,11 +112,10 @@ pub(crate) fn handle_shr(state: &mut State, width: Width, dst: Reg, src: &Operan
                 // `r <<= 32; r >>= 32` zero-extend idiom relies on. When
                 // the input range is unknown (full), this is the ONLY
                 // thing keeping umax finite; the kernel always sets
-                // umax_value = umax >> k (<= this cap). Previously this
-                // cap was nested inside `old bounds finite`, so a
-                // full-range input (e.g. after `<<= 32` widened it) left
-                // umax at u64::MAX and `bcf_bound_reg` never emitted the
-                // ULE(reg,0xffffffff) the kernel emits (from_nat 0x23a1dc).
+                // umax_value = umax >> k (<= this cap). The cap must apply
+                // even to a full-range input (e.g. after `<<= 32` widened
+                // it); otherwise umax stays u64::MAX and `bcf_bound_reg`
+                // never emits the ULE(reg,0xffffffff) the kernel emits.
                 if shift_amount > 0 {
                     let cap = u64::MAX >> shift_amount;
                     if cap <= i64::MAX as u64 {

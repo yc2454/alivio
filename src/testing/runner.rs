@@ -1009,8 +1009,8 @@ impl Analyzer {
             // Analyze ALL functions, NOT early-returning on first failure.
             // Each function is an independent BPF program (libbpf loads
             // them separately), and BCF discharges are per-function: if
-            // calico_tc_main fails to verify post-discharge but
-            // calico_tc_host_ct_conflict ALSO has rejections that need
+            // one function fails to verify post-discharge but another
+            // ALSO has rejections that need
             // discharges, we must produce those proofs too — otherwise
             // the kernel-side test_loader will MISS them and the whole
             // object fails to load. Track the worst result across all

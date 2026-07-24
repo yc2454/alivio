@@ -274,9 +274,8 @@ pub(crate) fn handle_add(
         // domain's apply_add_imm/reg mirrors the 32-bit halves, so the
         // legacy 64-bit-interval truncation here is redundant — and its
         // not-tight arm does forget(dst), WIPING the just-computed s32
-        // (measured: bcc ksnoop .text 555 `w1 += -1` on [0,255] → kernel
-        // keeps s32=[-1,254], the wiped state re-derived s32 full-range,
-        // so the loop-guard goal 0x7b883057f2f77b41 lost its two
+        // (e.g. `w1 += -1` on [0,255]: the kernel keeps s32=[-1,254];
+        // a wiped state would re-derive s32 full-range and lose the
         // bcf_bound_reg32 preds). Zone mode has no 32-bit-aware ALU ops
         // and still needs the truncation for W32 64-bit correctness.
         if width == Width::W32 && !state.domain.is_interval_mode() {
@@ -288,10 +287,9 @@ pub(crate) fn handle_add(
         // zext_32_to_64 → reg_bounds_sync applies var_off. For a W32 op
         // the truncated-32 tnum's UNSIGNED min/max must not be intersected
         // with the PRE-zext 64-bit SIGNED interval: [0,255]+(-1) has
-        // s64=[-1,254] pre-zext, and imposing tnum_min=0 there cascaded
-        // (via sync) into s32=[0,254]/u32=[0,0xfe] where the kernel keeps
-        // s32=[-1,254] with u32 unbounded — the exact two bcf_bound_reg32
-        // preds of bcc ksnoop's 0x7b883057f2f77b41 loop-guard goal.
+        // s64=[-1,254] pre-zext, and imposing tnum_min=0 there would
+        // cascade (via sync) into s32=[0,254]/u32=[0,0xfe] where the
+        // kernel keeps s32=[-1,254] with u32 unbounded.
         // transfer_alu runs the sync AFTER its zext step for W32 interval
         // mode; W64 (and zone) keep the in-handler sync.
         if width == Width::W64 || !state.domain.is_interval_mode() {

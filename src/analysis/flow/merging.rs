@@ -94,13 +94,11 @@ pub fn record_state(
     // just checkpointed here (verifier.c asserts exactly this:
     // "verifier_bug_if(new->branches != 1)"). Forks under it add ONLY
     // the extra alternatives (succ_count - 1, kernel push_stack); every
-    // path death decrements one (update_branch_counts). The old
-    // `branches = 0` + per-pop `+= succ_count` accounting inflated the
-    // counter by one per straight-line instruction in sparse-caching
-    // mode, so branches almost never returned to 0 and
-    // clean_verifier_state / maybe_exit_scc effectively NEVER ran
-    // (measured: 1 clean in a whole from_nat_fib run vs the kernel
-    // cleaning every completed state).
+    // path death decrements one (update_branch_counts). A
+    // `branches = 0` + per-pop `+= succ_count` accounting would inflate
+    // the counter by one per straight-line instruction in sparse-caching
+    // mode, so branches would almost never return to 0 and
+    // clean_verifier_state / maybe_exit_scc would effectively never run.
     state.branches = 1;
     // Kernel-faithful "open paths" counter, parallel to `branches`. Init
     // 1 = the single in-flight cur path that just hit this checkpoint.
@@ -118,9 +116,8 @@ pub fn record_state(
     // subsumption oracles only (never re-entered by the worklist for
     // transfer), and BCF is not consulted by regsafe/stacksafe — so
     // retaining the per-state `SymbolicState.exprs: Vec<BcfExpr>` on
-    // every cache entry adds memory without earning pruning back. On
-    // cilium bpf_host's 2/15/2/17/2/38 sections this dominated RSS
-    // (multi-GB peaks under --bcf vs <1 GB without).
+    // every cache entry adds memory without earning pruning back (it
+    // can dominate RSS on large objects — multi-GB peaks).
     // Keep just the cond-stream length for the refine positional cut
     // (State::cached_path_conds_len doc).
     state.cached_path_conds_len = state.bcf.as_ref().map(|b| b.path_conds.len());

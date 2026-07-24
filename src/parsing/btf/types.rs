@@ -1,6 +1,6 @@
 //! Plain-data BTF type definitions and module-wide constants.
 //!
-//! Split out of the original monolithic `btf.rs` (2026-05-05). Holds:
+//! Holds:
 //!   * BTF_KIND_* constants (BTF spec wire encoding).
 //!   * The parsed-type structs (`BtfType`, `BtfMember`, `DeclTag`).
 //!   * The verifier-facing field/special-field enums.

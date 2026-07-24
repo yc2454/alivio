@@ -434,9 +434,9 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
                 // `reg_expr` materializes it via its const_val branch as
                 // `VAL_64(c)`, so the result is `AND(dst_expr, VAL_64(c))`
                 // — exactly the kernel's `r1 &= r3` (r3=ld_imm64) DAG.
-                // Without this the expr was dropped and any later branch on
-                // dst materialized a bare fresh var, losing the AND that
-                // the kernel keeps (cilium path_cond #2 divergence).
+                // Without this the expr is dropped and any later branch on
+                // dst materializes a bare fresh var, losing the AND that
+                // the kernel keeps.
                 let si = r.bcf_idx();
                 if let (Some(bcf), Some(si)) = (state.bcf.as_mut(), si) {
                     let dst_expr = bcf.reg_expr(d, &dst_bounds_pre, alu32);
@@ -471,11 +471,9 @@ pub(crate) fn handle_or(state: &mut State, width: Width, dst: Reg, src: &Operand
     //   umin    = max(dst pre-op umin,    src umin)     (scalar_min_max_or,   verifier.c:15839)
     // (OR only sets bits, so x|y >= x and >= y); the maxima come from the
     // post-op tnum (value|mask). Captured before `forget` wipes dst.
-    // The former fill_ones() interval heuristic here predated fix #7
-    // (71f32b9: zero-extending loads set size-masked tnums), which makes
-    // the tnum tight enough for the kernel's own umax formula — e.g. the
-    // (u8<<3) feed of test_cls_redirect pc265/pc269 now carries tnum
-    // {0, 0x7f8}.
+    // Zero-extending loads set size-masked tnums, which makes the tnum
+    // tight enough for the kernel's own umax formula — e.g. a (u8<<3)
+    // feed carries tnum {0, 0x7f8}.
     let (pre_u32_min, _) = state.domain.get_u32_bounds(dst);
     let (pre_umin, _) = state.domain.get_u64_bounds(dst);
     // Kernel src_reg: BPF_K = known reg from the SIGN-EXTENDED imm

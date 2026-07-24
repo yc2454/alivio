@@ -468,8 +468,7 @@ pub fn load_relocations<P: AsRef<Path>>(
 /// referenced section. We resolve by locating the function symbol at
 /// that byte offset so the downstream name-keyed dispatch routes to
 /// `RelocKind::BpfCall` instead of the dummy-helper fallback (which
-/// surfaced as the spurious "Invalid helper ID 213" reject on bcc
-/// ksnoop and similar tracing programs).
+/// would otherwise produce a spurious "Invalid helper ID" reject).
 fn resolve_section_symbol_call_name(
     elf: &Elf,
     buf: &[u8],
@@ -1124,12 +1123,12 @@ pub fn discover_bpf_call_targets<P: AsRef<Path>>(
 
         let host_sh_offset = elf.section_headers[target_sec_idx].sh_offset as usize;
         for reloc in section_relocs {
-            // Mirror load_relocations' r_type inference: many cilium
+            // Mirror load_relocations' r_type inference: many real-world
             // relocs carry r_type 0 and the relocated insn's opcode
             // decides (0x85 = call → R_BPF_64_32; 0x18 = LD_IMM64 →
             // R_BPF_64_64). Without this, BPF_PSEUDO_FUNC callback
-            // ld_imm64s (which are R_BPF_64_64, NOT R_BPF_64_32) were
-            // skipped entirely, so a cilium `2/N` program whose only
+            // ld_imm64s (which are R_BPF_64_64, NOT R_BPF_64_32) would
+            // be skipped entirely, so a program whose only
             // cross-section dependency is a `bpf_for_each_map_elem` /
             // `bpf_loop` callback subprog (in `.text`) took the
             // single-section path and never appended the callback —
@@ -1155,8 +1154,8 @@ pub fn discover_bpf_call_targets<P: AsRef<Path>>(
                 continue;
             }
 
-            // Resolve section-symbol cross-section calls (e.g. bcc
-            // ksnoop's `kprobe/foo -> .text:ksnoop` call, encoded as
+            // Resolve section-symbol cross-section calls (a
+            // `kprobe/foo -> .text:<subprog>` call, encoded as
             // R_BPF_64_32 against `.text` STT_SECTION). Without this
             // the dispatch below sees an empty name, resolve_symbol_location
             // returns None, and the cross-section target goes undetected →

@@ -4,18 +4,17 @@
 //! kind, resolve the local↔target match against a target BTF and patch
 //! the corresponding instruction's `imm` field.
 //!
-//! Coverage (first cut, scoped by 2026-05-22 audit of 8 representative
-//! calico co-re failers: 92% EnumvalExists, 8% FieldExists):
+//! Coverage:
 //!   * `EnumvalExists` — set imm to 1 iff the target BTF has an enum
 //!     (matching the local enum's name if named) with a value whose
 //!     name matches the local enum's `access_idx`th value name.
 //!   * `FieldExists` — set imm to 1 iff the target BTF has a struct/
 //!     union with a field whose name matches the path-end local field.
 //!     Currently handles single-level access only (e.g. "0:N"); nested
-//!     fields are deferred (none in the audited corpus).
+//!     fields are not supported.
 //!
 //! Unsupported kinds (FieldByteOffset, FieldByteSize, TypeSize, …) are
-//! counted but not patched. None appeared in the calico audit.
+//! counted but not patched.
 
 use crate::parsing::bpf_insn::RawBpfInsn;
 use crate::parsing::btf::ext::{CoreRelo, CoreReloKind};
@@ -33,13 +32,8 @@ pub struct ReloStats {
     pub unsupported_kind: u32,
     pub patch_failed: u32,
     /// Of the "applied" patches, how many were no-ops (resolved value
-    /// equaled the placeholder clang already inlined). In our calico
-    /// corpus this is the dominant case — clang emits the "guess the
-    /// feature exists" default (imm=1) and target BTF agrees, so the
-    /// patch is functionally a no-op. Doesn't mean the work is wasted:
-    /// the divergence between co-re and non-co-re objects' bundles
-    /// comes from BYTECODE SHAPE (extra `if (r1 == 0) skip` branches
-    /// around each co-re call site), not from the patched value.
+    /// equaled the placeholder clang already inlined — clang emits the
+    /// "guess the feature exists" default imm=1 and target BTF agrees).
     pub no_op: u32,
 }
 
@@ -186,8 +180,7 @@ fn check_enum_value_exists(
 }
 
 /// Resolve `FieldExists` for one relocation. Single-level access only
-/// (path = [0, N]). Nested-field handling deferred (none in the audited
-/// calico corpus).
+/// (path = [0, N]); nested fields are not supported.
 fn check_field_exists(program_btf: &BtfContext, target_btf: &BtfContext, relo: &CoreRelo) -> bool {
     let Some(local_ty) = program_btf.types.get(&relo.type_id) else {
         return false;

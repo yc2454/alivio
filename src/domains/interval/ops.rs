@@ -360,8 +360,8 @@ pub fn apply_add_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
         // the AT/BEYOND_PKT_END sentinel does NOT survive pointer
         // arithmetic (adjust_ptr_min_max_vals resets reg->range), so a
         // re-advanced pointer's dup-check is NOT statically resolvable.
-        // Keeping it stale made zovia prune ext-header re-check paths
-        // the kernel walks (cilium bpf_host 2/18; FA-risk in base mode).
+        // Keeping it stale would prune ext-header re-check paths
+        // the kernel walks (FA-risk in base mode).
         po.pkt_end_rel = None;
     }
 }

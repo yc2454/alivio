@@ -291,8 +291,7 @@ fn refine_data_region_bounds(
         // feature (mark_pkt_end / is_pkt_ptr_branch_taken), so BCF should
         // mirror it rather than gate it off. It is precision-INCREASING (it
         // prunes the contradictory duplicate-check path), so the expected
-        // BCF effect is same-or-smaller bundles. BCF-effect under study
-        // (calico-19 bundle-size + VM-load gate).
+        // BCF effect is same-or-smaller bundles.
         let mark = if upper_strict {
             crate::domains::interval::PktEndRel::At
         } else {
@@ -385,10 +384,9 @@ fn propagate_packet_range(state: &mut State, checked_reg: Reg, proven_size: i64)
     // Spilled packet pointers: id now round-trips through
     // `PointerBounds::Interval`, so the kernel's same-id rule applies to
     // stack slots too (find_good_pkt_pointers iterates frames; matches
-    // reg->id only). The old var_off-equality approximation granted
-    // ranges across unrelated chains — kernel-UNFAITHFUL (cilium
-    // bpf_host 2/21 pc 246: zovia proved a reloaded-pointer byte load
-    // the kernel rejects, suppressing the 286d21e4 obligation).
+    // reg->id only). A var_off-equality approximation would grant
+    // ranges across unrelated chains — kernel-UNFAITHFUL (it can prove
+    // safe a reloaded-pointer load the kernel rejects).
     propagate_packet_range_to_all_frames_stack(state, checked_id, proven_size);
 }
 

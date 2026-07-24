@@ -801,10 +801,9 @@ fn try_prove_unreachable_inner(
         return None;
     }
 
-    // Loop-suffix-base discharge variant (accepted_entrypoint 0x11cc). Emitted
-    // ADDITIVELY by the caller alongside the normal discharge (deduped by hash),
-    // so it can only ADD the kernel's post-loop obligation, never drop another
-    // reject's (e.g. calico_tc_main 32add9 stays via the normal discharge).
+    // Loop-suffix-base discharge variant. Emitted ADDITIVELY by the caller
+    // alongside the normal discharge (deduped by hash), so it can only ADD
+    // the kernel's post-loop obligation, never drop another reject's.
     // When the reject's recorded path crossed a bounded loop, zovia (which
     // unrolls it) accumulates one cond per iteration at the loop's back-edge
     // insn — e.g. 31× `r8!=32` (loop-back) + 31× `r8<r1` (continue) + the exit
@@ -865,16 +864,15 @@ fn try_prove_unreachable_inner(
         }
     }
 
-    // Flag-skip-base discharge variant (accepted_entrypoint 0x2f5796f3…
-    // family — the "engine-shape" half of the proto-switch reject fan).
+    // Flag-skip-base discharge variant.
     // Like loop-suffix-base, but advance the anchor PAST the loop exit to the
     // FIRST narrowed-const (foldable EQ-taken / NE-taken) branch after it.
-    // In the calico proto-switch this is the "flag" branch `If R1==0 -> ...`
+    // Typical shape: a "flag" branch `If R1==0 -> ...`
     // where R1 was just masked `R1 &= 1024` to {0,1024}: on the flag-CLEAR
     // (==0) trajectory R1 pins to 0, so the existing K==K / faithful fold has
     // already rewritten that cond to `0==0`. Re-anchoring there drops the loop
-    // AND the flag's `!=0x400` conjunct, leaving `0==0` + the proto-switch
-    // suffix — exactly the kernel's flag-bypass obligation that the loop-suffix
+    // AND the flag's `!=0x400` conjunct, leaving `0==0` + the post-flag
+    // suffix — the kernel's flag-bypass obligation that the loop-suffix
     // (which keeps the flag as `!=0x400`) and pre-loop base_pc discharges miss.
     // ADDITIVE + deduped by the caller; returns None when there's no loop or no
     // post-loop foldable branch, so it never drops another reject's obligation.

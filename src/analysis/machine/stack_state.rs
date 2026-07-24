@@ -201,10 +201,8 @@ pub enum PointerBounds {
         // Kernel-style pointer chain id (PtrOffset::id). Round-tripping it
         // through the spill slot lets find_good_pkt_pointers-mirror range
         // propagation match spilled pkt pointers by ID — the kernel's rule
-        // — instead of the old var_off-equality approximation, which
-        // granted ranges across unrelated chains (cilium bpf_host 2/21
-        // pc 246: kernel rejects the reloaded-R4 byte load, zovia proved
-        // it safe and never emitted the 286d21e4 obligation).
+        // — rather than a var_off-equality approximation, which would
+        // grant ranges across unrelated pointer chains.
         id: Option<u32>,
     },
 }
@@ -225,11 +223,8 @@ pub enum PointerBounds {
 ///
 /// The Spill/Misc/Invalid distinction is what the kernel's `stacksafe` uses to
 /// keep two paths that wrote DIFFERENT numbers of helper bytes to the same
-/// buffer apart (calico from_nat_fib proto-demux: TCP writes 20B, non-TCP 8B,
-/// converge at pc521). zovia previously collapsed every present byte AND every
-/// absent byte to a default `ScalarValue` in `get_slot_type`, so the arms
-/// looked identical and one subsumed the other — dropping the sibling's pc748
-/// obligations. Consulted unconditionally by `stack_subsumed_by` (the faithful
+/// buffer apart; collapsing the kinds would let one arm subsume the other.
+/// Consulted unconditionally by `stack_subsumed_by` (the faithful
 /// per-byte `stacksafe` slot_type rule, verifier.c:19708-19762).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackSlotKind {
@@ -304,9 +299,8 @@ pub struct SpilledReg {
 /// Spilled-register stack snapshot.
 ///
 /// The `BTreeMap` is `Arc`-wrapped so `State::clone` at branch-fork (the hot
-/// path — see dhat profile 2026-05-24, top two allocators were
-/// `<BTreeMap as Clone>::clone::clone_subtree` rooted in `run_worklist`) is
-/// O(1). Mutators route through [`StackState::slots_mut`] (`Arc::make_mut`),
+/// path) is O(1).
+/// Mutators route through [`StackState::slots_mut`] (`Arc::make_mut`),
 /// which is CoW: free on a uniquely-owned value, one full clone the first
 /// time a shared value is mutated. Forks that don't touch the stack — the
 /// common case on register-only insns — pay nothing.
@@ -463,8 +457,7 @@ impl StackState {
     }
 
     pub fn set_slot_type(&mut self, offset: i16, reg_type: RegType, source_reg: Option<Reg>) {
-        // ZOVIA_DBG_SLOTW: trace kind-affecting writes in a byte window
-        // (2af5badd seed chase 2026-07-16 — who stamps Spill at -222/-221?).
+        // ZOVIA_DBG_SLOTW: trace kind-affecting writes in a byte window.
         if (-224..=-217).contains(&offset)
             && std::env::var("ZOVIA_DBG_SLOTW").ok().as_deref() == Some("1")
         {
@@ -600,8 +593,8 @@ impl StackState {
                 bcf_expr: None,
                 // Invalidation = the program/a helper clobbered this byte with
                 // unknown data (kernel STACK_MISC). Distinct from STACK_INVALID
-                // (an unwritten/absent byte) — that distinction is exactly what
-                // keeps the from_nat_fib proto-demux arms apart in stacksafe.
+                // (an unwritten/absent byte) — stacksafe keeps paths with
+                // different byte kinds apart.
                 kind: StackSlotKind::Misc,
             },
         );

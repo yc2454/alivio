@@ -549,16 +549,9 @@ fn get_use_def(instr: &Instr, alias: &AliasMap) -> UseDef {
             }
             // USES: the call's ACTUAL argument registers only (kernel
             // compute_live_registers: proto->arg_type[0..nargs], trailing
-            // DontCare = clobbered-without-read → dead). Re-landed
-            // 2026-07-06: the 2026-07-01 in-isolation falsification
-            // (ZOVIA_FAITHFUL_HELPER_ARGS, 24->12/28) predates the
-            // parity-arc pruning ports (bucket scan, dampener, scrub,
-            // misc arm, counter placement) that fixed the compensating
-            // subsumption divergence it collided with. Direct evidence
-            // now: to_wep c15 pc1009 — kernel HITS (R1 dead before
-            // `call ktime_get_ns` (0 args) at 1012), zovia's blanket
-            // R1-R5 read kept R1=PtrToMapValue live → Types miss → +1
-            // cadence skew → the extra 1011-cache (add #55 seam).
+            // DontCare = clobbered-without-read → dead). A blanket
+            // R1-R5 read would keep regs live that the kernel treats as
+            // dead before a 0-arg call, blocking subsumption HITs.
             // Kfuncs / unknown protos stay conservative (R1-R5).
             let nargs: Option<usize> = match kind {
                 crate::ast::CallKind::Helper { id } => {

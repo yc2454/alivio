@@ -123,11 +123,10 @@ fn condition_outcome_inner(
                     // Kernel is_scalar_branch_taken BPF_JEQ
                     // (verifier.c:16810): `if (!tnum_overlap(t1, t2))
                     // return 0;` — mutually-known bits disagreeing refute
-                    // equality even when the value ranges overlap. co-re
-                    // 354 seed: r1 = tnum{0,0xfff8} (low 3 bits known 0)
+                    // equality even when the value ranges overlap. E.g.
+                    // r1 = tnum{0,0xfff8} (low 3 bits known 0)
                     // vs 0x14 (bit 2 set) — kernel resolves JNE
-                    // always-taken, zovia's bounds-only arms fell through
-                    // → the walk fork that extinguishes 2af5badd@709.
+                    // always-taken; bounds-only arms would fall through.
                     if !tnum_overlap_imm(state, left, width, imm_val) {
                         return Some(false);
                     }

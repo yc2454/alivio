@@ -108,21 +108,17 @@ pub const PER_FILE_OVERRIDES: &[(&str, PerFileOverride)] = &[
         },
     ),
     // Bounded counting loops the kernel verifies by UNROLLING within its
-    // real 1M insn budget — NOT by state pruning. Empirically confirmed
-    // via the running bpf-next-zovia kernel's log_level=2 trace of
-    // `loop1::nested_loops` (2026-05-19): the kernel does ZERO pruning
+    // real 1M insn budget — NOT by state pruning. A log_level=2 kernel
+    // trace of `loop1::nested_loops` shows ZERO pruning
     // (no `: safe`, no `from N to M`), tracks the loop counter as a
-    // PRECISE incrementing constant (`R3=206,207,208,...` — identical to
-    // zovia), and `processed 361349 insns (limit 1000000)` continuing to
-    // unroll the ~44850-iteration `for j<300 { for i<j }`. So the kernel
+    // PRECISE incrementing constant (identical to zovia), and keeps
+    // unrolling within the 1M budget. So the kernel
     // accepts these purely because `for(...)` is bounded and fits the 1M
     // budget; there is no convergence mechanism to mirror. zovia matches
     // the kernel when given the same 1M budget + kernel-equivalent
     // per-PC cache (verifier.c:19222 utility eviction, no fixed cap;
-    // 64 like `get_branch_snapshot.c`). Without these, the 100k
-    // sweep-productivity tightening strands them — previously masked by
-    // the (now-removed) widening.rs domain-only counter-widen block,
-    // which force-converged bounded loops the kernel never converges.
+    // 64 like `get_branch_snapshot.c`). Without these, the default
+    // budget strands them.
     // loop1/loop2/loop4 are `test_verif_scale_*` (should_fail=false =
     // kernel-ACCEPT); parse_tcp_hdr_opt(_dynptr) are real parsers loaded
     // via `__open_and_load` (kernel-ACCEPT).
@@ -435,8 +431,7 @@ fn run_file_with_dirs_inner(
 ///    single file-level miss, not N. Keep the first FA (sorted by
 ///    func name for determinism); demote the rest to Pass. Closes
 ///    one of `bad_struct_ops::test_1`/`test_2` (the other remains
-///    as the file-level FA marker — see
-///    `project_bad_struct_ops_deferred_2026-05-03.md`).
+///    as the file-level FA marker).
 fn rescore_file_level_reject(file_basename: &str, progs: &mut [ProgReport]) {
     // Only fires when the file appears in expectations.json with a
     // file-level `expect: reject`. Files with per-prog macros

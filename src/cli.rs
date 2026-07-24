@@ -335,8 +335,7 @@ impl GlobalOpts {
             // DONE_EXPLORING`. kernel-mode is the always-privileged
             // mirror, so back-edges (including jump-into-loop-middle
             // patterns clang emits in tracing programs) must be
-            // allowed. Surfaced via bcc ksnoop false-reject "back-edge
-            // from insn 380 to 423" against an oracle-accepted prog.
+            // allowed.
             c.require_single_loop_entry = false;
         }
         if self.zone_mode {

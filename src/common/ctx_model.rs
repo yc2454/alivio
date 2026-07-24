@@ -1238,9 +1238,8 @@ const BPF_SOCK_FIELDS: &[CtxField] = &[
     // All modeled read-only (conservative; bpf_sock write-validity is
     // attach-type dependent — keeping writes strict only risks a
     // false-reject on a write, never a false-accept, and matches the
-    // 0/4/8/12 entries above). Closes the 16 cilium post_bind4/6 FRs
-    // (`src_ip4`@24, `src_port`@44 were unmodeled → "Unsafe ctx
-    // access" though the kernel permits these reads).
+    // 0/4/8/12 entries above). The kernel permits these reads
+    // (e.g. `src_ip4`@24, `src_port`@44).
     CtxField { offset: 16, size: MemSize::U32, kind: CtxFieldKind::Scalar, writable: false, readable: true, narrow_access: false }, // mark
     CtxField { offset: 20, size: MemSize::U32, kind: CtxFieldKind::Scalar, writable: false, readable: true, narrow_access: false }, // priority
     CtxField { offset: 24, size: MemSize::U32, kind: CtxFieldKind::Scalar, writable: false, readable: true, narrow_access: true },  // src_ip4
@@ -2418,8 +2417,7 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
     //   - post_bind4: mark(16) + src_ip6(28..44) [IPv4-only].
     //   - post_bind6: mark(16) + src_ip4(24) [IPv6-only].
     // (The kernel additionally denies bound_dev_if(0)/priority(20) under
-    // post_bind*; left as-is here — pre-existing, verdict-neutral on the
-    // cilium gate, and not the reported regression.)
+    // post_bind*; not modeled here.)
     if prog_kind == ProgramKind::CgroupSock {
         if let Some(sub) = env.ctx.attach_subtype.as_deref() {
             let denied = match sub {

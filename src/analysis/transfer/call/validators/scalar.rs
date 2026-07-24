@@ -32,10 +32,9 @@ pub fn validate_const_size(ctx: &mut ValidationContext) -> bool {
 /// argument gets a full `mark_chain_precision(env, regno)` backward
 /// walk on success — the size value determined a memory range, so its
 /// lineage (including CACHED ancestor states) is precision-marked.
-/// zovia only range-checked the reg; the missing chain left e.g. the
-/// to_lo 713-checkpoint's R2 (bpf_trace_printk fmt_size=33 at insn 714)
-/// imprecise where the kernel has prec=1 — later arrivals with R2=22/42
-/// then wrongly HIT it (kernel EQFAILs; measured [ZK fse] 2026-07-10).
+/// Range-checking the reg alone would leave the cached checkpoint's
+/// size reg imprecise where the kernel has prec=1, so later arrivals
+/// with a different size would wrongly HIT it.
 /// The cur-state local mark is irrelevant (R0-R5 die at the call);
 /// the cached-lineage marks are the load-bearing part.
 fn mark_size_arg_precision_chain(ctx: &mut ValidationContext) {

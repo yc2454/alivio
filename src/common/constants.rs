@@ -203,7 +203,7 @@ pub const BPF_DYNPTR_DATA: u32 = 203;
 pub const BPF_USER_RINGBUF_DRAIN: u32 = 209;
 pub const BPF_CGRP_STORAGE_GET: u32 = 210;
 pub const BPF_CGRP_STORAGE_DELETE: u32 = 211;
-// Helper IDs missing from earlier coverage (FR triage 2026-05-19 batch 2).
+// Additional helper IDs.
 // IDs match `__BPF_FUNC_MAPPER` in `include/uapi/linux/bpf.h` v6.18-rc4.
 pub const BPF_LOAD_HDR_OPT: u32 = 142;
 pub const BPF_SNPRINTF_BTF: u32 = 149;

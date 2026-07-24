@@ -114,7 +114,7 @@ fn parse_map_struct_members(ctx: &BtfContext, def_t: &BtfType) -> ParsedMapStruc
                 // parse that struct directly. Without this,
                 // `bpf_map_lookup_elem` on the outer keeps the outer's
                 // map_idx and the inner-lookup chain loses the inner
-                // value's size/BTF (cilium maglev `value[hash%N]` loads
+                // value's size/BTF (indexed inner-value loads get
                 // bounded by the 4-byte of-maps fd slot; Timer/SpinLock
                 // validators reject with "map has no value-type BTF").
                 value_size = 4;
@@ -253,14 +253,13 @@ pub fn parse_btf_map_defs(bytes: &[u8]) -> Result<Vec<BpfMapDef>, String> {
     // their inner map_idx. The outer's `__array(values, struct T)`
     // recorded `T`'s type id. Two libbpf-supported shapes:
     //   (a) `T` is a sibling top-level map VAR's declaring struct —
-    //       point at that map_def (cilium does NOT use this).
+    //       point at that map_def.
     //   (b) `T` is an inline anonymous struct that is itself a full
     //       map definition (`__array(values, struct { __uint(type,…);
     //       __uint(value_size,…); … })`) — there is no sibling VAR, so
-    //       parse `T` directly and synthesize an inner map_def. This is
-    //       what cilium's maglev / mcast outer maps use; without it the
-    //       outer keeps value_size 4 (the of-maps fd slot) and indexed
-    //       inner-value loads `value[hash % N]` look OOB.
+    //       parse `T` directly and synthesize an inner map_def. Without
+    //       this the outer keeps value_size 4 (the of-maps fd slot) and
+    //       indexed inner-value loads `value[hash % N]` look OOB.
     // Mirrors libbpf `bpf_object__init_user_btf_map` inner-map setup.
     //
     // Storing as the index *into this `map_defs` vector* is OK as long

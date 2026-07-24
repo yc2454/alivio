@@ -22,11 +22,9 @@ use crate::ast::Operand;
 /// The kernel binds a non-constant register's `bcf_expr` (emitting its
 /// `bcf_bound_reg` bound predicates into `br_conds`) the FIRST time the
 /// register is read as a source operand of ANY instruction — including a
-/// plain spill/store, NOT only at ALU/branch sites. Without this, zovia
-/// only materialized lazily inside the ALU/branch mirrors, so a value
-/// spilled before its first branch (e.g. cilium wireguard's pc38 u16
-/// load `w1=*(u16*)(r4+4)` spilled at pc39) never got its umax bound
-/// pred — diverging from the kernel's leading `JLE(v,65535)` clause.
+/// plain spill/store, NOT only at ALU/branch sites. Materializing only
+/// inside the ALU/branch mirrors would drop the bound preds (e.g. a
+/// load's umax `JLE` clause) for a value spilled before its first branch.
 ///
 /// Scoped to SCALAR non-const regs: the kernel's `!tnum_is_const`
 /// guard skips constants, and pointer regs almost always have a const
@@ -68,8 +66,8 @@ pub(crate) fn check_reg_readable(env: &mut VerifierEnv, state: &mut State, reg: 
 /// branch LHS that this read would otherwise materialize PRE-narrow (umin=0)
 /// then loses the kernel's `u>= K` lower-bound conjunct on the narrowing
 /// (taken) side. Deferring lets `record_path_cond_for_side` re-materialize it
-/// post-narrow so `[u>=K, u<=M]` emit together before the branch cond
-/// (from_nat_fib pc748 d53387e3 V0 `u>= 6`). Gated by the caller.
+/// post-narrow so `[u>=K, u<=M]` emit together before the branch cond.
+/// Gated by the caller.
 pub(crate) fn check_reg_readable_ex(
     env: &mut VerifierEnv,
     state: &mut State,
@@ -92,21 +90,8 @@ pub(crate) fn check_reg_readable_ex(
             // Mirror that BCF-faithful reactive discharge: try a
             // cvc5-checked path-unreachable proof; on success emit a
             // `kind=UNREACHABLE` bundle entry and silently prune the
-            // state. The previous concern about false accepts (24
-            // measured) was specific to a SYNTACTIC `reg==c ∧ reg!=c`
-            // structural shortcut over `path_conds` — not the
-            // cvc5-checked discharge. cvc5 is sound, so an UNSAT
-            // result is a genuine proof of unreachability and no
-            // false accept can leak.
-            //
-            // Measured 2026-05-23 on calico from_wep_fib_dsr_debug
-            // calico_tc_main: kernel `R3 !read_ok` reject at PC 834
-            // along a path where zovia's exploration didn't reach
-            // (zovia's R3 is readable at this PC). Bundle needs a
-            // path-unreachable entry for kernel's specific path; the
-            // reactive discharge here emits it iff cvc5 proves the
-            // accumulated path_cond unsat. See
-            // [[feedback_kernel_probe_record_path_cond_2026-05-23]].
+            // state. cvc5 is sound, so an UNSAT result is a genuine
+            // proof of unreachability and no false accept can leak.
             if crate::analysis::transfer::branch::try_emit_path_unreachable_entry(env, state) {
                 log::info!(
                     target: "app",
@@ -119,12 +104,6 @@ pub(crate) fn check_reg_readable_ex(
                 // NOT_INIT. Only the mem-access (:8319-8330) and call
                 // (:21225-21241) discharge sites prune on KIND_UNREACHABLE;
                 // check_reg_arg's hook ignores path_unreachable entirely.
-                // Measured (BTO chase, probe #147 [ZK push/pop/add] on
-                // from_wep_debug_v6 accepted_entrypoint): at the per-
-                // traversal pc-992 `R3 !read_ok` discharge the kernel walks
-                // on through 993..996 (add 996@ip10534, push 997→1003
-                // @10535) while zovia dropped the path at ip 10530 — the
-                // first post-horizon schedule divergence (adds #411+).
                 // No bcf_path_unreachable, no materialization: the kernel
                 // binds exprs only for inited regs.
                 return true;

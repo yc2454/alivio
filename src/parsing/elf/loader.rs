@@ -147,10 +147,8 @@ pub fn try_load_combined_program_from_elf(
 /// to the entry section's raw instructions BEFORE lowering to AST.
 /// Mirrors libbpf's `bpf_object__relocate_core` (`tools/lib/bpf/libbpf.c`
 /// → `tools/lib/bpf/relo_core.c::bpf_core_apply_relo_insn`). Only the
-/// entry section's relos are applied; cross-section subprog relos are a
-/// follow-up. Calico's calico_tc_main lives entirely in section "tc"
-/// with all its co-re relos in "tc", so this covers ~all of the 32
-/// co-re failers from the 66-corpus audit.
+/// entry section's relos are applied; cross-section subprog relos are
+/// not.
 pub fn try_load_function_with_subprogs_from_elf_with_relo(
     path: &str,
     section: &str,

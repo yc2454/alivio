@@ -424,7 +424,7 @@ pub fn load_maps<P: AsRef<Path>>(path: P) -> Result<Vec<BpfMapDef>> {
         // Snapshot just the resolved live indices first to avoid the
         // outer mutable borrow of `maps` while we look up by name.
         // `to_append` collects BTF-synthesized inline inner-map
-        // templates (cilium maglev / mcast): they have no ELF symbol so
+        // templates: they have no ELF symbol so
         // no live `maps` entry exists — append them and point the outer
         // at the appended index. Without this the outer keeps
         // value_size 4 (the of-maps fd slot) and indexed inner-value

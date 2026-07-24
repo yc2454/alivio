@@ -934,13 +934,13 @@ pub fn should_prune(
     // zovia's per-state liveness/precision bookkeeping isn't granular
     // enough to mirror the kernel's `live`-flag discrimination — so at
     // mid-loop convergence prune points (`is_at_loop_point=false`) the
-    // check over-fires on legitimate cilium loops whose iterations
+    // check over-fires on legitimate loops whose iterations
     // happen to produce byte-identical zovia abstract states even
     // though the kernel sees per-iter progress. Restricting to true
     // loop heads keeps the trap narrow enough to detect genuine
     // verifier-divergent infinite loops (the conditional_loop /
     // infinite_loop_* / mov64sx_s32_varoff_1 family) while avoiding
-    // the cilium FR-regression.
+    // false rejects on legitimate loops.
     // Additionally skip when ANY frame has an active iterator: the kernel
     // gates iter-loop convergence on `iter_active_depths_differ` + SCC
     // (`loop_entry` / `dfs_depth` / `branches`, verifier.c L1885+). zovia
@@ -1005,14 +1005,13 @@ pub fn should_prune(
             // single-path cycle. Convergent siblings get the prune
             // path below (state_exact_equal => subsumption hit).
             //
-            // Concretely on calico anchor new_flow_entrypoint (post
-            // jmp_history_cnt fix, 2026-05-22): R7 differs at loop
-            // head PC 2844 across iterations (R7 increments) but is
-            // overwritten to a constant in the loop body, so two iters
-            // reach the loop tail PC 3059 with byte-identical reg
-            // values. Without the lineage gate the trap fires; with
-            // it, sibling-iter convergence falls through to the regular
-            // prune path and exploration terminates correctly.
+            // Example shape: a reg differs at the loop head across
+            // iterations (it increments) but is overwritten to a
+            // constant in the loop body, so two iters reach the loop
+            // tail with byte-identical reg values. Without the lineage
+            // gate the trap fires; with it, sibling-iter convergence
+            // falls through to the regular prune path and exploration
+            // terminates correctly.
             let prev_cid = prev.cache_id;
             let in_lineage = prev_cid.is_some() && {
                 let mut cur_anc = state.parent_cache_id;
@@ -1201,9 +1200,8 @@ fn record_pruning_misses(env: &mut VerifierEnv, pc: usize, miss_idxs: &[usize]) 
         std::collections::HashMap::new()
     };
 
-    // [ev] event log (1770 eviction-divergence link, 2026-07-16): candidate
-    // identity = cid + R1 smin (the 0x205/0x405/... flag-ladder consts) —
-    // diff against kernel probe #134 [ZK ev].
+    // [ev] eviction event log: candidate identity = cid + R1 smin,
+    // for diffing against the kernel's eviction trace.
     let id_by_idx: std::collections::HashMap<usize, (Option<u32>, i64)> =
         if crate::analysis::trace_pc_in_range(pc) {
             env.explored_states

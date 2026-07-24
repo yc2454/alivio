@@ -223,10 +223,8 @@ impl ScalarBounds {
         // the 64-bit bounds, keeping the high 32 bits from the existing
         // 64-bit range. This lets a reg whose low 32 bits are known —
         // e.g. R0 after a `w0 == 0` branch (u32=[0,0], high 32 unknown) —
-        // derive umax=0xffffffff_00000000 / smax=0x7fffffff_00000000, the
-        // exact bounds the kernel's bcf_bound_reg emits for the from_nat
-        // skb_load_bytes return (0x23a1dc). zovia previously had only the
-        // 64→32 direction, so umax/smax stayed at the full 64-bit range.
+        // derive umax=0xffffffff_00000000 / smax=0x7fffffff_00000000,
+        // matching the bounds the kernel's bcf_bound_reg emits.
         // Always well-formed (kernel comment).
         let hi_mask: u64 = !0xffff_ffffu64;
         let new_umin = (self.umin & hi_mask) | (self.u32_min as u64);
@@ -244,9 +242,8 @@ impl ScalarBounds {
         // left umax capped below that (e.g. at i64::MAX), the reg is in
         // fact unsigned-unbounded above — the kernel keeps umax_value at
         // U64_MAX. Restoring it (a WIDENING, hence sound) stops zovia
-        // emitting a spurious `ULE(v, i64::MAX)` the kernel never has
-        // (the to_l3_debug_v6 0xd13031 regression). Symmetrically, a
-        // fully non-negative reg's umax is its smax.
+        // emitting a spurious `ULE(v, i64::MAX)` the kernel never has.
+        // Symmetrically, a fully non-negative reg's umax is its smax.
         if self.smin >= 0 {
             self.umin = self.umin.max(self.smin as u64);
             self.umax = self.umax.min(self.smax as u64);
@@ -275,8 +272,7 @@ impl ScalarBounds {
     /// the 64-bit bounds must be assigned from the 32-bit ones. Without
     /// this, a register written by a W32 op keeps umax/smax at the full
     /// 64-bit range, so `bcf_bound_reg`-style materialization never emits
-    /// the `ULE(reg,0xffffffff)` / signed bounds the kernel emits (the
-    /// from_nat 0x23a1dc index reg, and the to_l3 0xd13031 reg).
+    /// the `ULE(reg,0xffffffff)` / signed bounds the kernel emits.
     pub fn assign_32_into_64(&mut self) {
         if std::env::var("ZOVIA_DBG_ADDIMM").ok().as_deref() == Some("1") {
             eprintln!("[a3264-in] s32=[{},{}] u32=[{:#x},{:#x}]", self.s32_min, self.s32_max, self.u32_min, self.u32_max);
@@ -623,18 +619,9 @@ impl IntervalState {
     /// upstream kernel does NOT track a global packet_size — it tracks
     /// `reg->range` per packet pointer only, so two independent packet
     /// pointers can have independent ranges. Aggregating bounds globally
-    /// is a zovia-specific over-precision (residual from when Interval
-    /// mode was being kept closer to Zone-mode precision) that prunes
-    /// paths the kernel still explores. Measured failure: calico
-    /// `from_wep_fib_dsr_debug` `calico_tc_main` PC 1343 NOT-TAKEN —
-    /// prior bounds check pushed `packet_size_lower_bound` past 0x36,
-    /// then PC 1343 NT-side tried to set `upper = 0x36`, NT-side became
-    /// inconsistent → never explored → branches at PC 1347/1368 (R0
-    /// from `bpf_skb_load_bytes`) never reached → kernel's discharge
-    /// hash `0x034f376909db9ac8` never produced in zovia's bundle →
-    /// kernel `-EACCES`. Kernel-mode = Interval mode, so this is now
-    /// unconditionally a no-op in this domain. See
-    /// [[feedback_kernel_probe_record_path_cond_2026-05-23]].
+    /// is a zovia-specific over-precision that would prune paths the
+    /// kernel still explores, so this is unconditionally a no-op in
+    /// this domain.
     pub fn set_packet_size_bound(&mut self, _min_size: u64) {}
 
     /// Get known lower bound on packet size. Always `None` after the

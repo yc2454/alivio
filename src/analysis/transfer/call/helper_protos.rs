@@ -171,15 +171,10 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         .mem_size_pairs(&pairs::SKB_STORE_BYTES),
 
         // ---- skb-modifying helpers (real kernel SCHED_CLS/ACT
-        // helpers; ctx + scalar args, RET_INTEGER). Previously
-        // unregistered → validate_helper_args skipped them; with the
-        // unknown-helper⇒REJECT backstop that became a false-reject for
-        // the many kernel-ACCEPTED cilium programs that call them (per
-        // the per-program kernel oracle). Faithful protos: R1=ctx,
-        // remaining = scalars. Packet-pointer invalidation is already
+        // helpers; ctx + scalar args, RET_INTEGER). Faithful protos:
+        // R1=ctx, remaining = scalars. Packet-pointer invalidation is
         // modeled by id in helper_invalidates_packets() — independent
-        // of this proto — so registering them is sound (no stale-pkt FA
-        // re-introduced). Mirrors the existing skb_store_bytes /
+        // of this proto. Mirrors the existing skb_store_bytes /
         // vlan_push idiom (RET_INTEGER → default per-helper R0). ----
         constants::BPF_SKB_CHANGE_PROTO => CallProto::with_args([
             PtrToCtx, // R1: skb
@@ -239,8 +234,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         // bpf_redirect_peer(ifindex, flags) -> int. Real SCHED_CLS/ACT
         // helper (id 155); same shape as bpf_redirect (both scalars, no
         // ctx, no packet modification → not in helper_invalidates_packets,
-        // correctly). Was unregistered → backstop false-rejected the
-        // kernel-accepted cilium lxc programs that call it.
+        // correctly).
         constants::BPF_REDIRECT_PEER => CallProto::with_args([
             Anything, // R1: ifindex
             Anything, // R2: flags
@@ -252,11 +246,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         // bpf_redirect_neigh_proto): arg1=ARG_ANYTHING ifindex,
         // arg2=ARG_PTR_TO_MEM|PTR_MAYBE_NULL|MEM_RDONLY params,
         // arg3=ARG_CONST_SIZE_OR_ZERO plen, arg4=ARG_ANYTHING flags,
-        // RET_INTEGER. Was unregistered → get_helper_proto returned None
-        // → zovia false-rejected the kernel-accepted calico tc programs
-        // that call it ("Invalid helper ID 152"). Additive frontend
-        // coverage; the kernel returns this proto for SCHED_CLS, so the
-        // prior reject was a zovia-only false positive (≤-BCF preserved).
+        // RET_INTEGER. The kernel returns this proto for SCHED_CLS.
         constants::BPF_REDIRECT_NEIGH => CallProto::with_args([
             Anything,             // R1: ifindex
             PtrToMemOrNull,       // R2: params (nullable, rdonly)
@@ -272,9 +262,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         // the clone. Kernel proto = [ARG_PTR_TO_CTX, ARG_ANYTHING,
         // ARG_ANYTHING], RET_INTEGER. In bpf_helper_changes_pkt_data
         // (net/core/filter.c) — invalidation handled by id in
-        // helper_invalidates_packets (sound). Was unregistered →
-        // backstop false-rejected the kernel-accepted cilium overlay
-        // tail_mcast_ep_delivery (the for_each_map_elem cb calls it).
+        // helper_invalidates_packets (sound).
         constants::BPF_CLONE_REDIRECT => CallProto::with_args([
             PtrToCtx, // R1: skb
             Anything, // R2: ifindex
@@ -825,15 +813,8 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
             // declares only arg1/arg2; arg3-5 stay ARG_DONTCARE, so
             // get_call_summary num_params=2 and compute_insn_live_regs
             // (verifier.c:26141-26145, use=GENMASK(num_params,1)) kills
-            // r3-r5 liveness at every printk call. The old Anything×3
-            // kept R3/R4/R5 live across the CALI_DEBUG-saturated from_wep
-            // debug_v6 bodies — measured probe #146 [ZK lr] diff: all 40
-            // visited accepted_entrypoint prune pcs had zovia = kernel +
-            // {R4,R5} (881 also +R3) — blocking regsafe-parity prune hits
-            // (old=Scalar/cur=NotInit on a kernel-dead reg) and exploding
-            // the build (kernel: 10530 insns / max 6 states per insn;
-            // zovia: 300+ adds per loop pc at 705/811/831/930/990, BTO
-            // at 3600s).
+            // r3-r5 liveness at every printk call. Marking them Anything
+            // would keep r3-r5 live and block regsafe-parity prune hits.
             DontCare,
             DontCare,
             DontCare,
@@ -1098,11 +1079,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         constants::BPF_DYNPTR_DATA => return get_kfunc_proto("bpf_dynptr_data"),
 
         // ============================================================
-        // Helper proto enumeration (FR triage 2026-05-19, batch 1):
-        // kernel-faithful entries for helpers that previously had no
-        // proto, so `validate_helper_args` invoked the unknown-helper
-        // backstop and the kernel-ACCEPT selftest programs were
-        // false-rejected as "Invalid helper ID N". Every shape below
+        // Helper proto enumeration, batch 1. Every shape below
         // mirrors the kernel proto (kernel/bpf/helpers.c,
         // net/core/filter.c, kernel/trace/bpf_trace.c,
         // drivers/media/rc/bpf-lirc.c, kernel/bpf/stackmap.c,
@@ -1449,7 +1426,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         .ret(RetKind::Scalar),
 
         // ============================================================
-        // Helper proto enumeration batch 2 (FR triage 2026-05-19):
+        // Helper proto enumeration, batch 2:
         // BTF-typed sock casts, per-cpu pointer, map-element queue,
         // ringbuf_discard, probe_read_str variants, tracing/retval
         // helpers, syscall/snprintf_btf/sysbpf, etc.
@@ -1762,7 +1739,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         .ret(RetKind::Scalar),
 
         // ============================================================
-        // Helper proto enumeration batch 3 (FR triage 2026-05-19):
+        // Helper proto enumeration, batch 3:
         // callback helpers (bpf_loop, bpf_find_vma) and kptr_xchg.
         //
         // bpf_loop / bpf_find_vma are already recognized by

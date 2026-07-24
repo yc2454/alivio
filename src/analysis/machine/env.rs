@@ -178,8 +178,8 @@ pub struct VerifierEnv<'a> {
     /// Count of cached states evicted by the `max_states_per_pc` cap
     /// (unmet pruning demand). High = kernel-faithful pruning isn't
     /// subsuming states the kernel would, so the per-pc list overflows the
-    /// cap and thrashes. Paired with `max_per_insn` (kernel ≤27 on calico)
-    /// as the convergence-quality metric. See cont.13.
+    /// cap and thrashes. Paired with `max_per_insn` as the
+    /// convergence-quality metric.
     pub cache_evictions: u64,
     /// Mapping from an iter_next kfunc call pc to the iter slot it
     /// operates on `(frame_idx, stack_offset)`. Populated lazily by
@@ -314,9 +314,9 @@ pub struct VerifierEnv<'a> {
     /// The kernel keeps evictees allocated until `branches == 0`
     /// (`maybe_free_verifier_state`); destroying them at eviction time
     /// dangles every parent-chain walk: branches accounting
-    /// (`complete_dfs_branch`), bcf backtrack base (`bcf_suffix_base_pc`
-    /// returned None → base-less goal, from_l3_fib_no_log pc222 miss
-    /// 0x94363000a66f1a84), `mark_path_children_unsafe` (truncated walk),
+    /// (`complete_dfs_branch`), the bcf backtrack base
+    /// (`bcf_suffix_base_pc` returning None → base-less goal),
+    /// `mark_path_children_unsafe` (truncated walk),
     /// precision backprop, and the replay base fetch.
     /// Keyed by cache_id, value = (cache pc, the retired State).
     pub retired_states: HashMap<u32, (usize, Box<State>)>,
@@ -540,12 +540,10 @@ impl<'a> VerifierEnv<'a> {
         // further via `.parent_idx`, returning the grandparent's PC —
         // off-by-one against the kernel's `vstate->last_insn_idx`. For a
         // state arriving at PC 1873 via the branch at PC 1746
-        // (`if w1 != w2 goto 1873`), the old code returned 1745 (the
-        // u16 load before the branch); `filter_path_conds_from_pc` then
-        // couldn't find a branch predicate at source_pc=1745, dropped the
-        // JNE(w1, w2) emitted at 1746, and the canonical hash diverged
-        // from the kernel's. Verified 2026-05-23: closes calico anchor
-        // (-EACCES → 7/7 loaded), no c17 regression.
+        // (`if w1 != w2 goto 1873`), walking one more step would return
+        // 1745 (the insn before the branch); `filter_path_conds_from_pc`
+        // then finds no branch predicate at that source_pc, drops the
+        // branch cond, and the canonical hash diverges from the kernel's.
         Some(self.history.get(hidx)?.pc)
     }
 

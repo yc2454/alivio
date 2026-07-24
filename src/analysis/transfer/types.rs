@@ -1416,10 +1416,7 @@ pub(crate) fn update_call_types(
                     // (verifier.c:8630 "helper can write anything into the
                     // stack" → STACK_MISC; :8635-8640 spilled slot →
                     // __mark_reg_unknown + whole-slot scrub_spilled_slot).
-                    // Was set_slot_type(ScalarValue) which stamps kind=Spill
-                    // on absent bytes and leaves neighboring spill bytes
-                    // untouched — the 0x2af5baddb8c6c1fb seed (see the
-                    // mem_size_pairs clobber in call/transfer.rs).
+                    // (see the mem_size_pairs clobber in call/transfer.rs).
                     let stack = state.stack_at_mut(frame_level);
                     if let Ok(off16) = i16::try_from(off) {
                         stack.scrub_spilled_slots_for_write(off16, len as usize);
@@ -1457,14 +1454,10 @@ pub(crate) fn update_call_types(
     // r0 - r5 were scratched") has no fastcall exception — bpf_fastcall
     // preserves VALUES only via the spill/fill pattern around the call
     // (mark_fastcall_pattern_for_call), and verification runs on the
-    // original program with those spills/fills intact. The old by-helper-id
-    // skip kept R1-R5 typed ScalarValue across fastcall calls, so
-    // bcf_refine's seed rule (skip NOT_INIT) included them where the
-    // kernel didn't: from_hep_fib_dsr_no_log_co-re pc1342 seeded
-    // reg_masks 0x32f vs the kernel's 0x32b (probe #114) — the extra R2
-    // chain dragged the suffix-base walk to 671/base-668 vs the kernel's
-    // 1187/base-600, and the (V==0)-anchored goal 0x003e1542d2fdd1d6 was
-    // never emitted. Same root as cont.20's from_nat 0x32f-vs-0x32b.
+    // original program with those spills/fills intact. A by-helper-id
+    // skip would keep R1-R5 typed ScalarValue across fastcall calls,
+    // so bcf_refine's seed rule (skip NOT_INIT) would include them
+    // where the kernel doesn't.
     let _ = helper;
     for r in [Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5] {
         state.types.set(r, RegType::NotInit);
@@ -1502,9 +1495,8 @@ pub(crate) fn update_call_types(
         // why a later `if pkt+N <= pkt_end` is feasible again). Without
         // this, a stale `packet_size < K` from a pre-helper "too small"
         // check makes the post-helper `pkt+N <= pkt_end` (N >= K) edge
-        // domain-inconsistent and zovia drops the kernel's real path
-        // (calico_tc_main: stale `pkt in [102,114)` across
-        // bpf_skb_pull_data killed the pc1644 goto). Mirrors the
+        // domain-inconsistent and zovia drops the kernel's real path.
+        // Mirrors the
         // function-entry `clear_packet_size_bounds` "start fresh"
         // rationale — same reason, different geometry-change trigger.
         if let crate::domains::numeric::NumericDomain::Interval(ref mut ivl) = state.domain {

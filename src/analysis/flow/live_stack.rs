@@ -9,10 +9,9 @@
 // Why this replaces the static `live_slots` for slot cleaning: zovia's
 // static per-byte stack liveness cannot see stack bytes read by a HELPER
 // through a pointer argument (e.g. `r2 = r10-24; call map_lookup_elem` —
-// the key bytes). Those slots looked dead → `stack_subsumed_by`'s
-// dead-slot skip merged states the kernel keeps distinct on per-byte
-// slot kinds (from_nat_fib pc1375: fp-24 STACK_ZERO-vs-STACK_MISC, the
-// d53 first-divergence). The kernel's answer is DYNAMIC read marks
+// the key bytes). Those slots look dead → `stack_subsumed_by`'s
+// dead-slot skip would merge states the kernel keeps distinct on
+// per-byte slot kinds. The kernel's answer is DYNAMIC read marks
 // recorded with exact byte ranges at access-check time; this module is
 // that mechanism.
 //
@@ -283,8 +282,7 @@ pub fn mark_stack_read(
     mask: u64,
 ) {
     // Diagnostic (ZOVIA_DBG_SPI=N): report every read-mark CALL on a
-    // frame0 slot — including gated-out ones (replay/disabled) — the
-    // to_lo fp-232 (spi 28) live-stack divergence probe.
+    // frame0 slot — including gated-out ones (replay/disabled).
     if frameno == 0
         && let Ok(spi_s) = std::env::var("ZOVIA_DBG_SPI")
         && let Ok(spi) = spi_s.parse::<u32>()

@@ -145,8 +145,8 @@ pub struct State {
     /// `bcf_track` records the suffix of the walk from the base state,
     /// and the base's snapshot is a prefix of cur's cond stream (same
     /// lineage) — so this length is the exact suffix start index. A pc
-    /// window is NOT equivalent when the path wraps a loop (bcc ksnoop
-    /// 0x7b883057f2f77b41: iteration-1 conds at pcs >= base_pc).
+    /// window is NOT equivalent when the path wraps a loop
+    /// (iteration-1 conds land at pcs >= base_pc).
     pub cached_path_conds_len: Option<usize>,
 
     /// SCC bookkeeping — mirror of kernel `bpf_verifier_state.{dfs_depth,
@@ -214,9 +214,8 @@ pub struct State {
     /// Read by `add_new_state`'s safety valve at L20256:
     ///   `force_new_state = ... || cur->jmp_history_cnt > 40`
     /// to avoid accumulating an unbounded jmp_history array. This is a
-    /// COUNT OF BRANCH DECISIONS, not raw insns — the kernel value at
-    /// PC 1340 for calico c17 from_tnl_debug is 8 (versus
-    /// path_insns_delta=42). Bumped in `run_worklist` when popping a
+    /// COUNT OF BRANCH DECISIONS, not raw insns.
+    /// Bumped in `run_worklist` when popping a
     /// state at a `jmp_point` PC. Cloned at forks.
     pub jmp_history_cnt: usize,
 
@@ -682,8 +681,8 @@ impl State {
                 .collect();
             for other in linked {
                 // ZOVIA_DBG_PREG2=<RegDebug>:<cid> — trace scalar-id
-                // fan-out marks (1482/-312 chase: who makes cid2104's R5
-                // precise — kernel apply marks exactly the bt regs).
+                // fan-out precision marks for a given reg/cache-id pair
+                // (kernel apply marks exactly the bt regs).
                 if let Ok(v) = std::env::var("ZOVIA_DBG_PREG2")
                     && let Some((rs, cs)) = v.split_once(':')
                     && format!("{:?}", other) == rs
@@ -1200,12 +1199,8 @@ impl State {
     /// — per-reg, per-frame — so the caller's bindings survive the callee
     /// untouched and return at `prepare_func_exit` (the callee frame is
     /// discarded wholesale; only r0's reg state copies back). Zovia's flat
-    /// `SymbolicState` reg table needs the explicit save/restore. Measured:
-    /// bcc ksnoop c20-Os @580 (kernel MISS 0xaab73ef68faa346f) — the callee's
-    /// `r6 = r2` (map-ptr chain) left a const-0 expr on the flat r6 slot, so
-    /// the caller's post-return loop guard `if r6 > 0xe` folded `0x0 u<= 0xe`
-    /// where the kernel (fresh materialization from the caller's own reg,
-    /// r6=12) folds `0xc u<= 0xe` — the sole token delta vs the kernel goal.
+    /// `SymbolicState` reg table needs the explicit save/restore: without
+    /// it a callee write to r6-r9 would clobber the caller's binding.
     fn snapshot_caller_bcf_regs(&mut self) {
         let snap = self.bcf.as_ref().map(|b| {
             let mut arr = [(None, None); 4];
@@ -1224,16 +1219,12 @@ impl State {
     /// access r0, r6 - r9 for reading and has to write into its own stack
     /// before reading from it" — `init_func_state` zeroes the callee frame
     /// and `set_callee_state_cb` copies R1-R5 only; R0/R6-R9 start
-    /// NOT_INIT in the callee. Zovia's flat view leaked the caller's
-    /// R6-R9 into the callee, so two callee states reached from different
-    /// call sites carried DIFFERENT caller R7/R8 values and the
-    /// subsumption Types check MISSed where the kernel HITs (both sides
-    /// NOT_INIT). Measured: bcc ksnoop c20-Os output_trace exit
-    /// (combined 603) — kernel prunes at the exit (add stream 1107:257
-    /// pop), zovia walked the whole return chain and its add cadence
-    /// shifted (adds at 565 vs kernel 567), hiding the deep-iteration
-    /// goal bases. The caller's values return at pop via the saved
-    /// caller_types/domain/tnums (transfer_exit restores them wholesale).
+    /// NOT_INIT in the callee. Without this, two callee states reached
+    /// from different call sites would carry DIFFERENT caller R7/R8
+    /// values and the subsumption Types check would MISS where the
+    /// kernel HITs (both sides NOT_INIT). The caller's values return at
+    /// pop via the saved caller_types/domain/tnums (transfer_exit
+    /// restores them wholesale).
     fn mark_callee_entry_regs(&mut self) {
         for r in [Reg::R0, Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
             self.types.set(r, crate::analysis::machine::reg_types::RegType::NotInit);

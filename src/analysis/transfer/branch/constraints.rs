@@ -63,10 +63,10 @@ pub fn apply_jmp_constraints(
     // here keeps both visits' r1 byte-identical and lets the trap fire.
     //
     // Scoped narrowly to PtrToCtx-vs-Imm rather than all pointer-vs-Imm:
-    // cilium has many null-checks on PtrToMapValueOrNull / acquired-ref
-    // kinds whose downstream type-promotion (refine_branch) is
-    // intertwined with the numeric refinement, and a broader guard
-    // regresses cilium CA dramatically. PtrToCtx is unique in being
+    // null-checks on PtrToMapValueOrNull / acquired-ref kinds have
+    // downstream type-promotion (refine_branch) intertwined with the
+    // numeric refinement, so a broader guard would lose precision.
+    // PtrToCtx is unique in being
     // non-nullable with no map-value-style type transition, so
     // suppressing its refinement has no downstream consumer.
     if matches!(right, Either::Right(_)) && matches!(then_s.types.get(left), RegType::PtrToCtx) {
@@ -127,11 +127,10 @@ fn can_apply_dbm_constraint(
         // losing the high-32 bits the kernel keeps unknown. Route these to
         // apply_w32_unsigned_fallback, which narrows u32 bounds +
         // refine_subreg_tnum (upper 32 preserved), so reg_bounds_sync's
-        // 32→64 mixed deduction yields the kernel's umax/smax (from_nat
-        // skb_load_bytes return → 0x23a1dc). Restricted to imm operands:
-        // the fallback can't narrow a reg==reg compare (no const), and
-        // diverting those would drop apply_cmp_to_domain's intersect_eq_reg
-        // (regressed from_nat 0x618296).
+        // 32→64 mixed deduction yields the kernel's umax/smax.
+        // Restricted to imm operands: the fallback can't narrow a
+        // reg==reg compare (no const), and diverting those would drop
+        // apply_cmp_to_domain's intersect_eq_reg.
         if matches!(op, CmpOp::Eq | CmpOp::Ne) && matches!(right, Either::Right(_)) {
             return false;
         }
@@ -319,10 +318,8 @@ fn refine_ne_imm(domain: &mut NumericDomain, left: Reg, imm: i64) {
     // for a full-range scalar (helper RET_INTEGER), `!= 0` gives
     // umin 0→1 while smin stays S64_MIN (the value may be a negative
     // errno). The signed interval above cannot carry this fact; without
-    // it a later `if reg != 0` cannot fold one-sided and zovia walks the
-    // contradictory arm the kernel never visits (from_hep_debug c16
-    // calico_tc_main pc2913 → the 480-reject phantom site at pc2917 =
-    // 89% of the 15MB bundle).
+    // it a later `if reg != 0` cannot fold one-sided and zovia walks a
+    // contradictory arm the kernel never visits.
     let uval = imm as u64;
     let (umin, umax) = domain.get_u64_bounds(left);
     let new_umin = if umin == uval { umin.saturating_add(1) } else { umin };
@@ -634,9 +631,8 @@ fn apply_w32_unsigned_fallback(
             // then: == rv ; else: != rv — boundary-bump the else side
             // (mirrors apply_cmp_to_domain's refine_ne_imm, now in the
             // u32 subreg so the kernel's `reg_set_min_max` 32-bit ≠
-            // narrowing is preserved; without it the proto switch's
-            // `w2 != 6` no longer refines proto to ≥7 and the fold can't
-            // synthesize from_nat 0x618296's `JGE(proto,7)` conjunct).
+            // narrowing is preserved, e.g. `w2 != 6` on a `>= 6` reg
+            // refines it to `>= 7`).
             t_min = t_min.max(rv);
             t_max = t_max.min(rv);
             if e_min == rv && e_min < e_max {

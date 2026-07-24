@@ -208,11 +208,7 @@ fn visit_insn(pc: usize, prog: &Program, env: &mut VerifierEnv) -> Result<Vec<us
                 // `mark_prune_point(env, t + insn_sz)`). Applies to ALL
                 // calls (helper + subprog). Without this, sparse-cache
                 // mode never caches post-call states, so the BCF discharge
-                // walker can't land at kernel-equivalent post-call bases
-                // (observed on calico c17 from_tnl_debug: the kernel's
-                // 6-vstate chain at PC 1523 has bases at PCs 1340/1412/
-                // 1493, all post `call 0x6`/bpf_trace_printk — unreachable
-                // to zovia's walker without this marking).
+                // walker can't land at kernel-equivalent post-call bases.
                 init_explored_state(env, pc + 1);
                 // Kernel mirror: visit_func_call_insn marks the post-call
                 // fallthrough as BOTH prune_point AND jmp_point
@@ -260,10 +256,8 @@ fn visit_insn(pc: usize, prog: &Program, env: &mut VerifierEnv) -> Result<Vec<us
             //    (verifier.c L17132-17136 `if (e == BRANCH)
             //    mark_prune_point(env, w)`). Without this, sparse-cache
             //    mode never caches at conditional-branch targets, so
-            //    zovia's vstate chain misses kernel parents at If-target
-            //    PCs (observed on calico c17 from_tnl_debug at PC 1517,
-            //    target of If at PC 1515, which the kernel includes in
-            //    its 6-vstate chain producing hash 0xc70002dce03c2f0e).
+            //    zovia's vstate chain would miss kernel parents at
+            //    If-target PCs.
             init_explored_state(env, *target);
             mark_jmp_point(env, *target);
             succs.push(*target);
@@ -302,11 +296,9 @@ fn visit_insn(pc: usize, prog: &Program, env: &mut VerifierEnv) -> Result<Vec<us
             // 0. Mark the CALL insn itself as a prune point — kernel
             //    visit_func_call_insn: `if (visit_callee) {
             //    mark_prune_point(env, t); ... }` (pseudo-calls only).
-            //    Measured on bcc ksnoop c20-Os: kernel add
-            //    1149:266:542 sits AT the arg-loop `call output_trace`
-            //    insn; without this mark zovia's outer gate skipped 542
-            //    and the add slid one insn into the callee entry
-            //    (1150:267:554), shifting every downstream counter.
+            //    Without this mark the caller-side prune point at the
+            //    call insn is skipped and the state-add slides one insn
+            //    into the callee entry.
             init_explored_state(env, pc);
             // 1. Push the Function Entry (The Call)
             succs.push(*target);

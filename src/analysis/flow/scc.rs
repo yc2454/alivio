@@ -101,8 +101,7 @@ pub fn compute_scc(prog: &Program, env: &mut VerifierEnv) {
                 // SCCs (any loop reached by a single fall-through
                 // chain) were being misclassified as singletons because
                 // their interior vertices had `low == pre` after the
-                // child popped without propagating. See
-                // feedback_compute_scc_missing_backprop_2026-05-25.md.
+                // child popped without propagating.
                 let child_low = low[w];
                 dfs.pop();
                 if let Some(&parent) = dfs.last()
@@ -572,24 +571,16 @@ pub fn complete_dfs_branch(env: &mut VerifierEnv, start_cache_id: Option<u32>) {
             // Kernel gate (verifier.c:19535): a state whose SCC visit
             // still has pending backedges has INCOMPLETE read marks —
             // propagate_backedges will add reads later. Cleaning now
-            // drops dims the kernel still compares (to_wep pc1023
-            // taken-leg: eager clean lost the fp-58 STACK_ZERO byte →
-            // zovia HIT where the kernel's un-cleaned cache MISSes on
-            // Zero-vs-Misc). Defer to the lazy retry, which re-checks.
+            // would drop dims the kernel still compares; defer to the
+            // lazy retry, which re-checks.
             // Kernel has NO eager clean here: `clean_live_states` has
             // exactly ONE call site — is_state_visited
             // (verifier.c:20230), i.e. caches are scrubbed LAZILY at
             // the next ARRIVAL at their pc, not at the branches→0
-            // event. The eager clean this block used to run froze the
-            // scrub with the liveness snapshot of the subtree-
-            // completion instant — BEFORE sibling explorations commit
-            // their must_write kills — so slots the kernel scrubs
-            // (dead) stayed alive-kept in zovia's caches (to_lo
-            // 866/fp-216: kernel kills @1401/1433 committed at ip
-            // 656-1045 by sibling walks; its lazy clean at the ip-1198
-            // arrival scrubbed → HIT; zovia's eager clean pre-dated
-            // the kills, kept the slot → Stack-MISS → seam #63,
-            // measured [ZK wc26]/[ZK slot26] 2026-07-10). The lazy
+            // event. An eager clean would freeze the scrub with the
+            // liveness snapshot of the subtree-completion instant —
+            // BEFORE sibling explorations commit their must_write
+            // kills — keeping alive slots the kernel scrubs. The lazy
             // site in pruning/mod.rs is the kernel's clean.
             // Kernel `maybe_exit_scc` (verifier.c L2253, called
             // from update_branch_counts when branches→0): if this

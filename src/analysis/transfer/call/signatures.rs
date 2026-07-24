@@ -687,14 +687,10 @@ pub(crate) mod pairs {
     // MEM_RDONLY) paired with R2=fmt_size (ARG_CONST_SIZE) — kernel
     // bpf_trace_printk_proto. The kernel walks the fmt buffer
     // (check_mem_size_reg → check_helper_mem_access → check_stack_read)
-    // and READ-MARKS its bytes in live stack. The prior "ConstSize
-    // bounds it, no explicit pair" skipped the walk entirely: fmt slots
-    // stayed read-dead, clean_verifier_state scrubbed them from cached
-    // states, and printk-dense (debug-variant) programs over-merged at
-    // joins the kernel keeps distinct (to_lo_debug_v6 pc2014 fp-232 =
-    // the 0x356c9c55 C1 miss; event-stream diff 2026-07-09: kernel
-    // marks fp-232 at every call-6 site 2812/2844/3191/5050/…, zovia
-    // only at 94/157).
+    // and READ-MARKS its bytes in live stack. Skipping the walk
+    // ("ConstSize bounds it, no explicit pair") would leave fmt slots
+    // read-dead, letting clean_verifier_state scrub them from cached
+    // states and over-merge joins the kernel keeps distinct.
     pub static TRACE_PRINTK: [MemSizePair; 1] = [MemSizePair::new(Reg::R1, Reg::R2)];
     pub static STRNCMP: [MemSizePair; 1] = [MemSizePair::new(Reg::R1, Reg::R2)];
     // ARG_CONST_SIZE_OR_ZERO: kernel admits size=0 (no buffer access),
@@ -744,7 +740,7 @@ pub(crate) mod pairs {
     // size=0 accepted (kernel returns 0 / no-op).
     pub static COPY_FROM_USER_STR: [MemSizePair; 1] = [MemSizePair::new_nullable(Reg::R1, Reg::R2)];
 
-    // ---- Helper proto enumeration batch (FR triage 2026-05-19) ----
+    // ---- Helper proto enumeration batch ----
     // bpf_setsockopt(ctx_or_sock, level, optname, optval, optlen): R4/R5
     pub static SETSOCKOPT: [MemSizePair; 1] = [MemSizePair::new(Reg::R4, Reg::R5)];
     // bpf_bind(ctx, addr, addr_len): R2/R3

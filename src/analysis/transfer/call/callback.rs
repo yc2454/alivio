@@ -180,9 +180,8 @@ pub(super) fn transfer_callback_helper(
     // domain) so a `PtrToStack`/`PtrToMapValue`/… ctx arg keeps its
     // frame-relative offset — exactly what the static-subprog
     // `push_frame` path already does (it never clobbers arg regs).
-    // The old `forget`+scalar `assign_interval` dropped the offset, so
-    // a cb deref of a caller-stack ctx pointer (cilium
-    // `tail_mcast_ep_delivery` `*(u64*)(r4+0)`) became "Stack out of
+    // A `forget`+scalar `assign_interval` would drop the offset, so
+    // a cb deref of a caller-stack ctx pointer became "Stack out of
     // bounds (Unknown offset)". `snap`'s scalar interval is unused now
     // (assign_reg supersedes it); type+tnum still carried explicitly.
     let mut ctx_propagations: Vec<(Reg, Reg, RegType, Tnum)> = Vec::new();

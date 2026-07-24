@@ -459,12 +459,11 @@ impl Dbm {
         let mut newer_synced = newer.clone();
         for i in 0..n {
             let r = REG_ENV.all().get(i).copied();
-            if let Some(reg) = r {
-                if reg != Reg::Zero && !reg.is_anchor() {
+            if let Some(reg) = r
+                && reg != Reg::Zero && !reg.is_anchor() {
                     crate::domains::zone::ops::sync_bounds(&mut self_synced, reg);
                     crate::domains::zone::ops::sync_bounds(&mut newer_synced, reg);
                 }
-            }
         }
         for i in 0..n {
             for j in 0..n {

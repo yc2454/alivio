@@ -153,7 +153,7 @@ pub(crate) fn record_path_cond_for_side(
     // freshly-captured pre-reg_expr value (per-side bcf may have a
     // different cached PC than the originator).
     let narrow_now = narrow_for_side.map(|(k, op_b, j32, _)| (k, op_b, j32, lhs_materialize_pc));
-    bcf.add_cond_at_narrowed(pred, src_pc, narrow_now, Some((l_idx, lhs_materialize_pc, jmp32, lhs_bounds.clone(), pre_lhs_bounds.clone())));
+    bcf.add_cond_at_narrowed(pred, src_pc, narrow_now, Some((l_idx, lhs_materialize_pc, jmp32, lhs_bounds, pre_lhs_bounds)));
 
     // Share-replay demand-through-copy (kernel bcf_track): a reg freshly
     // materialized at this branch whose VALUE is a copy of a stack slot
@@ -185,7 +185,7 @@ pub(crate) fn record_path_cond_for_side(
             props.push((id, e));
         }
         let dbg_ss = std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
-        if dbg_ss && src_pc >= 655 && src_pc <= 660 {
+        if dbg_ss && (655..=660).contains(&src_pc) {
             let rdiag = if let Operand::Reg(r) = right {
                 format!(
                     "uncached={} fixed={:?} id={:?} bind={:?}",

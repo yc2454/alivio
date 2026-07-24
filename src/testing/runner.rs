@@ -1132,8 +1132,8 @@ impl Analyzer {
             // path above's bpf_prog_inner lookup misses). The kernel
             // resolves these from the attach target's vmlinux BTF — we
             // mirror only the hooks our test corpus actually attaches to.
-            if ctx.entry_args.is_none() {
-                if let Some(target) = ctx.attach_subtype.as_deref() {
+            if ctx.entry_args.is_none()
+                && let Some(target) = ctx.attach_subtype.as_deref() {
                     let flavor = ctx.attach_flavor.as_deref();
                     let table_args = match (ctx.prog_kind, flavor, target) {
                         // LSM hooks. Args from include/linux/lsm_hooks.h's
@@ -1291,7 +1291,6 @@ impl Analyzer {
                     }
 
                 }
-            }
 
             // Mixed-arg-kind static override for fexit programs attached
             // to subprogs of OTHER (already-loaded) BPF objects. Two

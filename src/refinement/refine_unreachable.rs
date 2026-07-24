@@ -873,15 +873,12 @@ fn try_prove_unreachable_inner(
         // (the `0==0` base on a flag-clear side). usize::MAX = auto (first
         // such); otherwise anchor at exactly the requested pc (multi-anchor
         // enumerator, one obligation per proto arm's flag-clear route).
-        let ai = match (0..sym.path_cond_pcs.len()).find(|&i| {
+        let ai = (0..sym.path_cond_pcs.len()).find(|&i| {
             sym.path_cond_is_branch[i]
                 && sym.path_cond_pcs[i] >= exit
                 && sym.path_cond_narrowed_const[i].is_some()
                 && (fs_anchor == usize::MAX || sym.path_cond_pcs[i] == fs_anchor)
-        }) {
-            Some(i) => i,
-            None => return None,
-        };
+        })?;
         let anchor_pc = sym.path_cond_pcs[ai];
         // Fold the anchor branch to the literal `K op K` (e.g. `0 == 0` on the
         // flag-clear side where R1 pinned to 0). The kernel's fresh bcf_track
@@ -968,12 +965,8 @@ fn try_prove_unreachable_inner(
     // pc isn't a recorded branch or the filter is a no-op.
     if let Some(anchor_pc) = loop_entry_anchor {
         // The header branch must be present as a recorded branch cond.
-        let anchor_idx = match (0..sym.path_cond_pcs.len())
-            .find(|&i| sym.path_cond_is_branch[i] && sym.path_cond_pcs[i] == anchor_pc)
-        {
-            Some(i) => i,
-            None => return None,
-        };
+        let anchor_idx = (0..sym.path_cond_pcs.len())
+            .find(|&i| sym.path_cond_is_branch[i] && sym.path_cond_pcs[i] == anchor_pc)?;
         // Optionally fold the anchor bound-check `Klhs op X` to the literal
         // `Klhs op Klhs` (the kernel's const-bound `0 u>= 0` form). Read the
         // recorded pred's op + LHS const + width from the expr table; emit

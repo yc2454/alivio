@@ -327,8 +327,8 @@ pub(crate) fn validate_writable_mem(
             // bytes from this pointer's offset (mem_size already encodes
             // the post-offset remaining size after pointer arithmetic
             // through `update_ptr_arithmetic_type`).
-            if let Some(sz) = size {
-                if (sz as u64) > mem_size {
+            if let Some(sz) = size
+                && (sz as u64) > mem_size {
                     env.fail(VerificationError::InvalidArgType { pc, reg });
                     error!(
                         "[Verifier] pc {}: write size {} exceeds remaining alloc-mem size {}",
@@ -336,7 +336,6 @@ pub(crate) fn validate_writable_mem(
                     );
                     return false;
                 }
-            }
             true
         }
         _ => {

@@ -190,21 +190,21 @@ pub(crate) fn transfer_if(
         };
         record_path_cond_for_side(
             &mut state_then, width, left, op, op_then, &right, state.pc, narrow_then,
-            pre_lhs_bounds.clone(),
+            pre_lhs_bounds,
         );
         record_path_cond_for_side(
             &mut state_else, width, left, op, op_else, &right, state.pc, narrow_else,
-            pre_lhs_bounds.clone(),
+            pre_lhs_bounds,
         );
     } else if matches!(op, CmpOp::Test) {
         // JSET — per-side wrap into AND(dst,src) JNE/JEQ 0.
         record_path_cond_for_side(
             &mut state_then, width, left, op, BPF_JNE, &right, state.pc, None,
-            pre_lhs_bounds.clone(),
+            pre_lhs_bounds,
         );
         record_path_cond_for_side(
             &mut state_else, width, left, op, BPF_JEQ, &right, state.pc, None,
-            pre_lhs_bounds.clone(),
+            pre_lhs_bounds,
         );
     }
 

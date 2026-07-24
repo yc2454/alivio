@@ -87,9 +87,8 @@ fn apply_verified_fact(
             RegType::PtrToMapValue { map_idx: i_map, .. },
             RegType::PtrToMapValue { map_idx: j_map, .. },
         ) = (i_type, j_type)
-        {
-            if i_map == j_map {
-                if let Some(j_po) = ivl.get_ptr_offset(j).copied() {
+            && i_map == j_map
+                && let Some(j_po) = ivl.get_ptr_offset(j).copied() {
                     let j_max_off = j_po.off + j_po.var_off as i64;
                     let new_var_off_ub = (c + j_max_off - po.off).max(0) as u64;
                     let reg = ivl.get_mut(i);
@@ -104,8 +103,6 @@ fn apply_verified_fact(
                         );
                     }
                 }
-            }
-        }
     }
 }
 

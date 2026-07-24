@@ -100,8 +100,8 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
     // demotion happens later in update_alu_types). `mov dst, R10` has
     // no `ptr_const_off` entry for R10; that means K_dst = 0 (fresh
     // anchor at r10), which matches the kernel's initialization.
-    if let Operand::Reg(r) = src {
-        if state.types.get(*r).is_pointer() && dst != *r {
+    if let Operand::Reg(r) = src
+        && state.types.get(*r).is_pointer() && dst != *r {
             match state.ptr_const_off.get(r).copied() {
                 Some(k) => {
                     state.ptr_const_off.insert(dst, k);
@@ -129,7 +129,6 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
                 state.var_off_contributor.insert(dst, contributor);
             }
         }
-    }
 
     match src {
         Operand::Reg(r) => {

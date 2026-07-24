@@ -62,11 +62,10 @@ pub(super) fn replay_chain(
     }
 
     // A single Compose step is a valid proof by itself
-    if proof.len() == 1 {
-        if let ProofStep::Compose { left, right, via } = &proof[0] {
+    if proof.len() == 1
+        && let ProofStep::Compose { left, right, via } = &proof[0] {
             return verify_compose(left, right, *via, target_pc, explored_states, prog);
         }
-    }
 
     // Step 0: Verify Fact (must be proof[0])
     let ProofStep::Fact {
@@ -334,11 +333,11 @@ fn verify_derive(
 
 /// Look up the unique interval pre-state at a PC from explored_states.
 /// Fail-closed: returns None if missing or if multiple states exist (non-straightline).
-fn get_unique_state<'a>(
-    explored_states: &'a HashMap<usize, Vec<State>>,
+fn get_unique_state(
+    explored_states: &HashMap<usize, Vec<State>>,
     pc: usize,
     target_pc: usize,
-) -> Option<&'a State> {
+) -> Option<&State> {
     let states = explored_states.get(&pc)?;
     if states.len() != 1 {
         debug!(

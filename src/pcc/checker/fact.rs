@@ -116,8 +116,8 @@ pub(super) fn verify_fact(
     // Check if the instruction at fact_pc is a branch whose fall-through condition
     // matches the claimed constraint.
     let instr = &prog.instrs[fact_pc];
-    if let Some(branch_fact) = derive_fact_from_branch(instr, fact_pc, fact_pc + 1) {
-        if left_idx == branch_fact.left_reg
+    if let Some(branch_fact) = derive_fact_from_branch(instr, fact_pc, fact_pc + 1)
+        && left_idx == branch_fact.left_reg
             && right_idx == branch_fact.right_reg
             && c == branch_fact.c
         {
@@ -128,7 +128,6 @@ pub(super) fn verify_fact(
             );
             return true;
         }
-    }
 
     // Path 2: state-derived fact.
     // The interval state at fact_pc directly proves i - j <= c.

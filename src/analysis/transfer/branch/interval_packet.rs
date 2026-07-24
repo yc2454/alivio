@@ -40,8 +40,8 @@ fn get_packet_data_offset(state: &State, reg: Reg) -> Option<PacketComparison> {
     }
 
     // Get the pointer offset info from interval state
-    if let NumericDomain::Interval(ref ivl) = state.domain {
-        if let Some(ptr_off) = ivl.get_ptr_offset(reg) {
+    if let NumericDomain::Interval(ref ivl) = state.domain
+        && let Some(ptr_off) = ivl.get_ptr_offset(reg) {
             // Must be relative to AnchorData (pkt_data)
             if ptr_off.anchor == Reg::AnchorData {
                 return Some(PacketComparison {
@@ -51,7 +51,6 @@ fn get_packet_data_offset(state: &State, reg: Reg) -> Option<PacketComparison> {
                 });
             }
         }
-    }
 
     None
 }
@@ -65,8 +64,8 @@ fn get_packet_meta_offset(state: &State, reg: Reg) -> Option<PacketComparison> {
     }
 
     // Get the pointer offset info from interval state
-    if let NumericDomain::Interval(ref ivl) = state.domain {
-        if let Some(ptr_off) = ivl.get_ptr_offset(reg) {
+    if let NumericDomain::Interval(ref ivl) = state.domain
+        && let Some(ptr_off) = ivl.get_ptr_offset(reg) {
             // Must be relative to AnchorDataMeta (pkt_meta)
             if ptr_off.anchor == Reg::AnchorDataMeta {
                 return Some(PacketComparison {
@@ -76,7 +75,6 @@ fn get_packet_meta_offset(state: &State, reg: Reg) -> Option<PacketComparison> {
                 });
             }
         }
-    }
 
     None
 }
@@ -93,11 +91,10 @@ fn is_packet_data(state: &State, reg: Reg) -> bool {
     }
 
     // Check if it has zero offset from AnchorData
-    if let NumericDomain::Interval(ref ivl) = state.domain {
-        if let Some(ptr_off) = ivl.get_ptr_offset(reg) {
+    if let NumericDomain::Interval(ref ivl) = state.domain
+        && let Some(ptr_off) = ivl.get_ptr_offset(reg) {
             return ptr_off.anchor == Reg::AnchorData && ptr_off.off == 0 && ptr_off.var_off == 0;
         }
-    }
 
     false
 }
@@ -242,14 +239,13 @@ fn refine_data_region_bounds(
         };
 
         // For FIXED offsets only, update global packet_size_lower_bound
-        if data_info.is_fixed && proven_size > 0 {
-            if let NumericDomain::Interval(ref mut ivl) = state.domain {
+        if data_info.is_fixed && proven_size > 0
+            && let NumericDomain::Interval(ref mut ivl) = state.domain {
                 let current = ivl.get_packet_size_bound().unwrap_or(0);
                 if proven_size as u64 > current {
                     ivl.set_packet_size_bound(proven_size as u64);
                 }
             }
-        }
 
         // For ALL successful bounds checks (including variable offset), set per-register range.
         // After proving checked_reg <= pkt_end where checked_reg is at (pkt_data + off + var_off):
@@ -271,11 +267,10 @@ fn refine_data_region_bounds(
         };
 
         // Only update global upper bound for fixed offsets
-        if data_info.is_fixed && upper_exclusive > 0 {
-            if let NumericDomain::Interval(ref mut ivl) = state.domain {
+        if data_info.is_fixed && upper_exclusive > 0
+            && let NumericDomain::Interval(ref mut ivl) = state.domain {
                 ivl.set_packet_size_upper_bound(upper_exclusive as u64);
             }
-        }
 
         // Kernel `mark_pkt_end` (verifier.c): on the branch where the
         // packet pointer is proven to be out of range (`pkt > pkt_end`
@@ -297,8 +292,8 @@ fn refine_data_region_bounds(
         } else {
             crate::domains::interval::PktEndRel::Beyond
         };
-        if let NumericDomain::Interval(ref mut ivl) = state.domain {
-            if let Some(po) = ivl.get_ptr_offset(checked_reg).cloned() {
+        if let NumericDomain::Interval(ref mut ivl) = state.domain
+            && let Some(po) = ivl.get_ptr_offset(checked_reg).cloned() {
                 let mut new_po = po;
                 new_po.pkt_end_rel = Some(mark);
                 ivl.get_mut(checked_reg).ptr_offset = Some(new_po);
@@ -307,7 +302,6 @@ fn refine_data_region_bounds(
                         state.pc, checked_reg, mark, upper_strict);
                 }
             }
-        }
     }
 }
 
@@ -415,8 +409,7 @@ fn propagate_packet_range_to_all_frames_stack(
                 range,
                 id,
             }) = &mut spilled.ptr_bounds
-            {
-                if let Some(o) = *off {
+                && let Some(o) = *off {
                     // Kernel same-id family rule (find_good_pkt_pointers):
                     // Some==Some match, or both None (never separated by
                     // variable arithmetic — alias the same anchor).
@@ -440,7 +433,6 @@ fn propagate_packet_range_to_all_frames_stack(
                         }
                     }
                 }
-            }
         }
     }
 }
@@ -529,8 +521,7 @@ fn propagate_meta_range_to_stack(state: &mut State, checked_id: Option<u32>, pro
                 range,
                 id,
             }) = &mut spilled.ptr_bounds
-            {
-                if let Some(o) = *off {
+                && let Some(o) = *off {
                     // Kernel same-id family rule (find_good_pkt_pointers).
                     let in_family = match (checked_id, *id) {
                         (Some(a), Some(b)) => a == b,
@@ -552,7 +543,6 @@ fn propagate_meta_range_to_stack(state: &mut State, checked_id: Option<u32>, pro
                         }
                     }
                 }
-            }
         }
     }
 }
@@ -664,11 +654,10 @@ fn refine_meta_region_bounds(
             max_offset
         };
 
-        if upper_exclusive > 0 {
-            if let NumericDomain::Interval(ref mut ivl) = state.domain {
+        if upper_exclusive > 0
+            && let NumericDomain::Interval(ref mut ivl) = state.domain {
                 ivl.set_meta_size_upper_bound(upper_exclusive as u64);
             }
-        }
     }
 }
 

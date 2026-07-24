@@ -557,17 +557,17 @@ fn scalar_id_links_subsumed_by(
             // Scalar linkage now goes through the kernel-faithful
             // bijective `scalar_ids_subsumed_by`; this pairwise check
             // covers ONLY the pointer/packet linkage kinds.
-            let old_link = match (linkage_key(old, r1), linkage_key(old, r2)) {
-                (Some(a), Some(b)) if a == b && a.0 != LinkageKind::Scalar => true,
-                _ => false,
-            };
+            let old_link = matches!(
+                (linkage_key(old, r1), linkage_key(old, r2)),
+                (Some(a), Some(b)) if a == b && a.0 != LinkageKind::Scalar
+            );
             if !old_link {
                 continue;
             }
-            let cur_link = match (linkage_key(cur, r1), linkage_key(cur, r2)) {
-                (Some(a), Some(b)) if a == b && a.0 != LinkageKind::Scalar => true,
-                _ => false,
-            };
+            let cur_link = matches!(
+                (linkage_key(cur, r1), linkage_key(cur, r2)),
+                (Some(a), Some(b)) if a == b && a.0 != LinkageKind::Scalar
+            );
             if !cur_link {
                 return false;
             }
@@ -1301,7 +1301,7 @@ fn stack_subsumed_by(
                                 "[stack_miss] pc={} frame={} off={} base={} old_kinds={:?} new_kinds={:?} old_slot@base={:?} (spill-misc-precond)",
                                 cur.pc, frame_i, offset, slot_base,
                                 kinds(old_frame), kinds(new_frame),
-                                old_frame.stack.get_slot(slot_base).map(|s| (s.reg_type.clone(), s.precise)),
+                                old_frame.stack.get_slot(slot_base).map(|s| (s.reg_type, s.precise)),
                             );
                         }
                         return false;
@@ -1392,8 +1392,8 @@ fn stack_subsumed_by(
             // counter (cond_break1/2/3).
             let old_slot = old_frame.stack.get_slot(offset);
             let new_slot = new_frame.stack.get_slot(offset);
-            if let (Some(old_s), Some(new_s)) = (old_slot, new_slot) {
-                if old_s.precise {
+            if let (Some(old_s), Some(new_s)) = (old_slot, new_slot)
+                && old_s.precise {
                     if !tnum_covers(&new_s.tnum, &old_s.tnum) {
                         if crate::analysis::trace_pc_in_range(cur.pc)
                             && std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1")
@@ -1421,7 +1421,6 @@ fn stack_subsumed_by(
                         return false;
                     }
                 }
-            }
 
             // open-coded iterator identity.
             //

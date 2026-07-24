@@ -70,7 +70,7 @@ impl History {
         self.steps.push(Breadcrumb {
             pc,
             instr_str: format!("{:?}", instr),
-            instr: instr.clone(),
+            instr: *instr,
             reg_types_str,
             reg_ranges_str,
             depth,

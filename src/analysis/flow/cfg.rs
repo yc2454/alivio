@@ -357,7 +357,7 @@ fn get_successors(pc: usize, prog: &Program) -> Vec<usize> {
 
 /// Check if there's a path from `start` to `target` without going through `exit` instructions.
 /// Used to detect if a backward jump is part of a real loop.
-fn has_path_to(prog: &Program, start: usize, target: usize, visited: &mut Vec<bool>) -> bool {
+fn has_path_to(prog: &Program, start: usize, target: usize, visited: &mut [bool]) -> bool {
     // Iterative DFS (explicit stack) — recursion here overflowed the native
     // stack on long straight-line programs, since the recursion depth equals
     // the path length (e.g. the gotol selftest). The visited-set makes it
@@ -462,11 +462,10 @@ pub fn check_cfg(
     // In kernel-mode, check for jumps into the middle of loops.
     // The kernel's bounded loop support requires single-entry loops (dominator tree).
     // Code that jumps into the middle of a loop cannot be verified.
-    if config.require_single_loop_entry {
-        if let Some((from_pc, to_pc)) = check_jump_into_loop_middle(prog) {
+    if config.require_single_loop_entry
+        && let Some((from_pc, to_pc)) = check_jump_into_loop_middle(prog) {
             return Err(format!("back-edge from insn {} to {}", from_pc, to_pc));
         }
-    }
 
     let mut state = vec![VisitState::Unvisited; n];
     let mut stack = Vec::new();

@@ -189,15 +189,12 @@ pub fn parse_btf(bytes: &[u8]) -> Result<BtfContext, String> {
                     // carry the string offset. Simpler: look up strings now.
                     let last = decl_tags.last_mut().unwrap();
                     let start = name_off as usize;
-                    if start < strings.len() {
-                        if let Some(end) =
+                    if start < strings.len()
+                        && let Some(end) =
                             strings[start..].iter().position(|&b| b == 0).map(|e| e + start)
-                        {
-                            if let Ok(s) = std::str::from_utf8(&strings[start..end]) {
+                            && let Ok(s) = std::str::from_utf8(&strings[start..end]) {
                                 last.name = s.to_string();
                             }
-                        }
-                    }
                     cursor += 4;
                 }
             }

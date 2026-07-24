@@ -54,8 +54,8 @@ pub(super) fn solve_constraint(
     }
 
     // 2) Alias substitution (Derive) when pattern fits the load shape
-    if let (Some(base), Some(anchor)) = (base_reg_for_alias, anchor_for_alias) {
-        if let Some(proof) = try_derive_chain(
+    if let (Some(base), Some(anchor)) = (base_reg_for_alias, anchor_for_alias)
+        && let Some(proof) = try_derive_chain(
             prog,
             zone_dbms,
             interval_states,
@@ -66,7 +66,6 @@ pub(super) fn solve_constraint(
         ) {
             return Some(proof);
         }
-    }
 
     // 3) Provenance-guided composition (transitive closure)
     let dbm = zone_dbms.get(target_pc)?;

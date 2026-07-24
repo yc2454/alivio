@@ -71,10 +71,7 @@ fn get_packet_offset_range(state: &State, base: Reg, insn_off: i16) -> (Option<i
 }
 
 pub fn prog_kind_support_direct_packet_write(prog_kind: ProgramKind) -> bool {
-    match prog_kind {
-        ProgramKind::LwtIn | ProgramKind::LwtOut => false,
-        _ => true,
-    }
+    !matches!(prog_kind, ProgramKind::LwtIn | ProgramKind::LwtOut)
 }
 
 pub fn check_packet_access(

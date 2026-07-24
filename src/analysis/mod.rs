@@ -545,20 +545,6 @@ pub fn analyze_exception_cb(
     env.error
 }
 
-/// Kernel `check_map_prog_compatibility` (verifier.c L19910–L19950):
-/// reject the program at load time if any map it references has a
-/// record-field that is incompatible with the program type.
-///
-/// - Tracing prog kinds (kprobe, tracepoint, raw_tp, raw_tp_writable,
-///   perf_event) cannot use maps with `bpf_spin_lock`,
-///   `bpf_res_spin_lock`, `bpf_timer`, `bpf_list_head`, or `bpf_rb_root`
-///   special fields in their value record.
-/// - Socket filter cannot use `bpf_spin_lock` / `bpf_res_spin_lock`.
-///
-/// Maps actually used by this program are derived from `pc_to_reloc`
-/// (RelocKind::MapPtr / MapValue), so other progs in the same ELF that
-/// reference different maps are unaffected.
-
 /// Trace helper for ZOVIA_TRACE_PC_RANGE=LO:HI focused tracing.
 /// Returns true if `pc` is within the configured trace range.
 pub(crate) fn trace_pc_in_range(pc: usize) -> bool {
@@ -623,6 +609,19 @@ fn pushdump(side: &str, state: &crate::analysis::machine::state::State) {
     );
 }
 
+/// Kernel `check_map_prog_compatibility` (verifier.c L19910–L19950):
+/// reject the program at load time if any map it references has a
+/// record-field that is incompatible with the program type.
+///
+/// - Tracing prog kinds (kprobe, tracepoint, raw_tp, raw_tp_writable,
+///   perf_event) cannot use maps with `bpf_spin_lock`,
+///   `bpf_res_spin_lock`, `bpf_timer`, `bpf_list_head`, or `bpf_rb_root`
+///   special fields in their value record.
+/// - Socket filter cannot use `bpf_spin_lock` / `bpf_res_spin_lock`.
+///
+/// Maps actually used by this program are derived from `pc_to_reloc`
+/// (RelocKind::MapPtr / MapValue), so other progs in the same ELF that
+/// reference different maps are unaffected.
 fn check_map_prog_compatibility(env: &VerifierEnv) -> Option<VerificationError> {
     use crate::ast::ProgramKind;
     use crate::parsing::btf::SpecialFieldKind;

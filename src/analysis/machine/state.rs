@@ -818,7 +818,7 @@ impl State {
         let mut ids = Vec::new();
         for frame in self.frames.iter() {
             for off in frame.stack.slot_offsets() {
-                if let Some(d) = frame.stack.stack_get_dynptr(off as i16)
+                if let Some(d) = frame.stack.stack_get_dynptr(off)
                     && matches!(d.kind, DynptrKind::Skb | DynptrKind::Xdp)
                     && d.first_slot
                 {
@@ -845,7 +845,7 @@ impl State {
         for (idx, frame) in self.frames.iter().enumerate() {
             let frame_level = crate::analysis::machine::frame_stack::FrameLevel::from_index(idx);
             for off in frame.stack.slot_offsets() {
-                let off_i16 = off as i16;
+                let off_i16 = off;
                 if let Some(slot) = frame.stack.stack_get_dynptr(off_i16)
                     && slot.ref_id == id
                 {

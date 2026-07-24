@@ -205,13 +205,11 @@ fn validate_proof_chain(
                         ctx, sidx, step_pc, prev
                     );
                 }
-            } else {
-                if step_pc <= prev {
-                    anyhow::bail!(
-                        "{} step #{} pc={} not strictly increasing (prev={})",
-                        ctx, sidx, step_pc, prev
-                    );
-                }
+            } else if step_pc <= prev {
+                anyhow::bail!(
+                    "{} step #{} pc={} not strictly increasing (prev={})",
+                    ctx, sidx, step_pc, prev
+                );
             }
         }
         if matches!(step, ProofStep::Transfer { .. }) {

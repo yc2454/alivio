@@ -133,11 +133,10 @@ pub fn collect_hidden_subprog_names<P: AsRef<Path>>(path: P) -> Result<Vec<Strin
         if vis != STV_HIDDEN && vis != STV_INTERNAL {
             continue;
         }
-        if let Some(name) = elf.strtab.get_at(s.st_name) {
-            if !name.is_empty() {
+        if let Some(name) = elf.strtab.get_at(s.st_name)
+            && !name.is_empty() {
                 out.push(name.to_string());
             }
-        }
     }
     Ok(out)
 }

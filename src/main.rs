@@ -6,6 +6,16 @@
 // are translated transparently in `cli::rewrite_legacy_argv` so existing
 // scripts and CI keep working without surfacing them in `--help`.
 
+// Clippy: deliberate style choices of this kernel-mirror codebase —
+// functions take what their verifier.c counterparts take, comment-heavy
+// docs are prose (not rustdoc lists), and mirrored branches stay
+// textually separate even when bodies coincide.
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(clippy::if_same_then_else)]
+
 mod analysis;
 mod ast;
 mod cli;

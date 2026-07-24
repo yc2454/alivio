@@ -768,12 +768,12 @@ pub fn should_prune(
         }
     }
 
-    let pruned = if in_loop {
+    
+    if in_loop {
         handle_loop_pruning(env, state, pc, prog, &live_regs, &frame_live_slots, &frame_live_regs, config)
     } else {
         handle_standard_pruning(env, state, pc, &live_regs, &frame_live_slots, &frame_live_regs, config)
-    };
-    pruned
+    }
 }
 
 /// bump miss_cnt for every `prev_idx` and evict whose
@@ -1021,7 +1021,7 @@ fn dbg_skip_pc(pc: usize) {
     let mut g = m.lock().unwrap();
     *g.0.entry(pc).or_insert(0) += 1;
     g.1 += 1;
-    if g.1 % 3_000 == 0 {
+    if g.1.is_multiple_of(3_000) {
         let mut v: Vec<_> = g.0.iter().map(|(&p, &c)| (c, p)).collect();
         v.sort_unstable_by(|a, b| b.0.cmp(&a.0));
         let top: Vec<String> = v.iter().take(8).map(|(c, p)| format!("pc{}={}", p, c)).collect();
@@ -1220,8 +1220,8 @@ fn subsum_hit_std_trace(
             pc,
             kinds(state.frames.current()),
             kinds(prev.frames.current()),
-            state.frames.current().stack.get_slot(-64).map(|s| s.reg_type.clone()),
-            prev.frames.current().stack.get_slot(-64).map(|s| s.reg_type.clone()),
+            state.frames.current().stack.get_slot(-64).map(|s| s.reg_type),
+            prev.frames.current().stack.get_slot(-64).map(|s| s.reg_type),
         );
     }
 }

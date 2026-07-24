@@ -71,10 +71,12 @@ pub struct RawBpfProgram {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RelocKind {
     MapPtr,
     MapValue,
     /// Helper function call - resolve helper name to ID
+    #[default]
     HelperCall,
     /// BPF-to-BPF function call - cross-section call
     BpfCall,
@@ -100,11 +102,6 @@ pub enum RelocKind {
     Ksym,
 }
 
-impl Default for RelocKind {
-    fn default() -> Self {
-        RelocKind::HelperCall
-    }
-}
 
 /// Target information for a BPF-to-BPF function call
 #[derive(Clone, Debug)]

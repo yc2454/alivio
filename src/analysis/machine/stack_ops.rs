@@ -594,7 +594,7 @@ impl State {
             && (spilled.tnum.value >> 32) == 0
         {
             self.types.set(dst, RegType::ScalarValue);
-            self.tnums.insert(dst, spilled.tnum.clone());
+            self.tnums.insert(dst, spilled.tnum);
             self.domain
                 .assign_interval(dst, spilled.bounds.min, spilled.bounds.max);
             if let Some(id) = spilled.scalar_id {
@@ -864,8 +864,8 @@ impl State {
         &self,
         reg: Reg,
     ) -> (Option<i64>, Option<u64>, Option<i64>, Option<u32>) {
-        if let NumericDomain::Interval(ref ivl) = self.domain {
-            if let Some(ptr_off) = ivl.get_ptr_offset(reg) {
+        if let NumericDomain::Interval(ref ivl) = self.domain
+            && let Some(ptr_off) = ivl.get_ptr_offset(reg) {
                 return (
                     Some(ptr_off.off),
                     Some(ptr_off.var_off),
@@ -873,7 +873,6 @@ impl State {
                     ptr_off.id,
                 );
             }
-        }
         (None, None, None, None)
     }
 
@@ -958,8 +957,8 @@ impl State {
                     _ => None, // fallback is None
                 };
 
-                if let (Some(anchor_reg), Some(o)) = (anchor, off) {
-                    if let NumericDomain::Interval(ref mut ivl) = self.domain {
+                if let (Some(anchor_reg), Some(o)) = (anchor, off)
+                    && let NumericDomain::Interval(ref mut ivl) = self.domain {
                         let v = var_off.unwrap_or(0);
                         let ptr_offset = crate::domains::interval::PtrOffset {
                             anchor: anchor_reg,
@@ -979,7 +978,6 @@ impl State {
                         // Set the PtrOffset on the register
                         ivl.get_mut(reg).ptr_offset = Some(ptr_offset);
                     }
-                }
             }
             None => {}
         }

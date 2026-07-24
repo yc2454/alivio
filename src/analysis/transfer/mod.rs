@@ -384,8 +384,8 @@ fn transfer_endian(
     // that here by using the actual reg bounds (via `bcf_reg_bounds`)
     // instead of `RegBounds::unknown()`, so the bound preds
     // (`VAR ULE 0xffff`) appear in zovia's bcf graph too.
-    if let Some(d) = dst.bcf_idx() {
-        if let Some(bcf) = state.bcf.as_mut() {
+    if let Some(d) = dst.bcf_idx()
+        && let Some(bcf) = state.bcf.as_mut() {
             // Step 1 (SRC_OP read): materialize dst with PRE-be16 bounds
             // (snapshot before apply_and_imm above). Kernel's
             // `check_reg_arg(dst, SRC_OP)` reads dst as a source for
@@ -408,7 +408,6 @@ fn transfer_endian(
                 false,
             );
         }
-    }
 
     state.pc += 1;
     vec![state]
@@ -432,12 +431,10 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
     if env.analyzing_exception_cb
         && state.at_main_frame()
         && matches!(env.ctx.attach_flavor.as_deref(), Some("fentry") | Some("fexit"))
-    {
-        if r0_min != 0 || r0_max != 0 {
+        && (r0_min != 0 || r0_max != 0) {
             env.fail(VerificationError::InvalidReturnCode { pc: state.pc });
             return vec![];
         }
-    }
 
     // Kernel-aligned: main-program exit return-value precision sink
     // (verifier.c v6.15 `check_return_code` calls
@@ -804,7 +801,7 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
         }
 
         // Re-apply R0 from callee's return value
-        state.types.set(Reg::R0, ret_type.clone());
+        state.types.set(Reg::R0, ret_type);
         state.set_tnum(Reg::R0, ret_tnum);
         state.domain.forget(Reg::R0);
         state

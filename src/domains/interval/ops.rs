@@ -124,7 +124,7 @@ pub fn intersect_eq_reg(state: &mut IntervalState, x: Reg, y: Reg) {
     if x == Reg::Zero || x.is_anchor() {
         return;
     }
-    let yb = state.get(y).bounds.clone();
+    let yb = state.get(y).bounds;
     let xb = &mut state.get_bounds_mut(x);
     xb.smin = xb.smin.max(yb.smin);
     xb.smax = xb.smax.min(yb.smax);
@@ -372,7 +372,7 @@ pub fn apply_add_reg(state: &mut IntervalState, dst: Reg, src: Reg) {
         return;
     }
 
-    let src_bounds = state.get_bounds(src).clone();
+    let src_bounds = *state.get_bounds(src);
     let dst_bounds = state.get_bounds_mut(dst);
 
     // Add intervals: [a, b] + [c, d] = [a+c, b+d]
@@ -496,7 +496,7 @@ pub fn apply_sub_reg(state: &mut IntervalState, dst: Reg, src: Reg) {
         return;
     }
 
-    let src_bounds = state.get_bounds(src).clone();
+    let src_bounds = *state.get_bounds(src);
     let dst_bounds = state.get_bounds_mut(dst);
 
     // Subtract intervals: [a, b] - [c, d] = [a-d, b-c]
@@ -571,7 +571,7 @@ pub fn apply_mul_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
         return;
     }
 
-    let bounds = state.get_bounds(dst).clone();
+    let bounds = *state.get_bounds(dst);
 
     if imm > 0 {
         // Positive multiplier preserves sign
@@ -603,7 +603,7 @@ pub fn apply_div_imm(state: &mut IntervalState, reg: Reg, imm: i64) {
         return;
     }
 
-    let bounds = state.get_bounds(reg).clone();
+    let bounds = *state.get_bounds(reg);
 
     // Only handle positive divisor with non-negative dividend
     if imm > 0 && bounds.smin >= 0 {
@@ -637,7 +637,7 @@ pub fn apply_neg(state: &mut IntervalState, reg: Reg) {
         return;
     }
 
-    let bounds = state.get_bounds(reg).clone();
+    let bounds = *state.get_bounds(reg);
 
     // Handle edge cases that would cause inconsistent bounds after negation:
     // - i64::MIN cannot be negated (overflow: -i64::MIN = i64::MIN)

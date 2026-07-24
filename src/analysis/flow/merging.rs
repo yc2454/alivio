@@ -205,8 +205,8 @@ pub fn record_state(
         );
     }
 
-    if let Some(target_pc) = crate::analysis::flow::diag::dump_cache_growth_pc() {
-        if pc == target_pc {
+    if let Some(target_pc) = crate::analysis::flow::diag::dump_cache_growth_pc()
+        && pc == target_pc {
             let states_now =
                 env.explored_states.get(&pc).map(|v| v.as_slice()).unwrap_or(&[]);
             let arrival_idx = states_now.len().saturating_sub(1);
@@ -229,7 +229,6 @@ pub fn record_state(
                 eprintln!("  {}[{}] {}", marker, i, regs);
             }
         }
-    }
 
     if let Some(target_pc) = crate::analysis::flow::diag::dump_precise_pcs_pc()
         && pc == target_pc

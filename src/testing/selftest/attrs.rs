@@ -252,7 +252,7 @@ fn extract_macro_ident(line: &str, macro_name: &str) -> Option<String> {
         let arg = inner[..close].trim();
         if !arg.is_empty()
             && !arg.starts_with('"')
-            && arg.chars().all(|c| is_ident_char(c))
+            && arg.chars().all(is_ident_char)
         {
             return Some(arg.to_string());
         }
@@ -282,7 +282,7 @@ fn extract_int_arg(line: &str, macro_name: &str) -> Option<i64> {
         if let Some(close) = inner.find(')') {
             let arg = inner[..close].trim();
             // Strip a trailing `LL` / `ULL` if present (rare in this corpus).
-            let arg = arg.trim_end_matches(|c: char| c == 'L' || c == 'l' || c == 'U' || c == 'u');
+            let arg = arg.trim_end_matches(['L', 'l', 'U', 'u']);
             if let Ok(n) = arg.parse::<i64>() {
                 return Some(n);
             }

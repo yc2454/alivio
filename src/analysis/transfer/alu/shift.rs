@@ -36,7 +36,7 @@ fn mark_unknown_if_oversized_shift(
     let bw: u64 = if width == Width::W32 { 32 } else { 64 };
     let const_amt: Option<u64> = match src {
         Operand::Imm(k) => Some(*k as u64),
-        Operand::Reg(sr) => state.get_tnum(*sr).const_value().map(|c| c as u64),
+        Operand::Reg(sr) => state.get_tnum(*sr).const_value(),
     };
     let Some(amt) = const_amt else { return false };
     if amt < bw {
@@ -228,11 +228,10 @@ pub(crate) fn handle_shr(state: &mut State, width: Width, dst: Reg, src: &Operan
             // Variable shift amount — kernel emits no RSH expr here.
             bcf.clear_reg(d);
         }
-    } else if let Some(d) = dst.bcf_idx() {
-        if let Some(bcf) = state.bcf.as_mut() {
+    } else if let Some(d) = dst.bcf_idx()
+        && let Some(bcf) = state.bcf.as_mut() {
             bcf.clear_reg(d);
         }
-    }
 }
 
 /// Abstract-domain (interval + tnum) update for a left shift by a *known*
@@ -463,11 +462,10 @@ pub(crate) fn handle_shl(state: &mut State, width: Width, dst: Reg, src: &Operan
             // Variable shift amount — kernel emits no LSH expr here.
             bcf.clear_reg(d);
         }
-    } else if let Some(d) = dst.bcf_idx() {
-        if let Some(bcf) = state.bcf.as_mut() {
+    } else if let Some(d) = dst.bcf_idx()
+        && let Some(bcf) = state.bcf.as_mut() {
             bcf.clear_reg(d);
         }
-    }
 }
 
 pub(crate) fn handle_arsh(state: &mut State, width: Width, dst: Reg, src: &Operand) {
@@ -713,11 +711,10 @@ pub(crate) fn handle_arsh(state: &mut State, width: Width, dst: Reg, src: &Opera
             // Variable shift amount — kernel emits no ARSH expr here.
             bcf.clear_reg(d);
         }
-    } else if let Some(d) = dst.bcf_idx() {
-        if let Some(bcf) = state.bcf.as_mut() {
+    } else if let Some(d) = dst.bcf_idx()
+        && let Some(bcf) = state.bcf.as_mut() {
             bcf.clear_reg(d);
         }
-    }
 }
 
 pub(crate) fn handle_rsh(state: &mut State, width: Width, dst: Reg, src: &Operand) {

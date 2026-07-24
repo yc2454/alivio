@@ -251,13 +251,12 @@ pub fn check_map_access(
     pc: usize,
 ) {
     // For interval domain, try to use PtrOffset for bounds checking
-    if let NumericDomain::Interval(ref ivl) = state.domain {
-        if interval_check_map_access(
+    if let NumericDomain::Interval(ref ivl) = state.domain
+        && interval_check_map_access(
             env, state, ivl, map_limit, map_idx, base, map_def, insn_off, size, pc,
         ) {
             return;
         }
-    }
 
     zone_check_map_access(
         env,
@@ -461,8 +460,8 @@ pub(crate) fn transfer_map_load(
     // become a scalar address — code that uses them as `(__u64)&X` is fine
     // either way; passing them to `bpf_per_cpu_ptr` requires the typed form.
     if matches!(kind, MapLoadKind::PseudoBtfId { .. }) {
-        if let Some(reloc) = env.ctx.pc_to_reloc.get(&state.pc).cloned() {
-            if reloc.kind == crate::parsing::elf::RelocKind::Ksym {
+        if let Some(reloc) = env.ctx.pc_to_reloc.get(&state.pc).cloned()
+            && reloc.kind == crate::parsing::elf::RelocKind::Ksym {
                 use crate::analysis::machine::context::intern_btf_type_name_strict;
                 use crate::analysis::machine::reg_types::PtrFlags;
                 let mut flags = PtrFlags::TRUSTED | PtrFlags::RDONLY;
@@ -493,7 +492,6 @@ pub(crate) fn transfer_map_load(
                 state.pc += 2;
                 return vec![state];
             }
-        }
         // No reloc info / unrecognized form. Fall through to reject —
         // a bare PSEUDO_BTF_ID without a Ksym reloc means the symbol
         // wasn't in `.ksyms`, which we can't resolve.

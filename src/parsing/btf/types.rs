@@ -364,11 +364,11 @@ pub(super) fn refine_global_arg_with_tags(
     btf: &BtfContext,
 ) -> GlobalFuncArg {
     // Kernel encodes these via clang `btf_decl_tag("arg:<kind>")`.
-    let trusted = tags.iter().any(|t| *t == "arg:trusted");
-    let nullable = tags.iter().any(|t| *t == "arg:nullable");
-    let nonnull = tags.iter().any(|t| *t == "arg:nonnull");
-    let ctx_tag = tags.iter().any(|t| *t == "arg:ctx");
-    let arena_tag = tags.iter().any(|t| *t == "arg:arena");
+    let trusted = tags.contains(&"arg:trusted");
+    let nullable = tags.contains(&"arg:nullable");
+    let nonnull = tags.contains(&"arg:nonnull");
+    let ctx_tag = tags.contains(&"arg:ctx");
+    let arena_tag = tags.contains(&"arg:arena");
     if arena_tag {
         return GlobalFuncArg::PtrToArena;
     }
@@ -385,11 +385,10 @@ pub(super) fn refine_global_arg_with_tags(
             nullable,
         };
     }
-    if nonnull {
-        if let GlobalFuncArg::PtrToMem { mem_size, .. } = base {
+    if nonnull
+        && let GlobalFuncArg::PtrToMem { mem_size, .. } = base {
             return GlobalFuncArg::PtrToMem { mem_size, nonnull: true };
         }
-    }
     base
 }
 

@@ -167,7 +167,7 @@ pub fn solve(smtlib: &str) -> Result<Vec<u8>> {
     let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(cached) = memo.lock().unwrap().get(smtlib) {
         let hits = HITS.fetch_add(1, Ordering::Relaxed) + 1;
-        if std::env::var("ZOVIA_SOLVER_STATS").is_ok() && hits % 500 == 0 {
+        if std::env::var("ZOVIA_SOLVER_STATS").is_ok() && hits.is_multiple_of(500) {
             eprintln!("[solver] calls={} memo_hits={}", calls, hits);
         }
         return match cached {
@@ -175,7 +175,7 @@ pub fn solve(smtlib: &str) -> Result<Vec<u8>> {
             Err(msg) => Err(SolverError::NotUnsat(msg.clone())),
         };
     }
-    if std::env::var("ZOVIA_SOLVER_STATS").is_ok() && calls % 500 == 0 {
+    if std::env::var("ZOVIA_SOLVER_STATS").is_ok() && calls.is_multiple_of(500) {
         eprintln!(
             "[solver] calls={} memo_hits={}",
             calls,

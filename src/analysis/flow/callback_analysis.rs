@@ -93,25 +93,22 @@ pub fn compute_tainted_cb_subprogs(
         let body = &prog.instrs[start..end.min(prog.instrs.len())];
         let mut bad = false;
         for insn in body {
-            match insn {
-                Instr::Call { kind } => match *kind {
-                    CallKind::Helper { id } => {
-                        if id == constants::BPF_SPIN_LOCK || id == constants::BPF_SPIN_UNLOCK {
-                            bad = true;
-                            break;
-                        }
+            if let Instr::Call { kind } = insn { match *kind {
+                CallKind::Helper { id } => {
+                    if id == constants::BPF_SPIN_LOCK || id == constants::BPF_SPIN_UNLOCK {
+                        bad = true;
+                        break;
                     }
-                    CallKind::Kfunc { btf_id, .. } => {
-                        if let Some(name) = btf.kfunc_name(btf_id)
-                            && is_forbidden_kfunc(name)
-                        {
-                            bad = true;
-                            break;
-                        }
+                }
+                CallKind::Kfunc { btf_id, .. } => {
+                    if let Some(name) = btf.kfunc_name(btf_id)
+                        && is_forbidden_kfunc(name)
+                    {
+                        bad = true;
+                        break;
                     }
-                },
-                _ => {}
-            }
+                }
+            } }
         }
         if bad {
             tainted.insert(start);

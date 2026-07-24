@@ -135,7 +135,7 @@ pub struct LiveStack {
 /// spi for a (negative) stack byte offset. Kernel: `slot = -off - 1;
 /// spi = slot / BPF_REG_SIZE`.
 pub fn spi_of(off: i64) -> Option<u32> {
-    if off >= 0 || off < -512 {
+    if !(-512..0).contains(&off) {
         return None;
     }
     Some(((-off - 1) / 8) as u32)
@@ -348,6 +348,7 @@ pub fn invalidate_write_bracket(env: &mut VerifierEnv) {
 
 /// Kernel `bpf_commit_stack_write_marks`: intersect the bracketed write
 /// masks into must_write at the bracket's insn.
+#[allow(clippy::needless_range_loop)]
 pub fn commit_stack_write_marks(env: &mut VerifierEnv) {
     if std::env::var("ZOVIA_DBG_WCOMMIT").ok().as_deref() == Some("1")
         && env.live_stack.write_insn == 1433
@@ -500,8 +501,8 @@ fn update_instance(env: &mut VerifierEnv, key: &[usize]) {
                 let mut mask = mwa;
                 let mut set_updated = false;
                 let mut set_dropped = false;
-                if mask != 0 || was_set {
-                    if let Some(m) = outer.alloc_masks(frame, callsite) {
+                if (mask != 0 || was_set)
+                    && let Some(m) = outer.alloc_masks(frame, callsite) {
                         let old = m.must_write;
                         if was_set {
                             mask &= old;
@@ -514,7 +515,6 @@ fn update_instance(env: &mut VerifierEnv, key: &[usize]) {
                             set_dropped = true;
                         }
                     }
-                }
                 // may_read at the callsite.
                 if lb != 0 {
                     let live_before = outer

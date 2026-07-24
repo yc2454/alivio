@@ -403,12 +403,11 @@ fn maybe_promote_map_val(state: &mut State, reg: Reg) {
             // `handle_sub` hooks build the symbolic offset incrementally.
             // The refinement at the map-region rejection site reads this
             // expression directly.
-            if let Some(bcf) = state.bcf.as_mut() {
-                if let Some(i) = r.bcf_idx() {
+            if let Some(bcf) = state.bcf.as_mut()
+                && let Some(i) = r.bcf_idx() {
                     let zero = bcf.add_val64(0);
                     bcf.bind_reg(i, zero);
                 }
-            }
         }
     }
     promote_stack_slots_all_frames(
@@ -609,8 +608,8 @@ fn maybe_refine_acquired_ref(state: &mut State, reg: Reg, is_non_null: bool) {
             |ty| ty.to_non_null().unwrap_or(RegType::ScalarValue),
         );
     } else {
-        if target_ref_id.is_some() {
-            state.release_ref(target_ref_id.unwrap());
+        if let Some(ref_id) = target_ref_id {
+            state.release_ref(ref_id);
         }
         state.types.set(reg, RegType::ScalarValue);
         for r in Reg::ALL {
@@ -645,8 +644,8 @@ fn maybe_refine_acquired_ref(state: &mut State, reg: Reg, is_non_null: bool) {
             let offsets: Vec<i16> = frame.stack.slot_offsets();
             for k in offsets {
                 let ty = frame.stack.get_slot_type(k);
-                if same_acquired_pointer(&reg_type, &ty) {
-                    if let Some(slot) = frame.stack.get_slot_mut(k) {
+                if same_acquired_pointer(&reg_type, &ty)
+                    && let Some(slot) = frame.stack.get_slot_mut(k) {
                         slot.reg_type = RegType::ScalarValue;
                         slot.bounds = crate::analysis::machine::stack_state::ScalarBounds {
                             min: 0,
@@ -654,7 +653,6 @@ fn maybe_refine_acquired_ref(state: &mut State, reg: Reg, is_non_null: bool) {
                         };
                         slot.tnum = crate::domains::tnum::Tnum::constant(0);
                     }
-                }
             }
         }
     }

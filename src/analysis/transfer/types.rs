@@ -22,12 +22,11 @@ use crate::domains::numeric::NumericDomain;
 /// variable for the base and can't prove safety even when the access is
 /// provably in-bounds.
 fn bcf_anchor_map_value(state: &mut State, reg: Reg) {
-    if let Some(bcf) = state.bcf.as_mut() {
-        if let Some(i) = reg.bcf_idx() {
+    if let Some(bcf) = state.bcf.as_mut()
+        && let Some(i) = reg.bcf_idx() {
             let zero = bcf.add_val64(0);
             bcf.bind_reg(i, zero);
         }
-    }
 }
 
 /// True if R2 (the lookup-elem key pointer) points at a stack slot
@@ -1057,8 +1056,7 @@ pub(crate) fn update_call_types(
                 RegType::PtrToMapKptr { .. } | RegType::PtrToMapKptrOrNull { .. }
             );
             if from_local_kptr {
-                out_flags = out_flags
-                    | crate::analysis::machine::reg_types::PtrFlags::MEM_ALLOC;
+                out_flags |= crate::analysis::machine::reg_types::PtrFlags::MEM_ALLOC;
             }
             if helper == constants::BPF_PER_CPU_PTR {
                 let id = new_ptr_id();

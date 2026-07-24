@@ -82,8 +82,8 @@ pub(crate) fn try_bcf_refine_map(
     // refine (needed for the replayed path to continue past its own
     // discharged accesses) but must not spawn a recursive re-execution.
     let mut replay_variants: Vec<crate::refinement::refine_stack::RefineOk> = Vec::new();
-    if !env.replay_mode {
-        if let Some((_, cid)) = landed {
+    if !env.replay_mode
+        && let Some((_, cid)) = landed {
             // Two anchor shapes, both additive:
             // - plain (anchor = the base cache entry itself): matches the
             //   kernel when the base's regs weren't cache-mutated;
@@ -181,8 +181,8 @@ pub(crate) fn try_bcf_refine_map(
                 for &(anchor_at_parent, share_slot_vars, crossing) in variants {
                     if let Some(rst) = crate::refinement::emit::replay_to_reject(
                         env, *rcid, anchor_at_parent, share_slot_vars, crossing, None,
-                    ) {
-                        if let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
+                    )
+                        && let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
                             &rst, base, insn_off, size, map_limit, size_reg, None,
                             Some(&known),
                         ) {
@@ -199,7 +199,6 @@ pub(crate) fn try_bcf_refine_map(
                             ));
                             replay_variants.push(ok);
                         }
-                    }
                 }
             }
             // Deep-path crossing cuts: the kernel base can be a segment
@@ -219,8 +218,8 @@ pub(crate) fn try_bcf_refine_map(
                     for k in 1..=4usize {
                         if let Some(rst) = crate::refinement::emit::replay_to_reject(
                             env, deep_cid, false, true, Some(k), Some(cut_pc),
-                        ) {
-                            if let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
+                        )
+                            && let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
                                 &rst, base, insn_off, size, map_limit, size_reg, None,
                                 Some(&known),
                             ) {
@@ -236,12 +235,10 @@ pub(crate) fn try_bcf_refine_map(
                                 ));
                                 replay_variants.push(ok);
                             }
-                        }
                     }
                 }
             }
         }
-    }
     let attempts: Vec<(bool, _)> = legacy_ok
         .into_iter()
         .map(|o| (false, o))

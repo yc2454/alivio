@@ -101,7 +101,7 @@ pub fn try_refine_map_access(
     // variable contributor; `size_is_var` iff the size register isn't a
     // statically-pinned constant.
     let ptr_is_var = var_off_expr.is_some()
-        && state.var_off_contributor.get(&base).is_some();
+        && state.var_off_contributor.contains_key(&base);
     let (size_const_val, size_expr_cached) = match size_reg {
         Some(sz_reg) => {
             let c = state.domain.get_fixed_value(sz_reg);

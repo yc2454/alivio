@@ -170,7 +170,7 @@ fn collect_vars(
     }
     // BV constants and bool literals carry their value in args/params, no var to
     // declare. Otherwise recurse into args.
-    if !(ty == BCF_BV && op == BCF_VAL) && !(ty == BCF_BOOL && op == BCF_VAL) {
+    if !((ty == BCF_BV || ty == BCF_BOOL) && op == BCF_VAL) {
         for &a in &e.args {
             collect_vars(state, a, visited, names, decls)?;
         }
@@ -220,7 +220,7 @@ fn render(
             };
             // SMT-LIB hex literal: `#x<hex>` requires width divisible by 4.
             // Use `(_ bv<value> <width>)` form for arbitrary widths.
-            if width % 4 == 0 {
+            if width.is_multiple_of(4) {
                 let hex_digits = (width / 4) as usize;
                 let mask: u64 = if width >= 64 { u64::MAX } else { (1u64 << width) - 1 };
                 write!(out, "#x{:0width$x}", val & mask, width = hex_digits).unwrap();

@@ -644,8 +644,8 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
     // map_uid — direct map decls (PtrToMapObject) carry no uid, so
     // the common timer.c::race pattern (val from same array, R2 is
     // &array) is unaffected. Closes timer_mim_reject::test1.
-    if helper == constants::BPF_TIMER_INIT {
-        if let (
+    if helper == constants::BPF_TIMER_INIT
+        && let (
             RegType::PtrToMapValue {
                 map_uid: Some(u1), ..
             },
@@ -653,13 +653,10 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
                 map_uid: Some(u2), ..
             },
         ) = (in_types.get(Reg::R1), in_types.get(Reg::R2))
-        {
-            if u1 != u2 {
+            && u1 != u2 {
                 env.fail(VerificationError::InvalidArgType { pc, reg: Reg::R2 });
                 return vec![];
             }
-        }
-    }
 
     // bpf_get_local_storage doesn't not support type 1 map and flag must be 0
     if helper == constants::BPF_GET_LOCAL_STORAGE {
@@ -960,17 +957,15 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             // zovia's first read would emit an orphaned bound pair.
             | constants::BPF_CSUM_DIFF
     );
-    if zovia_narrower_than_kernel {
-        if let Some(bcf) = state.bcf.as_mut() {
-            if let Some(d) = Reg::R0.bcf_idx() {
+    if zovia_narrower_than_kernel
+        && let Some(bcf) = state.bcf.as_mut()
+            && let Some(d) = Reg::R0.bcf_idx() {
                 let _ = bcf.reg_expr(
                     d,
                     &crate::refinement::symbolic::RegBounds::unknown(),
                     false,
                 );
             }
-        }
-    }
     // NOTE: the BCF R0 bcf_expr clear lives at the top of
     // `transfer_call` (before `update_call_types`) so it doesn't override
     // anchors set during type assignment. See the matching comment there.
@@ -1090,11 +1085,10 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
     );
     if kernel_narrows_r0_via_do_refine {
         let bounds = bcf_reg_bounds(state, Reg::R0);
-        if let Some(bcf) = state.bcf.as_mut() {
-            if let Some(d) = Reg::R0.bcf_idx() {
+        if let Some(bcf) = state.bcf.as_mut()
+            && let Some(d) = Reg::R0.bcf_idx() {
                 let _ = bcf.reg_expr(d, &bounds, false);
             }
-        }
     }
 }
 
@@ -1761,8 +1755,8 @@ pub(crate) fn restore_interval_ptr_offset_from_return(
             _ => None,
         };
 
-        if let Some(anchor) = anchor {
-            if let NumericDomain::Interval(ivl) = domain {
+        if let Some(anchor) = anchor
+            && let NumericDomain::Interval(ivl) = domain {
                 let var_off = var_off_opt.unwrap_or(0);
                 let ptr_offset = PtrOffset {
                     anchor,
@@ -1778,7 +1772,6 @@ pub(crate) fn restore_interval_ptr_offset_from_return(
                 };
                 ivl.get_mut(Reg::R0).ptr_offset = Some(ptr_offset);
             }
-        }
     }
 }
 
@@ -1799,28 +1792,24 @@ pub(crate) fn restore_callee_interval_packet_info(
                 _ => None,
             };
 
-            if let Some(anchor) = anchor {
-                if matches!(
+            if let Some(anchor) = anchor
+                && matches!(
                     caller_types.get(reg),
                     RegType::PtrToPacket | RegType::PtrToPacketMeta
-                ) {
-                    if let NumericDomain::Interval(ivl) = domain {
-                        if let Some(caller_ptr_off) = ivl.get_ptr_offset(reg) {
-                            if caller_ptr_off.anchor == anchor
+                )
+                    && let NumericDomain::Interval(ivl) = domain
+                        && let Some(caller_ptr_off) = ivl.get_ptr_offset(reg)
+                            && caller_ptr_off.anchor == anchor
                                 && caller_ptr_off.off == off
                                 && caller_ptr_off.var_off == var_off_opt.unwrap_or(0)
                             {
                                 let caller_range = caller_ptr_off.range.unwrap_or(0);
                                 if range_val > caller_range {
-                                    let mut new_ptr_off = caller_ptr_off.clone();
+                                    let mut new_ptr_off = *caller_ptr_off;
                                     new_ptr_off.range = Some(range_val);
                                     ivl.get_mut(reg).ptr_offset = Some(new_ptr_off);
                                 }
                             }
-                        }
-                    }
-                }
-            }
         }
     }
 }

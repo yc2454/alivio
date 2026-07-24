@@ -294,8 +294,7 @@ fn transfer_kfunc_proto(
                 RegType::PtrToMapValue { map_idx: wq_map, .. },
                 RegType::PtrToMapObject { map_idx: ptr_map },
             ) = (in_types.get(Reg::R1), in_types.get(Reg::R2))
-            {
-                if wq_map != ptr_map {
+                && wq_map != ptr_map {
                     env.fail(
                         crate::analysis::machine::error::VerificationError::InvalidArgType {
                             pc,
@@ -304,7 +303,6 @@ fn transfer_kfunc_proto(
                     );
                     return vec![];
                 }
-            }
         } else if kfunc_name == Some("bpf_wq_set_callback_impl") {
             return transfer_kfunc_wq_set_callback(env, &in_types, state, btf_id, proto);
         }
@@ -1239,11 +1237,10 @@ fn widen_imprecise_scalars_impl(
             };
             let cur_precise = cur_slot.map(|s| s.precise).unwrap_or(false);
             let prev_precise = prev_slot.map(|s| s.precise).unwrap_or(false);
-            if differs && (force_widen || (!cur_precise && !prev_precise)) {
-                if let Some(p) = prev_slot {
+            if differs && (force_widen || (!cur_precise && !prev_precise))
+                && let Some(p) = prev_slot {
                     to_widen.push((off, p.clone()));
                 }
-            }
         }
         let cur_stack = &mut cur.frames.get_mut(level).stack;
         for (off, prev_slot) in to_widen {

@@ -148,12 +148,8 @@ pub struct CtxAccessInfo {
 // Field Tables
 // ===========================================================================
 
-/// struct __sk_buff (TC/classifier context)
-///
-/// Reference: linux/include/uapi/linux/bpf.h
-///
-/// Note: The __sk_buff struct exposed to BPF is a "view" that the kernel
-/// rewrites accesses for. Field offsets here match the BPF-visible layout.
+/// Look up field info for a context access.
+/// Returns None if no valid field exists at (offset, size).
 fn lookup_field(fields: &[CtxField], off: i16, size: i64) -> Option<CtxAccessInfo> {
     let access_end = off + size as i16;
 
@@ -517,8 +513,7 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
     // ::fd, etc.) accept the loads the kernel admits.
     if is_direct_typed_ctx && size > 0 && off >= 0 && (size & (size - 1)) == 0 && size <= 8
         && off % size as i16 == 0
-    {
-        if let Some(args) = env.ctx.entry_args.as_ref()
+        && let Some(args) = env.ctx.entry_args.as_ref()
             && let Some(arg0) = args.first()
         {
             use crate::analysis::machine::context::{
@@ -703,7 +698,6 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
                 });
             }
         }
-    }
 
     if matches!(
         prog_kind,
@@ -718,8 +712,8 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
         && off % 8 == 0
     {
         let idx = (off / 8) as usize;
-        if let Some(args) = env.ctx.entry_args.as_ref() {
-            if idx < args.len() {
+        if let Some(args) = env.ctx.entry_args.as_ref()
+            && idx < args.len() {
                 use crate::analysis::machine::context::EntryArg;
                 // tp_btf attach targets carry per-arg PTR_MAYBE_NULL in
                 // the kernel's tracepoint BTF (which we don't ship). The
@@ -763,7 +757,6 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
                     writable: false,
                 });
             }
-        }
         // fallback for fentry/LSM/tp_btf where
         // `resolve_func_args` returns the BPF_PROG-wrapper signature
         // rather than the user-declared args (the kernel resolves these
@@ -895,8 +888,8 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
     //   - post_bind6: mark(16) + src_ip4(24) [IPv6-only].
     // (The kernel additionally denies bound_dev_if(0)/priority(20) under
     // post_bind*; not modeled here.)
-    if prog_kind == ProgramKind::CgroupSock {
-        if let Some(sub) = env.ctx.attach_subtype.as_deref() {
+    if prog_kind == ProgramKind::CgroupSock
+        && let Some(sub) = env.ctx.attach_subtype.as_deref() {
             let denied = match sub {
                 "sock_create" | "sock_release" => (24..48).contains(&off),
                 "post_bind4" => off == 16 || (28..44).contains(&off),
@@ -907,7 +900,6 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
                 return None;
             }
         }
-    }
 
     let ctx_kind = match prog_kind {
         ProgramKind::Tracing => match (env.ctx.attach_kind, env.ctx.kfunc.as_deref()) {

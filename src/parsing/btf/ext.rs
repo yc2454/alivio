@@ -18,7 +18,7 @@
 
 use std::convert::TryInto;
 
-const BTF_MAGIC_LE: u16 = 0xeB9F;
+const BTF_MAGIC_LE: u16 = 0xEB9F;
 
 /// CO-RE relocation kind (mirrors kernel `enum bpf_core_relo_kind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

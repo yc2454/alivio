@@ -11,6 +11,7 @@ use crate::analysis::machine::reg::Reg;
 
 /// Unified numeric domain that abstracts over Zone (DBM) and Interval
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum NumericDomain {
     /// Zone domain using Difference Bound Matrix
     /// Tracks relational constraints: x - y <= c

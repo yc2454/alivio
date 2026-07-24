@@ -54,7 +54,7 @@ pub fn clean_stat(which: usize) {
     }
     static C: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
     let n = C[which].fetch_add(1, Ordering::Relaxed) + 1;
-    if n % 500 == 0 || n == 1 {
+    if n.is_multiple_of(500) || n == 1 {
         eprintln!(
             "[clean_stats] cleaned={} skipped_incomplete={}",
             C[0].load(Ordering::Relaxed),

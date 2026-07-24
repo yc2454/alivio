@@ -87,12 +87,11 @@ pub(super) fn backward_trace(
             let mut fact_found = false;
             let mut fact_c = 0i64;
 
-            if let Some(ivl_ub) = interval_upper_bound(&interval_states[pc], prev_i, prev_j) {
-                if ivl_ub <= pre_bound {
+            if let Some(ivl_ub) = interval_upper_bound(&interval_states[pc], prev_i, prev_j)
+                && ivl_ub <= pre_bound {
                     fact_found = true;
                     fact_c = ivl_ub;
                 }
-            }
 
             // Path 2: Branch-derived — if the instruction at this PC is a branch
             // whose fall-through condition matches the tracked constraint pair,
@@ -100,19 +99,16 @@ pub(super) fn backward_trace(
             // where a branch refines a variable AFTER a variable add (e.g., stack
             // variable-offset access where zone's closure captures the refinement
             // but the interval's var_off is not retroactively tightened).
-            if !fact_found {
-                if let Some(branch_fact) =
+            if !fact_found
+                && let Some(branch_fact) =
                     derive_fact_from_branch(instr, pc, pc + 1)
-                {
-                    if branch_fact.left_reg == prev_i.idx()
+                    && branch_fact.left_reg == prev_i.idx()
                         && branch_fact.right_reg == prev_j.idx()
                         && branch_fact.c <= pre_bound
                     {
                         fact_found = true;
                         fact_c = branch_fact.c;
                     }
-                }
-            }
 
             if fact_found {
                 let mut proof = Vec::with_capacity(1 + backward_steps.len());
@@ -386,16 +382,13 @@ pub(super) fn transfer_deltas_sound(
             src: Operand::Reg(src),
             ..
         } = instr
-        {
-            if dst.idx() == *pre_left_reg {
-                if let Some(state) = interval_states.get(*pc) {
+            && dst.idx() == *pre_left_reg
+                && let Some(state) = interval_states.get(*pc) {
                     let (_, src_max) = state.domain.get_interval(*src);
                     if src_max != i64::MAX && *delta < src_max {
                         return false;
                     }
                 }
-            }
-        }
     }
     true
 }

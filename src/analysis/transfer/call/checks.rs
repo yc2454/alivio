@@ -1396,7 +1396,7 @@ fn validate_ptr_to_const_str(ctx: &mut ValidationContext) -> bool {
                 && off >= 0
             {
                 let off = off as usize;
-                if off >= data.len() || !data[off..].iter().any(|&b| b == 0) {
+                if off >= data.len() || !data[off..].contains(&0) {
                     ctx.fail_with_log(
                         VerificationError::InvalidArgType {
                             pc: ctx.pc,

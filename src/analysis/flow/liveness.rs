@@ -224,10 +224,10 @@ fn compute_subprog_liveness(prog: &Program, env: &mut VerifierEnv, start: usize,
     }
 
     // 4. Write results into env
-    for idx in 0..len {
+    for (idx, li) in live_in.iter().enumerate().take(len) {
         let pc = start + idx;
-        env.insn_aux_data[pc].live_regs = live_in[idx].regs.clone();
-        env.insn_aux_data[pc].live_slots = live_in[idx].slots.clone();
+        env.insn_aux_data[pc].live_regs = li.regs.clone();
+        env.insn_aux_data[pc].live_slots = li.slots.clone();
     }
 }
 

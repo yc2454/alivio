@@ -444,10 +444,7 @@ pub(super) fn transfer_callback_helper(
     // R3 falls back to PtrToBtfId{type_name:"unknown"} and the
     // validator rejects (timer.c::race).
     if helper == constants::BPF_TIMER_SET_CALLBACK {
-        let timer_map_idx = match caller_r1_for_timer_cb {
-            Some(idx) => Some(idx),
-            None => None,
-        };
+        let timer_map_idx = caller_r1_for_timer_cb;
         use crate::analysis::machine::reg_types::PtrFlags;
         let unknown_btf = || RegType::PtrToBtfId {
             type_name: "unknown",
@@ -504,8 +501,5 @@ pub(super) fn transfer_callback_helper(
 }
 
 pub(super) fn allowed_while_in_active_lock(helper: u32) -> bool {
-    match helper {
-        constants::BPF_GET_PRANDOM_U32 => false,
-        _ => true,
-    }
+    !matches!(helper, constants::BPF_GET_PRANDOM_U32)
 }

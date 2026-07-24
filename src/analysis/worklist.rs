@@ -105,7 +105,7 @@ pub(super) fn run_worklist(
                         && effective_off(base, off)
                             .is_some_and(|o| o % 8 == 0)
                 }
-                Some(&Instr::StoreRel { ref base, .. }) => is_stack_base(base),
+                Some(Instr::StoreRel { base, .. }) => is_stack_base(base),
                 Some(&Instr::Load { ref base, ref off, .. })
                 | Some(&Instr::LoadAcq { ref base, ref off, .. }) => {
                     is_stack_base(base)
@@ -166,7 +166,7 @@ pub(super) fn run_worklist(
         // mutates cur based on what the cache holds, and incompatible-
         // type paths each verify independently under DFS.
         if !env.kernel_faithful_alu && state.pc < prog.instrs.len() - 1 {
-            merging::resolve_type_conflicts(&env, &mut state);
+            merging::resolve_type_conflicts(env, &mut state);
         }
 
         diag_demote_trace(diag_hit, &state, &diag_r4_pre, &diag_r6_pre);
@@ -852,7 +852,7 @@ fn dump_states_at_pc(state: &State) {
             .split(',')
             .filter_map(|t| t.trim().parse::<usize>().ok())
             .collect();
-        if targets.iter().any(|&t| t == state.pc) {
+        if targets.contains(&state.pc) {
             use crate::analysis::machine::reg_types::RegType;
             let mut row = format!("pc={} ", state.pc);
             for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5,
@@ -910,7 +910,7 @@ fn dump_states_at_pc(state: &State) {
 /// same pre-check position, verifier.c:21181). Trace-range gated within
 /// the fixed pc corridor 185..=200.
 fn insn_trace(ip: usize, pc: usize) {
-    if pc >= 185 && pc <= 200 && trace_pc_in_range(pc) {
+    if (185..=200).contains(&pc) && trace_pc_in_range(pc) {
         eprintln!("[INSN] ip={} pc={}", ip, pc);
     }
 }

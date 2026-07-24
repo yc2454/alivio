@@ -50,11 +50,10 @@ fn condition_outcome_inner(
     // only (packet pointers are always 64-bit). This must run BEFORE the
     // generic pointer bail below, which conservatively returns None for all
     // pointer comparisons. See `test_tc_change_tail::change_tail`.
-    if width == Width::W64 {
-        if let Some(outcome) = pkt_ptr_branch_taken(state, left, op, right) {
+    if width == Width::W64
+        && let Some(outcome) = pkt_ptr_branch_taken(state, left, op, right) {
             return Some(outcome);
         }
-    }
 
     // Don't eliminate paths based on pointer comparisons
     if state.types.get(left).is_pointer() {

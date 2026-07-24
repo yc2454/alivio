@@ -6,6 +6,12 @@
 use super::{CtxField, CtxFieldKind};
 use crate::ast::MemSize;
 
+/// struct __sk_buff (TC/classifier context)
+///
+/// Reference: linux/include/uapi/linux/bpf.h
+///
+/// Note: The __sk_buff struct exposed to BPF is a "view" that the kernel
+/// rewrites accesses for. Field offsets here match the BPF-visible layout.
 pub(super) const SK_BUFF_FIELDS: &[CtxField] = &[
     // __u32 len
     CtxField {
@@ -1498,12 +1504,6 @@ pub(super) const TRACE_ITER_TASK_FIELDS: &[CtxField] = &[
 ];
 
 // ===========================================================================
-// Field Lookup
-// ===========================================================================
-
-/// Look up field info for a context access.
-/// Returns None if no valid field exists at (offset, size).
-
 // Per-tracepoint MAYBE_NULL arg table (tp_btf / raw_tp)
 // ===========================================================================
 

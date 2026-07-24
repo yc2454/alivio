@@ -163,7 +163,7 @@ impl ProgramKind {
             {
                 rest
             }
-            _ => &s,
+            _ => s,
         };
         if tr_view.starts_with("fentry/")
             || tr_view.starts_with("fentry.s/")
@@ -221,7 +221,7 @@ impl ProgramKind {
         //   "struct_ops.s/<member>"  — sleepable variant
         //   "?struct_ops/<member>"   — optional (libbpf "weak") binding
         // The leading "?" is libbpf-internal optionality; strip before match.
-        let trimmed = s.strip_prefix('?').unwrap_or(&s);
+        let trimmed = s.strip_prefix('?').unwrap_or(s);
         if trimmed == "struct_ops"
             || trimmed.starts_with("struct_ops/")
             || trimmed.starts_with("struct_ops.s/")
@@ -304,7 +304,7 @@ impl ProgramKind {
         // siblings, producing 4 FAs).
         let cg_view: &str = match s.strip_prefix('?') {
             Some(rest) if rest.starts_with("cgroup/") || rest.starts_with("cgroup_skb/") => rest,
-            _ => &s,
+            _ => s,
         };
         if cg_view.starts_with("cgroup/bind")
             || cg_view.starts_with("cgroup/connect")

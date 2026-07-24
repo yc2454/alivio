@@ -394,6 +394,7 @@ impl RegType {
     }
 
     /// Returns the non-null version of a nullable pointer type
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_non_null(&self) -> Option<RegType> {
         match *self {
             RegType::PtrToMapValueOrNull { id, map_idx, map_uid } => {

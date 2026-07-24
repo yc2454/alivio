@@ -44,7 +44,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
         if Some(idx) == base_hidx { break; }
         match budget.checked_sub(1) { Some(b) => budget = b, None => return empty }
         let Some(bc) = env.history.get(idx) else { return empty };
-        path.push((bc.pc, bc.instr.clone()));
+        path.push((bc.pc, bc.instr));
         cur = bc.parent_idx;
     }
     let dbg = std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
@@ -125,7 +125,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
         if let Some((_, cached)) = env.state_by_cache_id(base_cid)
             && let Some(hidx) = cached.history_idx
             && let Some(bc) = env.history.get(hidx)
-            && let Instr::If { width, left, op, right, target } = bc.instr.clone()
+            && let Instr::If { width, left, op, right, target } = bc.instr
             && matches!(
                 base_state.types.get(left),
                 crate::analysis::machine::reg_types::RegType::ScalarValue
@@ -155,7 +155,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
         let mut holder: Option<State> = Some(base_state);
         for i in 0..n_exec {
             let pc = path[i].0;
-            let instr = path[i].1.clone();
+            let instr = path[i].1;
             let st = match holder.take() { Some(s) => s, None => break };
             let mut st = st;
             st.pc = pc;
@@ -176,11 +176,10 @@ pub(crate) fn try_prove_unreachable_via_replay(
                 }
                 break;
             }
-            if !pre_reset && Some(i) == reset_after_idx {
-                if let (Some(h), Instr::If { width, left, op, right, target }) =
+            if !pre_reset && Some(i) == reset_after_idx
+                && let (Some(h), Instr::If { width, left, op, right, target }) =
                     (holder.as_mut(), &instr)
-                {
-                    if let Some((op_then, op_else)) = cmp_op_to_bcf_pair(*op) {
+                    && let Some((op_then, op_else)) = cmp_op_to_bcf_pair(*op) {
                         h.reset_bcf_for_replay();
                         let taken = next_pc == *target;
                         let op_byte = if taken { op_then } else { op_else };
@@ -190,8 +189,6 @@ pub(crate) fn try_prove_unreachable_via_replay(
                             h, *width, *left, *op, op_byte, right, pc, None, pre_b,
                         );
                     }
-                }
-            }
         }
         env.replay_mode = false;
         if let Some(mut final_state) = holder {
@@ -300,7 +297,7 @@ pub(crate) fn replay_to_reject(
         }
         budget = budget.checked_sub(1)?;
         let bc = env.history.get(idx)?;
-        path.push((bc.pc, bc.instr.clone()));
+        path.push((bc.pc, bc.instr));
         cur = bc.parent_idx;
     }
     if path.is_empty() {
@@ -374,7 +371,7 @@ pub(crate) fn replay_to_reject(
         && let Some((_, cached)) = env.state_by_cache_id(base_cid)
         && let Some(hidx) = cached.history_idx
         && let Some(bc) = env.history.get(hidx)
-        && let Instr::If { width, left, op, right, target } = bc.instr.clone()
+        && let Instr::If { width, left, op, right, target } = bc.instr
         && matches!(
             base_state.types.get(left),
             crate::analysis::machine::reg_types::RegType::ScalarValue
@@ -404,7 +401,7 @@ pub(crate) fn replay_to_reject(
     let mut holder: Option<State> = Some(base_state);
     for i in 0..n_exec {
         let pc = path[i].0;
-        let instr = path[i].1.clone();
+        let instr = path[i].1;
         let mut st = match holder.take() {
             Some(s) => s,
             None => break,

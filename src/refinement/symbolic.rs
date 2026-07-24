@@ -698,6 +698,7 @@ impl SymbolicState {
     /// behaviour. If the filter empties the set, falls back to keep-all
     /// (returns without mutating) so discharge still has a goal — matching
     /// [`filter_path_conds_from_pc`]'s empty-guard.
+    #[allow(clippy::needless_range_loop)]
     pub fn filter_path_conds_by_regs(&mut self, goal_regs: &std::collections::HashSet<usize>) {
         debug_assert_eq!(self.path_conds.len(), self.path_cond_lhs_meta.len());
         // Pass 1: decide which branches to keep, and accumulate the VAR
@@ -800,11 +801,10 @@ impl SymbolicState {
             for &r in &frontier {
                 if let Some(expr) = self.reg_expr.get(r).copied().flatten() {
                     for v in self.collect_vars(expr) {
-                        if let Some(&orig) = self.var_origin.get(&v) {
-                            if goal.insert(orig) {
+                        if let Some(&orig) = self.var_origin.get(&v)
+                            && goal.insert(orig) {
                                 next.push(orig);
                             }
-                        }
                     }
                 }
             }

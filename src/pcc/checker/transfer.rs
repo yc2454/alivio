@@ -206,7 +206,7 @@ pub(super) fn verify_transfer(
                 let pre_right_reg = Reg::idx_to_reg(pre_right).unwrap_or(Reg::Zero);
                 let dst_ub = distance_upper_bound(state, *dst, pre_right_reg)
                     .filter(|&ub| ub != i64::MAX);
-                let ok = dst_ub.map_or(false, |ub| delta >= ub);
+                let ok = dst_ub.is_some_and(|ub| delta >= ub);
                 debug!(
                     target: "pcc",
                     "[PCC] target={} Transfer(pc={}) add reg absorb: {} += {}, dst_ub={:?}, delta={} — {}",

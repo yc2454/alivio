@@ -111,11 +111,10 @@ fn can_apply_dbm_constraint(
     // packet_size_lower_bound, not scalar bounds. Applying scalar constraints
     // to packet pointers with unknown absolute values incorrectly marks
     // branches as infeasible.
-    if matches!(state.domain, NumericDomain::Interval(_)) {
-        if !interval_can_apply_constraint(state, left, right) {
+    if matches!(state.domain, NumericDomain::Interval(_))
+        && !interval_can_apply_constraint(state, left, right) {
             return false;
         }
-    }
 
     let dominated_by_signed = matches!(op, CmpOp::SLt | CmpOp::SLe | CmpOp::SGt | CmpOp::SGe);
     let dominated_by_unsigned = matches!(op, CmpOp::ULt | CmpOp::ULe | CmpOp::UGt | CmpOp::UGe);

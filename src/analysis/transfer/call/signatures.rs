@@ -444,6 +444,7 @@ pub enum RetKind {
 /// transitions, stack-buffer init, etc.
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
+#[allow(clippy::enum_variant_names)]
 pub enum SideEffect {
     /// Drop & invalidate the ref carried on the given arg index (0..=4
     /// → R1..R5). Drives `bpf_sk_release` and ref-release kfuncs.

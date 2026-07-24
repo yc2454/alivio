@@ -491,11 +491,9 @@ pub fn bcf_suffix_base_pc_and_cache_id(
             {
                 break;
             }
-            let Some(step) = env.history.get(idx) else {
-                return None;
-            };
+            let step = env.history.get(idx)?;
             let parent_idx = step.parent_idx;
-            let instr_copy = step.instr.clone();
+            let instr_copy = step.instr;
             let step_depth = step.depth;
             let step_stack_access = step.stack_access;
             if !skip_first {
@@ -516,9 +514,7 @@ pub fn bcf_suffix_base_pc_and_cache_id(
             skip_first = false;
             current_history = parent_idx;
         }
-        if parent_grandparent_id.is_none() {
-            return None;
-        }
+        parent_grandparent_id?;
         current_parent_id = parent_grandparent_id;
         current_history = parent_history_stop;
     }
@@ -600,7 +596,7 @@ pub fn bcf_suffix_base_pc(
                 break;
             };
             let parent_idx = step.parent_idx;
-            let instr_copy = step.instr.clone();
+            let instr_copy = step.instr;
             let step_pc = step.pc;
             let step_depth = step.depth;
             let step_stack_access = step.stack_access;
@@ -706,7 +702,6 @@ pub fn bcf_suffix_base_pc(
 /// is currently in the precision frontier, ALL of them must be — the
 /// kernel propagates a refined range across the whole id class, so a
 /// precision requirement on one is a precision requirement on all.
-
 fn bt_sync_linked_regs(frontier: &mut HashSet<Reg>, linked: &[Reg]) {
     if linked.len() < 2 {
         return;
@@ -860,11 +855,10 @@ fn update_stack_frontier(
         // (BPF_ST const-spill carries no source reg ⇒ nothing to add back);
         // `StoreRel.src` is a Reg.
         Instr::Store { src, base, off, .. } => {
-            if *base == Reg::R10 && stack_frontier.remove(off) {
-                if let Operand::Reg(s) = src {
+            if *base == Reg::R10 && stack_frontier.remove(off)
+                && let Operand::Reg(s) = src {
                     reg_frontier.insert(*s);
                 }
-            }
         }
         Instr::StoreRel { src, base, off, .. } => {
             if *base == Reg::R10 && stack_frontier.remove(off) {
@@ -990,7 +984,7 @@ fn spi_of(off: i16) -> Option<u32> {
 /// the forward marking in the memory transfer). The slot index is
 /// recovered from the insn's own fixed offset via [`spi_of`], exactly as
 /// the kernel recovers it from `insn_stack_access_spi(hist->flags)`.
-
+///
 /// Faithful port of the kernel's `backtrack_insn` (vendor verifier.c) for
 /// one linear-history step: mutate the per-frame precision masks `bt`
 /// given that we are *un-doing* `instr`, which executed in call `frame`.

@@ -31,7 +31,7 @@ pub(crate) fn handle_add(
                 let prior = state.ptr_const_off.get(&dst).copied().unwrap_or(0);
                 state
                     .ptr_const_off
-                    .insert(dst, prior.wrapping_add(*c as i64));
+                    .insert(dst, prior.wrapping_add(*c));
             }
         }
         Operand::Reg(r) => {
@@ -107,12 +107,11 @@ pub(crate) fn handle_add(
                     // Non-constant: zone needs forget+assign to set up fresh
                     // constraint-based tracking. Interval mode must skip this
                     // to preserve PtrOffset (var_off updated by apply_add_reg).
-                    if !state.domain.is_interval_mode() {
-                        if let Some(off) = RegType::get_ptr_offset(&in_types.get(dst)) {
+                    if !state.domain.is_interval_mode()
+                        && let Some(off) = RegType::get_ptr_offset(&in_types.get(dst)) {
                             state.domain.forget(dst);
                             state.domain.assign_interval(dst, off, off);
                         }
-                    }
                     state.domain.apply_add_reg(dst, *r);
                 }
             } else if src_is_ptr && !dst_is_ptr {
@@ -179,8 +178,8 @@ pub(crate) fn handle_add(
     };
     // Hoisted outside the &mut state.bcf borrow.
     let dst_bounds_post = bcf_reg_bounds(state, dst);
-    if let Some(d) = dst.bcf_idx() {
-        if let Some(bcf) = state.bcf.as_mut() {
+    if let Some(d) = dst.bcf_idx()
+        && let Some(bcf) = state.bcf.as_mut() {
             // **Pointer + immediate is skipped** — kernel handles `ptr += K`
             // by accumulating K into the pointer reg's `off` bookkeeping
             // field (verifier.c:15296-15308), leaving `bcf_expr` alone.
@@ -246,7 +245,6 @@ pub(crate) fn handle_add(
                 bcf.bind_reg(d, final_idx);
             }
         }
-    }
 
     if dst_is_ptr_post && !src_is_ptr {
         state.set_tnum(dst, Tnum::unknown());
@@ -315,7 +313,7 @@ pub(crate) fn handle_sub(
                 let prior = state.ptr_const_off.get(&dst).copied().unwrap_or(0);
                 state
                     .ptr_const_off
-                    .insert(dst, prior.wrapping_sub(*c as i64));
+                    .insert(dst, prior.wrapping_sub(*c));
             }
         }
         Operand::Reg(r) => {
@@ -328,9 +326,8 @@ pub(crate) fn handle_sub(
                 // ptr -= scalar: try to preserve relational info
                 let const_value = state.domain.get_fixed_value(*r);
 
-                if const_value.is_some() {
+                if let Some(c) = const_value {
                     // Scalar is a known constant: exact relational shift
-                    let c = const_value.unwrap();
                     state.domain.apply_add_imm(dst, -c);
                     // Mirror `ptr_reg->off -= smin_val` for const-reg case
                     // (verifier.c:14439-14450). Variable-scalar case: K is
@@ -395,8 +392,8 @@ pub(crate) fn handle_sub(
         _ => None,
     };
     let dst_bounds_post = bcf_reg_bounds(state, dst);
-    if let Some(d) = dst.bcf_idx() {
-        if let Some(bcf) = state.bcf.as_mut() {
+    if let Some(d) = dst.bcf_idx()
+        && let Some(bcf) = state.bcf.as_mut() {
             let skip_ptr_imm = dst_is_ptr_post && matches!(src, Operand::Imm(_));
             let skip = src_is_ptr || skip_ptr_imm;
             if skip {
@@ -449,7 +446,6 @@ pub(crate) fn handle_sub(
                 bcf.bind_reg(d, final_idx);
             }
         }
-    }
 
     if dst_is_ptr_post && !src_is_ptr {
         state.set_tnum(dst, Tnum::unknown());

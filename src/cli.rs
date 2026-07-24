@@ -77,12 +77,6 @@ pub struct GlobalOpts {
     #[arg(long = "bcf", global = true)]
     pub bcf: bool,
 
-    /// DEPRECATED no-op: the multi-pass "thorough" union mode has been
-    /// removed (the single-pass all-faithful mirror is the only path).
-    /// Still accepted so existing scripts don't break.
-    #[arg(long = "no-bcf-thorough", global = true)]
-    pub no_bcf_thorough: bool,
-
     #[arg(long, global = true, value_name = "N")]
     pub max_insn: Option<usize>,
     /// BCF-mode-only complexity budget (base mode keeps `--max-insn`).

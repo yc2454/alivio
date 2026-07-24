@@ -56,7 +56,7 @@ is a **slot index** (flat layout), not a record index.
 # whole 4-pass thorough is the real superset; per-func variant-c is the cheap proxy:
 ZOVIA_EXP_SKIP_LOOP_HEADER_UNSAFE=1 ZOVIA_EXP_LOOP_SUFFIX_BASE=1 ZOVIA_BCF_ANCESTOR_DEPTH=16 \
 ZOVIA_KERNEL_ENGINE=1 ZOVIA_BCF_FAITHFUL_FOLD=1 ZOVIA_BCF_FOLD_PRENARROW=1 ZOVIA_BCF_REPLAY=1 \
-./target/release/zovia -q --bcf --kernel-mode --no-bcf-thorough \
+./target/release/zovia -q --bcf --kernel-mode \
     verify --func <NAME> <obj>          # writes <obj>.bcf-bundle
 ```
 ⚠️ env vars **INLINE**, never via an unquoted `$ENV` shell var (silently dropped).

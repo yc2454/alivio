@@ -3,7 +3,7 @@
 # IN ISOLATION and save the per-pass cond_hash sets (zero-padded 16-hex).
 #
 # Mirrors main.rs thorough-mode children exactly: each pass clears ALL toggle
-# keys, sets only its own, and runs --no-bcf-thorough with the
+# keys, sets only its own, and runs with the
 # ZOVIA_BCF_THOROUGH_PASS=1 marker (reg-filter discharge keys on it — without
 # the marker the "baseline" single-pass is NOT the thorough baseline child).
 #
@@ -32,7 +32,7 @@ run_pass() {
     # ${envs[@]+...} guards the empty-array expansion (baseline pass) against
     # set -u on bash 3.2 (macOS /bin/bash), which errors on "${envs[@]}".
     for kv in ${envs[@]+"${envs[@]}"}; do export "$kv"; done
-    timeout "$TMO" "$ZOVIA" -q --bcf --kernel-mode --no-bcf-thorough verify "$OBJ" \
+    timeout "$TMO" "$ZOVIA" -q --bcf --kernel-mode verify "$OBJ" \
       > "$OUTDIR/$BASE.pass_$name.log" 2>&1
     echo "rc=$?" >> "$OUTDIR/$BASE.pass_$name.log"
   )

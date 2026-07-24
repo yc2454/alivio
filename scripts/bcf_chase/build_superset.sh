@@ -21,7 +21,7 @@ echo "[build] $FUNC depth=$DEPTH  (kill if RSS>${KILL_GB}G or free%<${MIN_FREE_P
 rm -f "$BUNDLE"
 ZOVIA_EXP_SKIP_LOOP_HEADER_UNSAFE=1 ZOVIA_EXP_LOOP_SUFFIX_BASE=1 ZOVIA_BCF_ANCESTOR_DEPTH="$DEPTH" \
 ZOVIA_KERNEL_ENGINE=1 ZOVIA_BCF_FAITHFUL_FOLD=1 ZOVIA_BCF_FOLD_PRENARROW=1 ZOVIA_BCF_REPLAY=1 \
-timeout "$TIMEOUT" "$ZOVIA" -q --bcf --kernel-mode --no-bcf-thorough verify --func "$FUNC" "$OBJ" >/tmp/bs.out 2>&1 &
+timeout "$TIMEOUT" "$ZOVIA" -q --bcf --kernel-mode verify --func "$FUNC" "$OBJ" >/tmp/bs.out 2>&1 &
 PID=$!
 killed=0
 while kill -0 "$PID" 2>/dev/null; do

@@ -456,9 +456,8 @@ pub fn analyze_program_full(
 
     // --- FINAL REPORT ---
     // Pruning-quality metric (kernel `[ZK summary]` analog): max states
-    // cached at any single pc + total cached + cap evictions. The kernel
-    // keeps ≤27 per insn on the calico corpus; zovia pegging the cap (with
-    // evictions > 0) is the pruning-effectiveness gap. See cont.13.
+    // cached at any single pc + total cached + cap evictions. Pegging the
+    // cap (with evictions > 0) indicates a pruning-effectiveness gap.
     if config.verbosity >= 1 {
         let max_per_insn = env.explored_states.values().map(|v| v.len()).max().unwrap_or(0);
         let total_states: usize = env.explored_states.values().map(|v| v.len()).sum();
@@ -636,13 +635,9 @@ pub(crate) fn trace_pc_in_range(pc: usize) -> bool {
 
 /// ZOVIA_DBG_PUSHDUMP=<pc>: dump R5 + stack bytes -216..-209 (spi26) at every
 /// worklist PUSH of a successor whose resume pc == <pc> and every POP of a
-/// state at that pc. 2af5badd seed chase (2026-07-16): the kernel's pending
-/// states are immutable full copies (push_stack → copy_verifier_state), so its
-/// 2033-arm state (resume 2050) pops with the push-time spi26=[Spill×8];
-/// zovia's same state arrives at 2244 with [Spill×4,Misc×4] — the signature of
-/// the pc2039 u32 store executed AFTER the push on the continued fall arm.
-/// This instrument shows whether zovia's pushed snapshot mutates between push
-/// and pop.
+/// state at that pc. The kernel's pending states are immutable full copies
+/// (push_stack → copy_verifier_state); this instrument shows whether zovia's
+/// pushed snapshot mutates between push and pop.
 pub(crate) fn pushdump_pc() -> Option<usize> {
     static PC: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
     *PC.get_or_init(|| {
@@ -809,11 +804,10 @@ fn run_worklist(
         }
     }
 
-    // probe #141 companion ([ZK pop] mirror): a zovia pop is
-    // kernel-comparable iff the PREVIOUS iteration died (prune-hit /
-    // zero successors / fetch-fail) — otherwise it's the continuation
-    // pop the kernel never makes. First pop = the initial state (no
-    // kernel analog).
+    // [zpop] (kernel [ZK pop] mirror): a zovia pop is kernel-comparable
+    // iff the PREVIOUS iteration died (prune-hit / zero successors /
+    // fetch-fail) — otherwise it's the continuation pop the kernel never
+    // makes. First pop = the initial state (no kernel analog).
     let zpop_on = std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1");
     let mut prev_died = false;
     while let Some(mut state) = worklist.pop_back() {
@@ -833,9 +827,9 @@ fn run_worklist(
         if trace_pc_in_range(state.pc) {
             use crate::analysis::machine::reg::Reg;
             let (r2lo, r2hi) = state.domain.get_interval(Reg::R2);
-            // seam #3 fork-snapshot probe: R9's type at pop (pairs with
-            // the [WL_PUSH] R9 print; a type flip between them = the
-            // pushed snapshot mutated or the pop pairing is wrong).
+            // R9's type at pop (pairs with the [WL_PUSH] R9 print; a type
+            // flip between them = the pushed snapshot mutated or the pop
+            // pairing is wrong).
             eprintln!(
                 "[WL_POP] pc={} parent_cache_id={:?} R2=[{}..{}] R9={:?}",
                 state.pc, state.parent_cache_id, r2lo, r2hi,
@@ -867,13 +861,9 @@ fn run_worklist(
         // (`if (insn_flags) return push_jmp_history(...)`; misc writes and
         // non-spill reads zero the flags and do NOT count). Loop bodies
         // spill/fill every iteration, so these dominate history growth on
-        // deep lineages — without them zovia's counter sat at <=12 where
-        // the kernel's crossed 40 on the to_wep corridor unwind, so the
-        // kernel's history-FORCED late loop-head checkpoints (its 9
-        // first=198 adds at 137) never happened here, forks kept crediting
-        // the corridor checkpoint, and the pass-1 loop-head states stayed
-        // active — suppressing re-entry adds (measured 2026-07-05,
-        // [ZK br±/insn] vs [BR]/[INSN] paired probes).
+        // deep lineages — without them the counter undercounts and the
+        // kernel's history-FORCED late loop-head checkpoints never happen
+        // here.
         let stack_spill_fill = {
             use crate::analysis::machine::reg::Reg;
             use crate::analysis::machine::reg_types::RegType;
@@ -885,15 +875,10 @@ fn run_worklist(
             // the else-branch — an UNALIGNED / misc-class write — zeroes
             // insn_flags ("not a register spill") and pushes NO history
             // entry. Only slot-aligned writes (scalar-reg spill, BPF_ST
-            // const, 8-byte pointer spill) push. zovia counted EVERY
-            // reg-store to stack, so store-dense straight-line blocks
-            // with 4-mod-8 u32 / u8 / u16 members (wep17 c17 insns
-            // 1503-1580: ~50 stores, half unaligned) crossed the >40
-            // force-checkpoint cap where the kernel stayed under it —
-            // a spurious forced add at the next PP (post-call 1581) and
-            // a schedule shift (seam #95, probe #109). Also count
-            // aligned ST-imm stores (kernel is_bpf_st_mem branch keeps
-            // its flags), which the old Reg-only match missed.
+            // const, 8-byte pointer spill) push; counting every reg-store
+            // would cross the >40 force-checkpoint cap where the kernel
+            // stays under it. Aligned ST-imm stores also count (kernel
+            // is_bpf_st_mem branch keeps its flags).
             let effective_off = |b: &Reg, insn_off: i16| -> Option<i64> {
                 if *b == Reg::R10 {
                     Some(insn_off as i64)
@@ -1017,19 +1002,7 @@ fn run_worklist(
         // kernel analog — the kernel's is_state_visited only COMPARES
         // cur against cached states (regsafe/states_equal); it never
         // mutates cur based on what the cache holds, and incompatible-
-        // type paths each verify independently under DFS. Measured
-        // (seam #3, from_wep_debug_v6 accepted_entrypoint): the pc-930
-        // arrival popped with R9=PtrToMapValue{off 76} and was demoted
-        // to ScalarValue[0,0] here because a cached sibling at 930
-        // held R9=PtrToCtx (types_compatible excludes ctx pairings) —
-        // the scalar-0 R9 then seeded the pc-992 reject's bcf mask
-        // (kernel excludes the const-off map-value ptr: reg_masks 0x87
-        // vs zovia's +R9), over-extending the demand backtrack (base
-        // pc 74 vs kernel's pc-371 state, [ZK refine] bt_empty=372)
-        // and children_unsafe-marking 36 ancestors incl. the pc-371
-        // checkpoint (kernel marks 17, base excluded) — blocking the
-        // kernel's post-treadmill 371 prune-HIT (adds diverge at
-        // #1025, k=21505:318 z=21517:394).
+        // type paths each verify independently under DFS.
         if !env.kernel_faithful_alu && state.pc < prog.instrs.len() - 1 {
             merging::resolve_type_conflicts(&env, &mut state);
         }
@@ -1091,8 +1064,7 @@ fn run_worklist(
                     ));
                 }
                 // Append the top frame's spilled scalar slots (off, bounds,
-                // precise) up to ~10 most-recent for sanity. We're interested
-                // in fp-336 (proto-byte spill) and fp-400 in particular.
+                // precise) up to ~10 most-recent for sanity.
                 let frame = state.frames.current();
                 let mut slot_keys: Vec<i16> = frame.stack.slot_offsets().into_iter().collect();
                 slot_keys.sort();
@@ -1117,12 +1089,7 @@ fn run_worklist(
 
         // Kernel do_check: `++env->insn_processed` (verifier.c:21172)
         // runs BEFORE is_state_visited (21189) — EVERY arrival counts,
-        // including ones that then prune. zovia's old placement ("only
-        // count non-pruned states", after the record block) skipped +1
-        // per hit, so cadence deltas (dj/di vs kernel di) drifted one
-        // insn per pruned sibling — the ±1 add-phase skew across the
-        // whole parity arc (to_wep 994-1013 corridor: kernel leg3
-        // di=3 vs zovia id=2 at the same walk point).
+        // including ones that then prune.
         env.insn_processed += 1;
         // [INSN] corridor execution-order probe (kernel [ZK insn]
         // mirror at the same pre-check position, verifier.c:21181).
@@ -1130,8 +1097,7 @@ fn run_worklist(
             eprintln!("[INSN] ip={} pc={}", env.insn_processed, state.pc);
         }
         // ZOVIA_DBG_REGVAL=RN:pc1,pc2,... — dump a register's tracked
-        // value pre-execution at the listed pcs (probe #143 companion:
-        // co-re w8-constness chase at the 352-460 ext-header loop).
+        // value pre-execution at the listed pcs.
         {
             static REGVAL: std::sync::OnceLock<Option<(Reg, Vec<usize>)>> =
                 std::sync::OnceLock::new();
@@ -1194,8 +1160,8 @@ fn run_worklist(
         //   (2) Inner: `add_new_state` heuristic (verifier.c v6.15
         //       L18998-L19013): force_new_state || (jmps_delta>=2 &&
         //       insns_delta>=8). Counters are PER-PATH on State.
-        // ON in BCF mode (all-faithful mirror, repr-19 19/19 2026-06-12); the
-        // legacy dense-cache path remains for non-BCF mode (selftest baseline).
+        // ON in BCF mode; the legacy dense-cache path remains for non-BCF
+        // mode (selftest baseline).
         let kernel_engine = config.kernel_engine || env.bcf_enabled;
         let at_prune_point = pruning::widening::is_prune_point(env, state.pc);
         let insn_aux_force = env
@@ -1231,16 +1197,9 @@ fn run_worklist(
         // Kernel L20254-L20256: long-history safety valve. Kernel
         // formula is `cur->jmp_history_cnt > 40` — a count of BRANCH
         // DECISIONS recorded on this state's lineage (per
-        // `push_jmp_history` accumulation), NOT a raw insn delta.
-        //
-        // Previously zovia used `env_insns_delta > 40 ||
-        // path_insns_delta > 40`, which fires far more aggressively
-        // than the kernel's valve. On calico c17 from_tnl_debug at
-        // PC 1224 zovia force-cached (path_id=42 > 40) while kernel's
-        // jmp_hist was ~few (well below 40) and did NOT force; that
-        // spurious cache created a wrong baseline that polluted the
-        // path delta computations downstream (e.g. the wrong path_jd=2
-        // at PC 1319 vs kernel's jd=1, traced 2026-05-22).
+        // `push_jmp_history` accumulation), NOT a raw insn delta
+        // (an insn-delta valve fires far more aggressively than the
+        // kernel's).
         let long_history = state.jmp_history_cnt > 40;
         let force_new_state = insn_aux_force || long_history;
         let env_heuristic =
@@ -1252,10 +1211,8 @@ fn run_worklist(
         // identical to the kernel's traversal, and `jmps/insn_processed` are
         // bumped per-insn/per-jmp with `prev_*` reset at each add_new_state
         // (below) — so `env_heuristic` reproduces the kernel's condition exactly.
-        // (An older `env_heuristic || path_heuristic` OR added a per-path term
-        // justified by a since-disproven "interleaved worklist" claim; the
-        // worklist is not interleaved, so that term over-cached vs the kernel.
-        // Removed along with the AND/OR env knobs.)
+        // (No per-path term: the worklist is not interleaved, and a per-path
+        // OR would over-cache vs the kernel.)
         let outer_gate = !kernel_engine || at_prune_point;
         // Kernel in-loop checkpoint dampener (`skip_inf_loop_check`,
         // verifier.c ~20320): when the pruning scan met a cached state
@@ -1263,13 +1220,8 @@ fn run_worklist(
         // verifier is processing a loop"), suppress the add unless
         // force_new_state or the deltas reach the loop thresholds
         // (dj>=20 || di>=100; kernel constants). This is what gives the
-        // kernel its sparse in-loop checkpoint cadence (from_tnl
-        // accepted_entrypoint pc124 loop: kernel adds every ~5
-        // iterations = dj 20 / ~4 jumps-per-iter, [ZK add125] probe
-        // 2026-07-05, r8 = 1,4,9,14,19,24,29; zovia pre-port added
-        // every 2 via the bare 2/8 rule → its exit-lattice frontier and
-        // goal bases sat at different iterations than the kernel's
-        // queried ladder — the 21-object deep-treadmill class).
+        // kernel its sparse in-loop checkpoint cadence (adds every few
+        // iterations instead of via the bare 2/8 rule).
         let loop_dampener = env.saw_active_state_at_check
             && !force_new_state
             && env_jmps_delta < 20
@@ -1290,9 +1242,8 @@ fn run_worklist(
                     env_heuristic,
                     outer_gate,
                 );
-                // ZOVIA_DUMP_SLOTS3: slot kinds+base value AT ADD TIME — is
-                // the cached old's content mutated later? (2af5badd seed
-                // chase). "1" = default bases -208/-216/-224; or a comma
+                // ZOVIA_DUMP_SLOTS3: slot kinds+base value AT ADD TIME.
+                // "1" = default bases -208/-216/-224; or a comma
                 // list of bases (e.g. "-296,-320").
                 if let Ok(v) = std::env::var("ZOVIA_DUMP_SLOTS3") {
                     let bases: Vec<i16> = if v == "1" {
@@ -1321,10 +1272,11 @@ fn run_worklist(
                     }
                 }
             }
-            // PHASE-1 VALIDATION (ZOVIA_DUMP_STATE_RANGE): the cached state's
-            // faithful (insn_idx, first, last) — compare to box #15 [ZK refine]
-            // base_insn/base_first/base_last. state.first_insn_idx here is still
-            // the CACHED (pre-reset) value; the reset below is for the successor.
+            // ZOVIA_DUMP_STATE_RANGE: the cached state's faithful
+            // (insn_idx, first, last) — comparable to kernel [ZK refine]
+            // base_insn/base_first/base_last. state.first_insn_idx here is
+            // still the CACHED (pre-reset) value; the reset below is for
+            // the successor.
             if std::env::var("ZOVIA_DUMP_STATE_RANGE").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[srange] cid={} insn_idx={} first={} last={}",
@@ -1354,12 +1306,7 @@ fn run_worklist(
             // the counter grows unboundedly across cache events and the
             // long-history safety valve (jmp_history_cnt > 40) fires
             // unnecessarily at every later prune-point, force-caching
-            // states the kernel doesn't cache. Concretely on anchor
-            // calico_tc_main: pre-reset, zovia hit jmp_history_cnt=58 at
-            // PC 1878 (kernel's value: 4) and force-cached → walker base
-            // shifted from kernel's PC 1683 to PC 1878 → first 23
-            // canonical-encoding bytes filtered out → hash 0xd13031db
-            // missed.
+            // states the kernel doesn't cache.
             state.jmp_history_cnt = 0;
         } else if trace_pc_in_range(state.pc) {
             eprintln!(
@@ -1515,10 +1462,9 @@ fn run_worklist(
         if is_jmp_class {
             env.jmps_processed += 1;
             state.path_jmp_count = state.path_jmp_count.saturating_add(1);
-            // ZOVIA_DBG_JMPCNT=LO:HI (2af5badd chase 2026-07-13): name every
-            // jmp-class increment in an absolute insn_processed window, to
-            // diff the jump STREAM against the kernel's dj on the same
-            // window (kernel dj=1 vs zovia jd=2 at the pc632 add).
+            // ZOVIA_DBG_JMPCNT=LO:HI: name every jmp-class increment in an
+            // absolute insn_processed window, to diff the jump STREAM
+            // against the kernel's dj on the same window.
             if jmpcnt_in_range(env.insn_processed) {
                 eprintln!(
                     "[jmpcnt] JMP ip={} jp={} pc={}",
@@ -1602,13 +1548,12 @@ fn run_worklist(
 
         // H. Push Successors
         // Prioritize exit-path successors over loop-back successors.
-        // ZOVIA_KERNEL_PUSH_ORDER (2026-06-10): disable the partition —
-        // the kernel's push_stack has NO loop-back deferral; uniform LIFO
-        // gives sibling arms anchor recency-locality at loop heads (see
-        // get_branch_snapshot triage: the deferral lets every arm-variant
-        // of an iteration seed its own forward re-exploration before any
-        // back-edge pops → quadratic redundant paths). ON in BCF mode
-        // (all-faithful mirror); base mode keeps the deferral (selftest baseline).
+        // Kernel push order: the kernel's push_stack has NO loop-back
+        // deferral; uniform LIFO gives sibling arms anchor
+        // recency-locality at loop heads (the deferral lets every
+        // arm-variant of an iteration seed its own forward re-exploration
+        // before any back-edge pops → quadratic redundant paths). ON in
+        // BCF mode; base mode keeps the deferral (selftest baseline).
         let kernel_push_order = env.bcf_enabled;
         let mut loop_back = Vec::new();
         let mut other = Vec::new();
@@ -1677,11 +1622,11 @@ fn run_worklist(
         // push_stack fires once per NON-continued arm; zovia pushes every
         // successor (the LAST-pushed is the continuation, popped right
         // back). Print all but the final push of this fork ([ZK push]
-        // analog: at=branch pc, resume=arm pc). probe #140 companion.
+        // analog: at=branch pc, resume=arm pc).
         let pushlog = std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1");
         let n_push = loop_back.len() + other.len();
-        // probe #141 companion: a continuation gets pushed iff n_push>0 —
-        // the next pop is then NOT kernel-comparable.
+        // A continuation gets pushed iff n_push>0 — the next pop is then
+        // NOT kernel-comparable.
         prev_died = n_push == 0;
         let mut push_i = 0usize;
         let mut plog = |pc: usize, at: usize, i: usize| {

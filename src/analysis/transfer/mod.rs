@@ -23,8 +23,8 @@ use log::warn;
 pub fn transfer(env: &mut VerifierEnv, mut state: State, instr: &Instr) -> Vec<State> {
     // During a faithful-discharge replay we re-execute an already-explored
     // suffix; it must not mutate shared analysis state (insn_aux_data,
-    // history back-patches, etc.) or the main worklist's exploration shifts
-    // (e.g. from_nat 618296 vanished when the replay polluted env).
+    // history back-patches, etc.) or the main worklist's exploration
+    // shifts.
     if !env.replay_mode && state.pc < env.insn_aux_data.len() {
         env.insn_aux_data[state.pc].seen = true;
     }
@@ -311,9 +311,8 @@ fn transfer_endian(
     // bcf — which calls `bcf_reg_expr(dst)` with the reg's pre-be16
     // bounds (typically the previous u16/u32 load's tnum, e.g.
     // mask=0xffff after `w4 = *(u16 *)(...)`). This materializes a
-    // `VAR_U32 + bcf_bound_reg32` (ground-truth probe 2026-05-23 PC
-    // 1301: `path=VAR_U32 ... mask=0xffff umax=65535`). We mirror by
-    // calling reg_expr with these pre-bounds first.
+    // `VAR_U32 + bcf_bound_reg32`. We mirror by calling reg_expr with
+    // these pre-bounds first.
     let pre_endian_bounds = crate::analysis::transfer::alu::helpers::bcf_reg_bounds(&state, dst);
 
     // 1. Types: Endian ops destroy pointers -> Scalar
@@ -323,15 +322,10 @@ fn transfer_endian(
     // `check_reg_arg(env, insn->dst_reg, DST_OP)` — DST_OP is
     // mark_reg_unknown. The swap result carries NO bounds/tnum: no
     // adjust_scalar call, no width mask, no zext_32_to_64 — even for
-    // the LE-host-identity le64. Measured (0x30d4c783 trio, clang-17
-    // to_hep_debug pc402 `r4 = be16 r4` → pc404 `if w4 == 0x800`):
-    // the kernel's queried goal records v0 with high32-UNKNOWN bound
-    // preds (u<= 0xffffffff00000800 pair) + extract32(v0)==0x800
-    // UNFOLDED — r4 is not tnum-const at the crossing because the be16
-    // left it fully unknown. zovia's [0,0xffff] model made r4 fully
-    // const after the ==0x800 narrowing → record-time fold
-    // `0x800==0x800` → wrong canonical hash (never discharged). Zone
-    // mode keeps the precise model below.
+    // the LE-host-identity le64. A tighter model (e.g. [0,0xffff] after
+    // be16) diverges from the kernel's bcf goal shape: the reg folds to
+    // const after a later == narrowing where the kernel keeps it
+    // unknown. Zone mode keeps the precise model below.
     if env.kernel_faithful_alu {
         state.domain.forget(dst);
         state.set_tnum(dst, crate::domains::tnum::Tnum::unknown());
@@ -386,16 +380,10 @@ fn transfer_endian(
     // for the BSWAP width via `tnum_and(0xffff)` etc.) leaves the reg
     // with a concrete bounded tnum (e.g. `mask=0xffff umin=0 umax=65535`
     // post-be16). Kernel's next `bcf_reg_expr(result)` therefore takes
-    // the `fit_u32` path → emits `VAR_U32 + bcf_bound_reg32` (ground-
-    // truth kernel probe 2026-05-23: PC 1301 `r4 = be16 r4` emits
-    // `path=VAR_U32 ... mask=0xffff umax=65535`). Mirror that here by
-    // using the actual reg bounds (via `bcf_reg_bounds`) instead of
-    // `RegBounds::unknown()`, so the bound preds (`VAR ULE 0xffff`)
-    // appear in zovia's bcf graph too — closing the calico
-    // from_wep_fib_dsr_debug PC 1301/1304 conjunct gap that previously
-    // kept zovia's 0x75861184cd295c8e from byte-matching kernel's
-    // 0x034f376909db9ac8 target. See
-    // [[feedback_kernel_probe_record_path_cond_2026-05-23]].
+    // the `fit_u32` path → emits `VAR_U32 + bcf_bound_reg32`. Mirror
+    // that here by using the actual reg bounds (via `bcf_reg_bounds`)
+    // instead of `RegBounds::unknown()`, so the bound preds
+    // (`VAR ULE 0xffff`) appear in zovia's bcf graph too.
     if let Some(d) = dst.bcf_idx() {
         if let Some(bcf) = state.bcf.as_mut() {
             // Step 1 (SRC_OP read): materialize dst with PRE-be16 bounds
@@ -403,11 +391,7 @@ fn transfer_endian(
             // `check_reg_arg(dst, SRC_OP)` reads dst as a source for
             // bcf — emits `VAR_U32 + bound preds` if the prior tnum
             // fit u32. Without this, zovia misses the bound-pred
-            // conjuncts kernel emits at the SRC read (calico
-            // from_wep_fib_dsr_debug PC 1301/1304 conjuncts that
-            // landed kernel's 0x034f376909db9ac8 at 12 conj vs
-            // zovia's 10 — see
-            // [[feedback_kernel_probe_record_path_cond_2026-05-23]]).
+            // conjuncts the kernel emits at the SRC read.
             let _src_expr = bcf.reg_expr(d, &pre_endian_bounds, false);
 
             // Step 2 (DST_OP write): kernel `mark_reg_unknown` clears

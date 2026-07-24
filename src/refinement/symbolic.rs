@@ -110,10 +110,8 @@ pub struct SymbolicState {
     /// time to compute "would this reg be uncached in a fresh kernel
     /// `bcf_track` replay starting at base_pc?" — equivalent to
     /// `reg_expr_pc.is_none() || reg_expr_pc.unwrap() < base_pc`.
-    /// Ground-truth probe 2026-05-23 shows kernel emits `K==K` iff
-    /// `dst.bcf_pre=-1` at branch time, i.e. the reg was not
-    /// materialized within the replay window. See
-    /// [[feedback_kernel_probe_record_path_cond_2026-05-23]].
+    /// The kernel emits `K==K` iff `dst.bcf_pre=-1` at branch time,
+    /// i.e. the reg was not materialized within the replay window.
     pub reg_expr_pc: [Option<usize>; NUM_REGS],
     /// Path-condition predicates (each a u32 idx into `exprs`).
     pub path_conds: Vec<u32>,
@@ -145,8 +143,6 @@ pub struct SymbolicState {
     /// `lhs_materialize_pc.is_none() || lhs_materialize_pc.unwrap() < base_pc`.
     /// Mirrors kernel `record_path_cond` post-`___mark_reg_known`
     /// + fresh-replay semantics (verifier.c:21024 + 2497 + 24536-37).
-    /// Kernel-probe ground truth 2026-05-23 — see
-    /// feedback_kernel_probe_record_path_cond_2026-05-23.md.
     pub path_cond_narrowed_const: Vec<Option<(u64, u8, bool, Option<usize>)>>,
     /// Parallel to `path_conds`: when this entry is a branch path_cond
     /// emitted by [`add_cond_at_narrowed`] with a known LHS reg, holds
@@ -161,10 +157,7 @@ pub struct SymbolicState {
     /// a new bcf_expr distinct from any other reg's. Zovia's live state
     /// may alias the LHS reg's expr with another reg's via spill/fill
     /// propagation; without the rewrite, the canonical hash collapses
-    /// two semantically-distinct regs into one VAR (calico
-    /// from_l3_debug_co-re pc=1276: w1 from pc=1144 and w9 from pc=1222
-    /// share an expr_idx → 3-conj single-VAR hash vs kernel's 5-conj
-    /// V0/V1-split).
+    /// two semantically-distinct regs into one VAR.
     ///
     /// `None` for bound preds and branch path_conds whose LHS isn't a
     /// reg-backed scalar (e.g. JSET with non-reg LHS).
@@ -196,8 +189,7 @@ pub struct SymbolicState {
     /// materializing the rejecting comparison's operand regs and their
     /// value-expression dependencies. Reproducing that selection in
     /// zovia's register-filtered discharge requires knowing which reg
-    /// each leaf VAR came from. See
-    /// [[feedback_byte_level_decode_first]] §2026-05-29 cont.4.
+    /// each leaf VAR came from.
     pub var_origin: std::collections::HashMap<u32, usize>,
     /// Set true ONLY during a faithful base→reject replay (`reset_for_replay`).
     /// When set, `record_path_cond_for_side` emits the branch operands' CURRENT
@@ -214,12 +206,7 @@ pub struct SymbolicState {
     /// the stack slot, the demanded slot materializes ONE var, and each
     /// forward fill carries it via `copy_register_state`
     /// (check_stack_read_fixed_off, verifier.c:5948 — `bcf_expr` copied
-    /// verbatim). Measured: bcc ksnoop c20-O1 kernel goal
-    /// 0x357a84611c9e93b9 @598 reuses ONE var for the loop-invariant
-    /// `[r10-0x98]` filled at .text 569 in BOTH iterations; the lazy
-    /// at-use mint made a fresh var per iteration (zovia twin
-    /// 0x86a47b06bd690958, sole delta). Default false → all existing
-    /// emissions byte-stable.
+    /// verbatim). Default false → all existing emissions byte-stable.
     pub replay_share_slot_vars: bool,
 }
 
@@ -493,9 +480,8 @@ impl SymbolicState {
         // VARs; add_alu/add_pred/add_extend reference existing slots), so a
         // plain DFS re-traverses shared nodes EXPONENTIALLY — the stack grows
         // without bound and the walk never terminates on a large fold DAG.
-        // (from_nat calico_tc_skb_accepted_entrypoint's depth-16 replay DAG
-        // OOM'd into swap right here.) Memoize with a visited-set so each node
-        // is expanded once: exponential → linear in DAG size.
+        // Memoize with a visited-set so each node is expanded once:
+        // exponential → linear in DAG size.
         let mut visited = std::collections::HashSet::new();
         let mut stack = vec![root];
         while let Some(idx) = stack.pop() {
@@ -520,9 +506,9 @@ impl SymbolicState {
     /// kept regardless of the cutoff — this preserves unit-test
     /// behaviour for [`SymbolicState`]s constructed without PC context.
     ///
-    /// KERNEL-FAITHFUL EXTENSION (2026-05-21, post-byte-stream probe):
-    /// in addition to suffix conds (`source_pc >= base_pc`), also retain
-    /// the conds the kernel re-emits via `record_path_cond` + lazy
+    /// KERNEL-FAITHFUL EXTENSION: in addition to suffix conds
+    /// (`source_pc >= base_pc`), also retain the conds the kernel
+    /// re-emits via `record_path_cond` + lazy
     /// `bcf_reg_expr`/`bcf_bound_reg` at the FIRST instruction of the
     /// `bcf_track` replay (verifier.c:21112-21120 + 894-926). That entry
     /// corresponds to the immediate previous branch (`prev_insn_idx`)
@@ -534,17 +520,14 @@ impl SymbolicState {
     ///      ⊆ vars(L) — this picks up `L` itself plus all bound preds
     ///      pushed for `L`'s variables (mirroring the kernel's lazy
     ///      `bcf_reg_expr` materialization).
-    /// Without this, zovia's MISS-side emissions at calico's PC 1726
-    /// drop the upstream JNE(v0,6) + JLE(v0,0xff) conds that the kernel
-    /// re-pushes at replay-start, so the canonical hash misses the
-    /// kernel's expected entry (e.g. `0x5edc48abe49fbee5` for
-    /// `calico_tc_main` in `clang-15_-O1_felix_bin_bpf_to_wep_debug_co-re.o`).
-    /// See `feedback_bytematch_revised_2026-05-21.md`.
+    /// Without this, MISS-side emissions drop the upstream conds the
+    /// kernel re-pushes at replay-start, so the canonical hash misses
+    /// the kernel's expected entry.
     /// Keep exactly the path-cond entries at the given (sorted) indices.
     /// The POSITIONAL analog of `filter_path_conds_from_pc` — the kernel's
     /// `bcf_track` emits br_conds only along the walk suffix from the base
     /// state to cur, which is a recording-order slice, not a pc window
-    /// (they differ when the path wraps a loop; bcc ksnoop 0x7b883057).
+    /// (they differ when the path wraps a loop).
     pub fn retain_path_conds_by_index(&mut self, kept: &[usize]) {
         debug_assert_eq!(self.path_conds.len(), self.path_cond_pcs.len());
         debug_assert_eq!(self.path_conds.len(), self.path_cond_is_branch.len());
@@ -611,13 +594,9 @@ impl SymbolicState {
                 // replay (verifier.c:894-926, lazy bound emission).
                 //
                 // Branches (is_branch=true) with source_pc < base_pc are NOT
-                // retained — only the literal L (handled above). The previous
-                // unconditional vars-subset rule transitively pulled in EARLIER
-                // branches on aliased SSA versions of L's variables (e.g.
-                // calico to_wep_debug_co-re: PC 2's `if w1 != 0x3000000` shared
-                // an expr_id with L's w1 via incomplete bcf_expr clear between
-                // PC 1's u32 load and PC 1584's u8 load → 6-conj zovia goal vs
-                // kernel's 5-conj 0x5edc).
+                // retained — only the literal L (handled above). An
+                // unconditional vars-subset rule would transitively pull in
+                // EARLIER branches on aliased SSA versions of L's variables.
                 || (!is_branch && !l_vars.is_empty() && {
                     let cond_vars = self.collect_vars(self.path_conds[idx]);
                     !cond_vars.is_empty() && cond_vars.is_subset(&l_vars)
@@ -635,13 +614,8 @@ impl SymbolicState {
         // expected hash (kernel always emits at least its branch cond at
         // replay-start). Falling back to "keep all" mirrors the kernel's
         // `base_pc=NULL` behavior when its walker terminates without a
-        // kernel-equivalent base. Verified 2026-05-22 on a 16-insn
-        // controlled-variable repro (walker_landing_v3.bpf.o, dense
-        // walker lands at non-branch prev_insn → filter empties → without
-        // fallback the kernel-matched hash 0x53bad...86 is never emitted).
-        // Cilium-42 770/36/0/32/2/20 EXACT held; calico anchor 7/7 still
-        // loads on VM (no perturbation of existing matched hashes because
-        // filter still applies normally whenever it retains anything).
+        // kernel-equivalent base. No perturbation of existing matched
+        // hashes: the filter still applies whenever it retains anything.
         if kept_exprs.is_empty() && !self.path_conds.is_empty() {
             return;
         }
@@ -652,17 +626,15 @@ impl SymbolicState {
         self.path_cond_lhs_meta = kept_lhs_meta;
     }
 
-    /// TRAJECTORY-suffix window filter (all-faithful mirror 2026-06-12).
-    /// Like [`filter_path_conds_from_pc`] but the window is the maximal
+    /// TRAJECTORY-suffix window filter. Like
+    /// [`filter_path_conds_from_pc`] but the window is the maximal
     /// TRAILING run of recorded conds with pc >= base_pc, not every entry
     /// numerically >= base_pc. The kernel's bcf_track replay is a linear
     /// re-execution base→reject of ITS trajectory suffix; when zovia's
-    /// path crossed higher-pc code BEFORE the base (subprog call, e.g.
-    /// from_l3_co-re_v6 reject 1522: proto-check conds at 5807-5815
-    /// recorded mid-trajectory, base 1457), the numeric filter wrongly
-    /// keeps those carried conds and every emitted form is polluted
-    /// (kernel queries the clean 3-cond fe23e6259df46b7e). Retention of
-    /// L (prev-push) + its bound preds mirrors the numeric filter.
+    /// path crossed higher-pc code BEFORE the base (subprog call), the
+    /// numeric filter wrongly keeps those carried conds and every emitted
+    /// form is polluted. Retention of L (prev-push) + its bound preds
+    /// mirrors the numeric filter.
     pub fn filter_path_conds_traj_suffix(
         &mut self,
         base_pc: usize,
@@ -885,7 +857,7 @@ impl SymbolicState {
 /// flat CONJ over all path-conds when there are several. The kernel's
 /// `__expr_equiv` check against the proof's assume-step argument requires
 /// this exact structural shape; pointing `goal_root` at just `refine_cond`
-/// (the previous behaviour) caused -EINVAL at bundle prevalidate.
+/// fails with -EINVAL at bundle prevalidate.
 pub fn build_goal_root(sym: &mut SymbolicState, refine_cond: u32) -> u32 {
     match sym.path_conds.len() {
         0 => refine_cond,
@@ -908,8 +880,7 @@ impl SymbolicState {
     /// happened inside or outside a fresh kernel `bcf_track` replay
     /// starting at base_pc.
     pub fn bind_reg(&mut self, reg: usize, idx: u32) {
-        // 3ab6@937 probe: name the caller that binds R3 while
-        // current_pc==661 (the const reg that should stay unbound).
+        // ZOVIA_DBG_MAT=1: backtrace the caller of a probed bind.
         if std::env::var("ZOVIA_DBG_MAT").ok().as_deref() == Some("1")
             && reg == 3
             && self.current_pc == 661
@@ -960,10 +931,7 @@ impl SymbolicState {
     ///
     /// Without this, downstream branches emit `ZEXT((VAR op K))` chains
     /// for what the kernel materializes as bare `K`, breaking byte-faithful
-    /// discharge hashes (inspektor-gadget seccomp `ig_seccomp_e` PC 142:
-    /// kernel emits `(K0_64 JEQ K0_64)` for the `r9 &= 1; if r9 == 0`
-    /// chain on the const-r9 path; zovia was emitting
-    /// `(ZEXT((K0_32 AND K1_32)) JEQ K0_64)`).
+    /// discharge hashes.
     ///
     /// Returns `true` when the cache was cleared and the caller should
     /// skip ALU-expression materialization (mirrors kernel's `return 0`).
@@ -1129,9 +1097,8 @@ impl SymbolicState {
             Some(idx) => idx,
             None => {
                 let idx = self.materialize_reg(reg, bounds);
-                // DIAGNOSIS-ONLY (b809 chase 2026-07-12): print every VAR
-                // materialization with its bounds to pinpoint which site
-                // emits orphaned bound-preds the kernel doesn't.
+                // DIAGNOSIS-ONLY (ZOVIA_DBG_MAT=1): print every VAR
+                // materialization with its bounds.
                 if std::env::var("ZOVIA_DBG_MAT").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[mat] reg=r{} pc={} const={:?} smin={:#x} smax={:#x} umin={:#x} umax={:#x} s32=[{},{}] u32=[{:#x},{:#x}]",
@@ -1139,11 +1106,8 @@ impl SymbolicState {
                         bounds.smin, bounds.smax, bounds.umin, bounds.umax,
                         bounds.s32_min, bounds.s32_max, bounds.u32_min, bounds.u32_max
                     );
-                    // One-shot caller identification for the orphan-pair
-                    // signature (b809 chase): print a backtrace for the
-                    // first few matching materializations.
-                    // 3ab6@937 chase: also fire on the pc-661 R3 re-mint
-                    // (the const reg that should NOT re-bind).
+                    // One-shot caller identification: print a backtrace
+                    // for the first few matching materializations.
                     if reg == 3 && self.current_pc == 661 {
                         use std::sync::atomic::{AtomicU32, Ordering};
                         static M: AtomicU32 = AtomicU32::new(0);
@@ -1194,9 +1158,9 @@ impl SymbolicState {
         // materialization (read OR branch), wherever it is. The deferred
         // (branch-only) REPLAY arm LOSES bounds for regs first-materialized at a
         // non-branch read (bcf_materialize_src) — they become cached bare vars
-        // and the arm skips them (from_nat_fib: REPLAY goals miss every `JLE
-        // v,0xff`). With this flag, materialize_reg emits at first-ref and the
-        // deferred arm is disabled (see record_path_cond_for_side).
+        // and the arm skips them. With this flag, materialize_reg emits at
+        // first-ref and the deferred arm is disabled (see
+        // record_path_cond_for_side).
         let replay_firstref =
             crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY_FIRSTREF", true);
         let emit_first_ref_bounds = !self.replay_emit_bounds || replay_firstref;
@@ -1233,13 +1197,10 @@ impl SymbolicState {
     /// **R10 is special**: it's the frame pointer, and its offset relative
     /// to itself is the constant 0 — not an unknown symbolic value. This
     /// lets pointer-arithmetic chains like `r1 = r10; r1 += -16; r1 += r0`
-    /// produce a meaningful symbolic offset expression for r1 (β+ change,
-    /// 2026-05-12). Index 10 is hard-coded to match the `Reg::R10.bcf_idx()`
-    /// convention.
+    /// produce a meaningful symbolic offset expression for r1. Index 10 is
+    /// hard-coded to match the `Reg::R10.bcf_idx()` convention.
     ///
-    /// Phase 1 simplification: always 64-bit (BCF picks 32 or 64 based on
-    /// `fit_u32/fit_s32`; we'll add the 32-bit fast path in Phase 2 if the
-    /// formula size matters).
+    /// Always 64-bit (BCF picks 32 or 64 based on `fit_u32/fit_s32`).
     #[allow(dead_code)]
     pub fn materialize_reg64(&mut self, reg: usize) -> u32 {
         if let Some(idx) = self.reg_expr[reg] {

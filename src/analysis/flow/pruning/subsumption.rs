@@ -286,25 +286,18 @@ pub(super) fn state_subsumed_by(
         // Kernel func_states_equal masks the frame's regs by the static
         // live set at the frame's own insn (callsite for caller frames,
         // verifier.c:20081 `(1 << i) & live_regs`). A callee-saved reg
-        // that is DEAD after this callsite's return (bcc ksnoop -Os:
-        // R7 at the output_trace call in the first-loop exit stub —
-        // return lands on the caller's `exit`) must not block the hit;
-        // one that IS live after return (the arg-copy loop callsite,
-        // r7 += 8 downstream) is compared, exactly as before.
-        // Net-kernel semantics for caller-frame regs: the compare mask is
-        // live_regs_before[callsite] (func_states_equal, :20081), but the
-        // kernel's clean_verifier_state has ALREADY marked dead regs in
-        // completed cached states NOT_INIT via DYNAMIC read marks — and a
-        // caller frame's r0-r5 can never be read after a state inside the
+        // that is DEAD after this callsite's return must not block the
+        // hit; one that IS live after return is compared.
+        // The compare mask is live_regs_before[callsite]
+        // (func_states_equal, :20081), but the kernel's
+        // clean_verifier_state has ALREADY marked dead regs in completed
+        // cached states NOT_INIT via DYNAMIC read marks — and a caller
+        // frame's r0-r5 can never be read after a state inside the
         // callee (they are scratched at return; the callee reads its OWN
         // r1-r5 copies), so cached caller-frame args are always cleaned
         // and never block (regsafe: rold NOT_INIT → safe). The static
         // equivalent: intersect the callsite live set with the
-        // callee-saved regs. Measured: bcc ksnoop -Os exit-stub callsite
-        // (combined 520, live = the blanket r1-r5 pseudo-call use set) —
-        // caller R5 is PtrToMapValue on the 514-path candidate and
-        // NotInit on the 547-fill-path arrival; the kernel HITs (candidate
-        // r5 cleaned), zovia blocked on it.
+        // callee-saved regs.
         let masked: HashSet<Reg>;
         let mask: &HashSet<Reg> = match frame_live_regs.get(k).and_then(|m| m.as_ref()) {
             Some(live) => {
@@ -586,8 +579,8 @@ fn scalar_id_links_subsumed_by(
 fn types_subsumed_by(cur: &TypeState, old: &TypeState, live_regs: &HashSet<Reg>) -> bool {
     for &r in live_regs {
         if !type_subsumed_by(&cur.get(r), &old.get(r)) {
-            // ZOVIA_DUMP_TYPES_MISS=1 (2af5badd seed chase 2026-07-13):
-            // name the live reg + type pair that blocks the Types verdict.
+            // ZOVIA_DUMP_TYPES_MISS=1: name the live reg + type pair that
+            // blocks the Types verdict.
             if std::env::var("ZOVIA_DUMP_TYPES_MISS").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[types_miss] reg={:?} old={:?} cur={:?}",
@@ -724,21 +717,12 @@ fn domain_subsumed_by(
         if !precise.contains(&r) && !force_exact {
             continue;
         }
-        // EXPERIMENTAL (no_log arc Phase 1): skip the scalar-interval
-        // range_within for pointer-typed regs. ⚠️ This is LOOSER than the
-        // kernel — `regsafe` (verifier.c v6.15 L19769-19811) DOES apply
-        // `range_within` to PTR_TO_MAP_VALUE/PACKET/MEM/BUF and the
-        // stricter `regs_exact` to PTR_TO_CTX/sockets/stack. zovia's
-        // pointer-reg interval carries real offset-safety, so this skip
-        // must be validated by FA gates (selftest is insensitive — the
-        // ctx/packet offset tests already FALSE_ACCEPT at HEAD under
-        // kernel-mode — so the cilium-42 scorecard is the real signal),
-        // NOT by faithfulness. Rationale for trying it: at the no_log
-        // gating pc the pointer regs are identical across trajectories
-        // (Phase 0), so the R6/R7/R9 pointer domain-miss class is
-        // secondary; this isolates whether removing it is empirically
-        // gate-safe. types_subsumed_by (runs first) + tnum + DBM/
-        // interval_subsumed_by still constrain the pointer.
+        // ⚠️ LOOSER than the kernel: skip the scalar-interval
+        // range_within for pointer-typed regs. `regsafe` (verifier.c
+        // v6.15 L19769-19811) DOES apply `range_within` to
+        // PTR_TO_MAP_VALUE/PACKET/MEM/BUF and the stricter `regs_exact`
+        // to PTR_TO_CTX/sockets/stack. types_subsumed_by (runs first) +
+        // tnum + DBM/interval_subsumed_by still constrain the pointer.
         if cur_types.get(r).is_pointer() || old_types.get(r).is_pointer() {
             continue;
         }
@@ -922,12 +906,10 @@ fn interval_subsumed_by(
     for r in Reg::ALL {
         // Kernel func_states_equal (verifier.c:19953): DEAD registers are
         // never compared — `((1 << i) & live_regs_before) && !regsafe(...)`,
-        // unconditionally at every exact level. zovia's ungated Reg::ALL
-        // loop compared packet ranges on dead regs: to_wep c15 pc462
-        // 3rd arrival — R1 (dead: both successors write before reading)
-        // carried old range=54 vs cur=42 → Domain miss where the kernel
-        // HITs (event #376, the first full-stream divergence). MAY-live
-        // over-approx ⇒ complement is MUST-dead ⇒ skipping is sound.
+        // unconditionally at every exact level. An ungated Reg::ALL loop
+        // would compare packet ranges on dead regs and miss where the
+        // kernel HITs. MAY-live over-approx ⇒ complement is MUST-dead ⇒
+        // skipping is sound.
         if !live_regs.contains(&r) {
             continue;
         }
@@ -999,9 +981,9 @@ fn stack_subsumed_by(
     // clean_verifier_state analog (kernel clean_func_state,
     // verifier.c:19424): a stack slot the kernel proves dead is set to
     // STACK_INVALID so `stacksafe` skips it — only LIVE slots are ever
-    // compared. zovia previously compared the *union* of all slot
-    // offsets with NO liveness filter (the divergence-map gap), so a
-    // dead scratch slot differing across states blocked every prune.
+    // compared. Comparing the union of all slot offsets with NO liveness
+    // filter would let a dead scratch slot differing across states block
+    // every prune.
     // The kernel cleans EVERY frame at its own ip; `frame_live_slots[i]`
     // is frame i's sound static MAY-liveness (per-byte offsets) at that
     // frame's resume pc, or `None` when unknown (⇒ don't skip — full
@@ -1016,13 +998,10 @@ fn stack_subsumed_by(
     // across the comparison.
     let mut iter_idmap: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
     // Kernel `stacksafe` per-byte `slot_type` comparison (verifier.c:19708-19762,
-    // the `StackSlotKind` block below). The older model keyed absent bytes as
-    // `STACK_INVALID` but collapsed every PRESENT byte (spill / helper-MISC /
-    // const) to a default `ScalarValue` in `get_slot_type` — so a byte one path
-    // wrote via a helper (`STACK_MISC`) and a byte another path never wrote
-    // (`STACK_INVALID`) looked identical, and the two paths wrongly subsumed
-    // each other (calico from_nat_fib proto-demux pc521 → dropped the sibling's
-    // pc748 obligations). The faithful per-byte kind rule is now unconditional.
+    // the `StackSlotKind` block below): a byte one path wrote via a helper
+    // (`STACK_MISC`) and a byte another path never wrote (`STACK_INVALID`)
+    // must NOT look identical, or the two paths wrongly subsume each
+    // other. The faithful per-byte kind rule is unconditional.
     for (frame_i, (old_frame, new_frame)) in
         old.frames.iter().zip(cur.frames.iter()).enumerate()
     {
@@ -1058,15 +1037,10 @@ fn stack_subsumed_by(
         // regsafe scalar (old imprecise ⇒ covers ANY cur; precise ⇒
         // range_within+tnum_in; all-misc reads as the unbound
         // imprecise fake) and the per-byte kind walk NEVER runs for
-        // it (`i += BPF_REG_SIZE - 1; continue`). zovia's old per-byte
-        // walk had only the (Spill,Misc) pair arm — a (Spill, None)
-        // byte (cache spilled, cur never written) fell to the
-        // catch-all kind mismatch and MISSed where the kernel HITs
-        // (to_lo 195/266: old fp-224 = imprecise 8-byte spill vs cur
-        // untouched — kernel prunes the 194-arm, zovia kept it alive
-        // → the second-266 ghost subtree; measured [ZK slot27] +
-        // [stack_miss] 2026-07-10). Slots consumed here skip their
-        // per-byte checks below.
+        // it (`i += BPF_REG_SIZE - 1; continue`). Without this rule a
+        // (Spill, None) byte (cache spilled, cur never written) falls
+        // to the catch-all kind mismatch and MISSes where the kernel
+        // HITs. Slots consumed here skip their per-byte checks below.
         let mut scalar_pair_slots: HashSet<i16> = HashSet::new();
         if !force_exact {
             let mut seen_bases: HashSet<i16> = HashSet::new();
@@ -1085,12 +1059,7 @@ fn stack_subsumed_by(
                 // spill — is a hard mismatch ("explored stack has more
                 // populated slots than current stack and these slots
                 // were used"). The bridge's unbound-cur wildcard never
-                // sees the slot. Measured: co-re from_tnl c15 352-seed
-                // (0x2af5badd@709) — old -280 spill (pc446 mask, alloc
-                // 280) vs the 342-entry cur (alloc 272): kernel
-                // ALLOCFAIL i=272 (probe #144), zovia wildcard-HIT its
-                // newest cand → the 346-walk died at 352 and the
-                // high-half 709 corridor went extinct.
+                // sees the slot.
                 if -(base as i32) > new_frame.stack.allocated_stack() as i32 {
                     let all_skippable = (base..base + 8).all(|b| {
                         matches!(
@@ -1230,9 +1199,7 @@ fn stack_subsumed_by(
             //   - old == STACK_INVALID  → "explored, doesn't matter": old
             //     covers any cur, so this byte never blocks the prune.
             //   - old written, cur == STACK_INVALID → slot_types differ → the
-            //     states are NOT equivalent (this is the from_nat_fib fix: the
-            //     TCP arm wrote `STACK_MISC` at fp-272, the non-TCP arm left it
-            //     `STACK_INVALID`).
+            //     states are NOT equivalent.
             //   - both written: kinds must match, except a cur `STACK_ZERO`
             //     satisfies an old `STACK_MISC` (zero is a more-specific misc).
             //     For MISC/ZERO scalar bytes there is no spilled value to
@@ -1249,12 +1216,9 @@ fn stack_subsumed_by(
                     // scalar_reg_for_stack arm and the per-byte kind rule.
                     // Privileged loads (zovia's model, like test_loader as
                     // root) may read uninit stack, so an old MISC byte
-                    // covers ANY cur byte — including a never-written one
-                    // (to_wep pc1033 2nd pass: old Misc @fp-145 vs cur
-                    // INVALID; kernel HITs and kills the leg, zovia's
-                    // (Misc, None) => miss kept it alive → cadence phase
-                    // diverged at add #45). EXACT compares still require
-                    // equal kinds (kernel 19733).
+                    // covers ANY cur byte — including a never-written one.
+                    // EXACT compares still require equal kinds (kernel
+                    // 19733).
                     (Some(Misc), _) if !force_exact => continue,
                     (Some(Spill), Some(Spill)) => { /* fall through to reg checks */ }
                     (Some(Misc), Some(Misc | Zero))
@@ -1268,16 +1232,10 @@ fn stack_subsumed_by(
                     // covers anything; precise old needs range_within+tnum_in
                     // (an unbound cur is only covered by a full-range old).
                     // Under EXACT the fake regs must be regs_exact → mismatch.
-                    // Measured: to_wep pc140 loop-exit collapse (fp-64..-57
-                    // Spill-vs-Misc) — the kernel prunes 89/load there; this
-                    // arm's absence forced 12 exit lineages and starved the
-                    // pc142 checkpoint (99e08549 MISS root).
                     (Some(Misc), Some(Spill)) | (Some(Spill), Some(Misc))
                         if !force_exact =>
                     {
-                        // Kernel preconditions are SLOT-granular ([ZK ss] probe
-                        // 2026-07-05: kernel misses route-B at 140 on this very
-                        // byte because a precondition fails): the spill side
+                        // Kernel preconditions are SLOT-granular: the spill side
                         // must be a 64-BIT SCALAR spill (is_spilled_scalar_reg64:
                         // slot_type[0]==SPILL && scalar), and the misc side's
                         // WHOLE 8-byte slot must be all STACK_MISC or (privileged)
@@ -1298,14 +1256,9 @@ fn stack_subsumed_by(
                         // mirror: base AND base+7 Spill). A sub-8 spill leaves
                         // the kernel's slot_type[0] non-SPILL, so
                         // `scalar_reg_for_stack` returns NULL and the per-byte
-                        // walk TYPEFAILs the (SPILL, MISC) byte. The old
-                        // base-anchor-only check HIT sub-8 spills vs all-misc
-                        // where the kernel misses — measured at
-                        // from_tnl_fib_no_log_v6 c16 pc 2183 (old fp-208 u32
-                        // spill [S,S,S,S,M,M,M,M] vs cur all-misc; [ZK stk]
-                        // TYPEFAIL i=204, probe #105) — the 2314-re-add arm
-                        // whose 607-route ladder the kernel demands
-                        // (0x8170abde8cb5e828).
+                        // walk TYPEFAILs the (SPILL, MISC) byte — a
+                        // base-anchor-only check would HIT sub-8 spills vs
+                        // all-misc where the kernel misses.
                         let scalar_spill64 = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
                             matches!(fr.stack.get_slot_kind(slot_base), Some(Spill))
                                 && matches!(fr.stack.get_slot_kind(slot_base + 7), Some(Spill))
@@ -1374,14 +1327,10 @@ fn stack_subsumed_by(
             // whose remainder is MISC (byte 7 == MISC) gets NO reg
             // comparison: as OLD it covers any cur (the misc remainder reads
             // as an unbound scalar). zovia stores the slot's reg at the BASE
-            // byte and iterates per-byte, so it was comparing the reg on
-            // EVERY spill byte — over-strict vs the kernel's byte-7-only
-            // rule. Restrict the reg comparison to the base byte, gated on
-            // the slot's LAST byte being SPILL in OLD.
-            // Fixes the to_wep c15 pc140 loop-EXIT convergence: the r6=0
-            // (loop-skipped → fp-64 = u32 store → Spill×4+Misc×4) and r6>=1
-            // (loop-ran → u64 store → Spill×8) exit states now merge to 1
-            // like the kernel (was 9 distinct → the ICMP-treadmill source).
+            // byte and iterates per-byte; comparing the reg on EVERY spill
+            // byte would be over-strict vs the kernel's byte-7-only rule.
+            // Restrict the reg comparison to the base byte, gated on the
+            // slot's LAST byte being SPILL in OLD.
             {
                 use crate::analysis::machine::stack_state::StackSlotKind;
                 let slot_base = offset.div_euclid(8) * 8;
@@ -1393,11 +1342,8 @@ fn stack_subsumed_by(
                 // spill ANCHOR was scrubbed by a later partial overwrite.
                 // zovia marks spills BOTTOM-UP (Spill at [0..size), Misc
                 // above), so the kernel's byte-7 ≡ zovia's BASE byte.
-                // Gating on zovia's byte 7 (the 2bd0fa2 misreading) skipped
-                // the whole reg/type/precision compare for every sub-8-byte
-                // spill: from_l3_fib_no_log pc491 — cur fp-216=[0,60]
-                // imprecise HIT a cached PRECISE const-20 u32 spill, where
-                // the kernel SPILLFAILs (measured, [ZK stk] 2026-07-10).
+                // Gating on zovia's byte 7 would skip the whole
+                // reg/type/precision compare for every sub-8-byte spill.
                 let old_anchor_spill = old_frame.stack.get_slot_kind(slot_base)
                     == Some(StackSlotKind::Spill);
                 if offset != slot_base || !old_anchor_spill {
@@ -1583,10 +1529,7 @@ fn tnum_subsumed_by(cur_state: &State, old_state: &State, live_regs: &HashSet<Re
         // `r0 = 0` (const 0, marked precise) then `r0 = map_lookup()`
         // makes r0 a PtrToMapValue that kept tnum{0,0}+precise, while a
         // sibling path's fresh lookup has tnum unknown. Comparing those
-        // meaningless address-tnums wrongly blocked subsumption:
-        // to_wep c15 pc68 (R0 map-ptr, old tnum{0,0} precise vs cur
-        // unknown) — the FIRST prologue over-cache, doubling paths
-        // 1→2→4→8 into the pc124 loop = the ICMP treadmill root.
+        // meaningless address-tnums would wrongly block subsumption.
         // `domain_subsumed_by` already skips pointers here; this makes
         // the tnum check consistent and kernel-faithful.
         if old_state.types.get(r).is_pointer() || cur_state.types.get(r).is_pointer() {

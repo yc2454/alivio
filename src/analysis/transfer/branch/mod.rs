@@ -321,18 +321,13 @@ pub(crate) fn transfer_if(
             // Kernel push_jmp_history(..., linked_regs_pack(...)) at
             // verifier.c:17686 is a real history ENTRY — it counts toward
             // cur->jmp_history_cnt and thus the >40 long-history force
-            // valve. zovia recorded the breadcrumb without counting it;
-            // on loop lineages (one linked-regs entry per compared-scalar
-            // branch) that halves history growth vs the kernel — the
-            // to_wep corridor unwind sat at <=21 where the kernel crossed
-            // 40 and force-added its re-entry loop-head checkpoints.
+            // valve, so count it here too.
             state.jmp_history_cnt = state.jmp_history_cnt.saturating_add(1);
         }
     }
 
     // ZOVIA_DBG_BRANCHVAL=<pc>: dump the branch operand's tracked value at
-    // that pc (co-re 354 chase 2026-07-16 — kernel refutes ==0x14, zovia
-    // can't; whose w8-derived value is looser?).
+    // that pc.
     if let Ok(v) = std::env::var("ZOVIA_DBG_BRANCHVAL")
         && v.parse::<usize>().ok() == Some(state.pc)
     {
@@ -375,15 +370,9 @@ pub(crate) fn transfer_if(
     // Precision sink at conditional branches. Kernel
     // `check_cond_jmp_op` (verifier.c v6.15 L16450-L16462) calls
     // `mark_chain_precision` ONLY when `is_branch_taken` resolves
-    // (pred >= 0, one side dead). Firing on every conditional —
-    // including the previous `back_edge_imm` heuristic for unresolved
-    // back-edge compare-to-imm — eagerly over-marks loop counters and
-    // accumulators precise, blocking subsumption across iterations and
-    // multiplying calico-class visit counts. short_loop1 stays
-    // kernel-REJECT without back_edge_imm: its JSET (`if r7 & 0x702000
-    // goto head`) statically resolves (high bits of r7's tnum are
-    // known after `r7 += 0x1ab064b9` from a u16 load), so the
-    // static_resolves arm catches it.
+    // (pred >= 0, one side dead). Firing on unresolved conditionals
+    // eagerly over-marks loop counters and accumulators precise,
+    // blocking subsumption across iterations.
     if let Some(hidx) = state.history_idx
         && condition_outcome(&state, width, left, op, &right).is_some()
     {
@@ -411,11 +400,8 @@ pub(crate) fn transfer_if(
     // mark_ptr_or_null_reg has demoted OR_NULL → SCALAR_VALUE on the
     // null branch (and promoted to non-null pointer on the other side).
     // Per-side asymmetric emission: the function checks each state's
-    // own LHS/RHS types and skips emission when either isn't a SCALAR.
-    // This is what lets the IG seccomp PC 89 `if r0 != 0` fall-through
-    // contribute its `K0 == K0` conjunct (state_else's r0 was demoted
-    // to scalar(0) by `maybe_demote_or_null_to_scalar`) while skipping
-    // the taken side (state_then's r0 is non-null PtrToMapValue).
+    // own LHS/RHS types and skips emission when either isn't a SCALAR
+    // (e.g. an OR_NULL reg demoted to scalar on the null side only).
     // Pre-narrow LHS bounds: the reg's range BEFORE this branch's
     // reg_set_min_max narrowing (captured from the pre-split `state`,
     // which apply_jmp_constraints did NOT mutate). Threaded to the
@@ -429,10 +415,9 @@ pub(crate) fn transfer_if(
             Operand::Imm(c) => Some(if jmp32 { (*c as u32) as u64 } else { *c as u64 }),
             _ => None,
         };
-        // Pre-compute K==K rewrite metadata per side. Per
-        // feedback_kernel_probe_record_path_cond_2026-05-23.md, the side
-        // whose LHS narrows to const K on entry gets the rewrite
-        // candidate; lhs_materialize_pc is filled in per-side inside
+        // Pre-compute K==K rewrite metadata per side: the side whose LHS
+        // narrows to const K on entry gets the rewrite candidate;
+        // lhs_materialize_pc is filled in per-side inside
         // record_path_cond_for_side.
         let (narrow_then, narrow_else): (
             Option<(u64, u8, bool, Option<usize>)>,
@@ -583,22 +568,16 @@ pub(crate) fn transfer_if(
 }
 
 /// Mirror the kernel's `bcf_refine` reg_masks=0 auto-fill for
-/// `bcf_prove_unreachable` (verifier.c:24525-24534): every R0..R9 that
+/// `bcf_prove_unreachable` (verifier.c:24611-24620): every R0..R9 that
 /// is not NOT_INIT and not a const non-scalar, then the backtrack
 /// suffix base PC over that set. The kernel's `bcf_track` emits
 /// br_conds only for that suffix; without this filter zovia's
 /// path_cond goal carries spurious leading conditions (from its full
 /// abstract-interpretation path) and its canonical hash misses the
-/// kernel's bundle lookup. `None` ⇒ keep all (sound, just not as tight).
-/// Kernel `bcf_refine` auto-fill `reg_masks` (verifier.c:24611-24620): the
-/// live, non-const registers a reject backtracks to find its base. Shared by
-/// `unreachable_base_pc` (base/anchor) AND the prev/cache-id computation so
-/// the two `bcf_suffix_base_pc*` walks use an IDENTICAL mask. A drift here is
-/// fatal: with the `pkt_const_off` exclusion missing on one side (pc274 keeps
-/// R2=pkt → mask 0x2f6→wider), that walk empties at a DIFFERENT insn (pc99 vs
-/// 207) → `parent_loc=None` → `base_cid=None` → the faithful REPLAY is skipped
-/// and the 190-path family MISSes. See the per-clause rationale (PtrToCtx R9
-/// drain, pkt_const_off) inline below.
+/// kernel's bundle lookup. Shared by `unreachable_base_pc` (base/anchor)
+/// AND the prev/cache-id computation so the two `bcf_suffix_base_pc*`
+/// walks use an IDENTICAL mask — a drift empties the walks at different
+/// insns and loses the base.
 fn unreachable_target_regs(
     env: &VerifierEnv,
     state: &State,
@@ -627,11 +606,7 @@ fn unreachable_target_regs(
         // offset — they demote to scalar on `ptr += reg`, or track only a const
         // embedded offset). This is the SAME reliable analog the refine-target
         // selection uses (memory/map.rs); `var_off_contributor` is NOT reliable
-        // (spill/fill doesn't always clear it). One uniform rule replaces the
-        // former per-RegType-variant enumeration and the PtrToPacket /
-        // PtrToPacketEnd env-gated special cases (`ZOVIA_BCF_PKT_CONST_REGMASK`,
-        // `ZOVIA_BCF_EXCLUDE_PKT_END`, both deleted). See
-        // reference_var_off_faithful_analog.md.
+        // (spill/fill doesn't always clear it).
         let var_off_const = state
             .domain
             .as_interval()
@@ -642,19 +617,8 @@ fn unreachable_target_regs(
         }
         targets.push(r);
     }
-    // NOTE 2026-07-02: the former `filter_live_unknown_targets` post-filter
-    // (drop dead fully-unknown scalars) is REMOVED. Kernel ground truth
-    // (box #38, from_nat_fib pc748): the auto-fill keeps ALL scalars —
-    // verifier.c:24610-18 has no liveness/constraint check — and the
-    // kernel's 0x277 mask includes the DEAD unknown R2=[0..255], whose
-    // backtrack (bt_empty=561, base=521) is what children_unsafe-marks the
-    // 584<-521 checkpoint and keeps the sponge-marking treadmill alive.
-    // The filter dropped that R2 (0x4e6, base=584 = the checkpoint itself,
-    // exclusive -> never marked -> the wide-R2 TCP-arm path merges at 584
-    // and the d53 arm discharges are never produced. The cont.20 pc735
-    // mask match that motivated the filter is explainable as a since-
-    // healed state divergence (kernel R2=PktEnd vs zovia unknown scalar),
-    // not a kernel mask rule.
+    // The kernel auto-fill keeps ALL scalars — verifier.c:24610-18 has no
+    // liveness/constraint check — so no dead-unknown post-filter here.
     let _ = hidx;
     targets
 }
@@ -675,26 +639,12 @@ fn unreachable_base_pc(env: &VerifierEnv, state: &State) -> Option<usize> {
     base
 }
 
-/// Kernel-faithful `reg_masks` tightening (cont.20): drop a reject `reg_masks`
-/// target iff it is a fully-unknown `ScalarValue` (tnum carries no constraint)
-/// AND dead at the reject PC (absent from `live_regs`). Such a register holds
-/// no symbolic information and the kernel never seeds it into `reg_masks`;
-/// zovia's existing const-offset / `NotInit` filter misses it (it looks like a
-/// live unknown scalar), so the suffix base walk over-extends.
-///
-/// MEASURED (from_nat_no_log pc735, proto==6 arm): R2 is a fully-unknown dead
-/// scalar there → targets `0x32f`, base 529; the kernel's `reg_masks` is
-/// `0x32b` (base 559, the `78171d` obligation). This filter drops exactly R2:
-/// liveness is applied ONLY to unconstrained scalars, so a constrained-but-
-/// dead reg (R1, kept by the kernel) and live unknowns (R8/R9, kept) are
-/// untouched — reproducing `0x32b` on every arrival. See
-/// project_no_log_subsumption_arc.md cont.20.
-///
-/// Always-on (faithful, no-regress: gated VM run was repr-19 19/19 + cilium-17
-/// 17/17, bundles byte-identical on the default-config gate). ⚠️ zovia's
-/// `live_regs` is per-PC, not per-path, so on a multi-arm `_no_log` program
-/// the same drop applies to every arm; it has a live effect only in the lean
-/// (no-shotgun) config, where it can change which obligations are emitted.
+/// `reg_masks` tightening: drop a reject `reg_masks` target iff it is a
+/// fully-unknown `ScalarValue` (tnum carries no constraint) AND dead at the
+/// reject PC (absent from `live_regs`). Liveness is applied ONLY to
+/// unconstrained scalars, so a constrained-but-dead reg and live unknowns
+/// are untouched. ⚠️ zovia's `live_regs` is per-PC, not per-path, so the
+/// same drop applies to every arm of a multi-arm program.
 fn filter_live_unknown_targets(
     env: &VerifierEnv,
     state: &State,
@@ -730,12 +680,12 @@ fn filter_live_unknown_targets(
 /// Faithful discharge via base→reject replay (mirrors kernel `bcf_track`,
 /// verifier.c:24633). Instead of reconstructing the goal from the live
 /// state's recorded path_conds (which can include branches off the kernel's
-/// actual replay path, and mis-cache pre-window materializations — see
-/// from_wep_fib_dsr_debug 034f37), this re-executes the instruction path
-/// from the cached base state to the reject, with a fresh bcf, so
-/// `state.bcf.path_conds` is rebuilt exactly as the kernel's re-execution
-/// would. Gated by `ZOVIA_BCF_REPLAY=1`. Returns the proven goal or None
-/// (no base cache, path divergence, or cvc5 declined).
+/// actual replay path, and mis-cache pre-window materializations), this
+/// re-executes the instruction path from the cached base state to the
+/// reject, with a fresh bcf, so `state.bcf.path_conds` is rebuilt exactly
+/// as the kernel's re-execution would. Gated by `ZOVIA_BCF_REPLAY=1`.
+/// Returns the proven goals or empty (no base cache, path divergence, or
+/// cvc5 declined).
 fn try_prove_unreachable_via_replay(
     env: &mut VerifierEnv,
     reject_state: &State,
@@ -785,16 +735,10 @@ fn try_prove_unreachable_via_replay(
     //    mirroring the two kernel base shapes around an If:
     //    - post-If reset (pre=false): bcf base PAST the narrowing — the LHS
     //      materializes POST-narrow (kernel bcf_track base = st->parent past
-    //      the narrowing branch). from_nat_fib pc748: the `s>5`@523 reset
-    //      point yields d53387e3 (proto `[u>=6,u<=0xff]`) the plain replay
-    //      misses (it re-executes 523 → proto pre-narrow = 2af13624 shape).
+    //      the narrowing branch).
     //    - pre-If reset (pre=true): kernel checkpoint AT the If insn — the
     //      replay's fresh bcf sees the If itself, so the cond records with
     //      PRE-branch materialization (VAR + current bounds, no const fold).
-    //      from_nat_fib clang-16 pc230: kernel base = the pc142 checkpoint
-    //      (segment [124,141]); its goal 0xcf57c36a carries
-    //      `(V u<= 0x400)` + `(V==0)` where the post-If reset folds to
-    //      `(0x0 == 0x0)` (r1 already narrowed to [0,0]) = cb71b139, a miss.
     //    Emitted ADDITIVELY (caller dedups by cond_hash).
     let narrowbase = crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY_NARROWBASE", true);
     let mut reset_points: Vec<(Option<usize>, bool)> = vec![(None, false)];
@@ -808,11 +752,8 @@ fn try_prove_unreachable_via_replay(
             // only): helper-call fallthroughs are kernel jmp/prune points;
             // when the kernel's counters fire there, the demanded goal's
             // suffix starts at the post-call insn with first-refs
-            // materializing fresh bounds. to_wep_debug 0xc70002dc: kernel
-            // base = the pc1599 checkpoint after `call 6`@1598 (segment
-            // [1519,1598]); zovia's exploration is counter-cold there
-            // (env-wide reset-history skew — its extra corridor adds) so
-            // no cached anchor exists; the reset-rung supplies the shape.
+            // materializing fresh bounds; the reset-rung supplies that
+            // shape even when zovia has no cached anchor there.
             if i > 0 && matches!(path[i - 1].1, Instr::Call { .. }) {
                 reset_points.push((Some(i), true));
             }
@@ -825,11 +766,9 @@ fn try_prove_unreachable_via_replay(
     // replay's own check_helper_call passes and path conds keep recording.
     // zovia's env.error is global and still holds the triggering reject
     // here; without the stash, transfer_call's `env.failed()` kills the
-    // replay at the FIRST helper call on the suffix (hep_dsr pc247: every
-    // rung died at the pc153 trace_printk → no replay goals → the lean
-    // fallback emitted loop-ladder reconstruction goals → kernel e4e3
-    // missed). Each rung starts error-free; a rung's own fresh failure
-    // dies with that rung and must not leak into the next (or the caller).
+    // replay at the FIRST helper call on the suffix. Each rung starts
+    // error-free; a rung's own fresh failure dies with that rung and must
+    // not leak into the next (or the caller).
     let saved_error = env.error.take();
     let mut goals = Vec::new();
     for (reset_after_idx, pre_reset) in reset_points {
@@ -840,13 +779,11 @@ fn try_prove_unreachable_via_replay(
         // = vstate->last_insn_idx` + record_path_cond:20968): the goal's
         // FIRST cond is the base checkpoint's CREATING branch, evaluated on
         // the base state's (post-branch) regs — the re-execution replay
-        // starts AFTER that branch and would otherwise drop it. from_l3
-        // pc491: the If-391 `if w0 == 0` edge contributes
-        // (extract32(V0)==0) plus V0's 64-bit bounds (low32 pinned
-        // post-branch) = the 0x93e806b6 leading conjuncts. Kernel guards
-        // mirrored: branch insns only (JA/CALL/EXIT skipped by the If
-        // match), scalar dst/src only. Rung variants re-reset downstream,
-        // wiping this push — correct (their anchor is the rung insn).
+        // starts AFTER that branch and would otherwise drop it. Kernel
+        // guards mirrored: branch insns only (JA/CALL/EXIT skipped by the
+        // If match), scalar dst/src only. Rung variants re-reset
+        // downstream, wiping this push — correct (their anchor is the
+        // rung insn).
         if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
             let dbg = env.state_by_cache_id(base_cid).and_then(|(pc, c)| {
                 c.history_idx
@@ -964,12 +901,8 @@ fn try_prove_unreachable_via_replay(
 /// (bcf_refine tail resets every reg's bcf_expr; bcf_track re-executes
 /// with lazy bcf_reg_expr materialization) — so pre-base value chains
 /// rematerialize as fresh VARs with replay-time bounds, and the refine
-/// predicate's operand exprs are coherent with the path conds. The
-/// live-state goal path CANNOT reproduce this on loop-wrapping suffixes:
-/// bcc ksnoop c20-O1 (kernel MISS 0x7b883057f2f77b41 @521) — the base is
-/// the loop-guard state (kernel first=581/cached@560); the pc-window
-/// cond filter over-keeps iteration-1 crossings (pcs 571-581 >= 560) and
-/// the live `(v4 + -1)` chain differs from the kernel's fresh-var form.
+/// predicate's operand exprs are coherent with the path conds — a shape
+/// the live-state goal path cannot reproduce on loop-wrapping suffixes.
 /// Plain replay only (no reset-rung ladder — the kernel's refine goal is
 /// the plain base→reject walk); START-PUSH mirrored from
 /// try_prove_unreachable_via_replay.
@@ -981,9 +914,8 @@ pub(crate) fn replay_to_reject(
     // bcf_track replays from the pristine `st->parent` snapshot; zovia's
     // explored-cache entries are MUTATED at caching (mark_all_scalars_
     // imprecise + loop-header widening), so replaying with the cache
-    // entry's regs materializes WIDENED operand bounds (bcc ksnoop: the
-    // guard LHS minted [0,0xffffffff] where the kernel goal has the
-    // pristine [-1,254] pair). Executing from the parent anchor rebuilds
+    // entry's regs materializes WIDENED operand bounds. Executing from
+    // the parent anchor rebuilds
     // the regs (the suffix's own loads/ALUs), while the bcf reset keeps
     // the recorded conds starting at the base — the kernel goal shape.
     anchor_at_parent: bool,
@@ -991,27 +923,20 @@ pub(crate) fn replay_to_reject(
     // materialization): first fill of an expr-less spilled scalar mints
     // the VAR into the SLOT so later fills of the same offset share it
     // (see SymbolicState::replay_share_slot_vars). false preserves the
-    // fix-#17 variants byte-for-byte.
+    // pre-existing variants byte-for-byte.
     share_slot_vars: bool,
     // Reset-at-crossing variant (ADDITIVE, plain-anchor only): reset the
     // bcf at the k-th-FROM-LAST re-arrival at the anchor's pc within the
     // path (k = the value; 1 = last crossing) and re-record the boundary
     // branch — the kernel's base is a checkpoint on the CURRENT lineage
     // whose segment starts at that crossing, a state zovia may never have
-    // cached (adds are cadence-gated). Measured: bcc ksnoop c20-Os
-    // kretprobe @580 (kernel MISS 0xe33c4ae0e8b9f5dd) — the kernel base
-    // is a fresh 504-checkpoint on the arg-NULL lineage two loop
-    // iterations before its reject; zovia's only 504-cache (cid 33) is
-    // from an old lineage, so its plain replay ran root-length (4671B)
-    // where the kernel window is 818B. None = no crossing reset (all
+    // cached (adds are cadence-gated). None = no crossing reset (all
     // existing variants byte-stable).
     reset_at_crossing: Option<usize>,
     // Override the pc whose crossings define the reset cut (default: the
     // anchor's own pc). Lets a DEEP rung's long path be cut at another
     // rung-pc's crossings — the kernel base can be a segment start at a
-    // checkpoint pc EARLIER than any cache of that pc on the lineage
-    // (bcc ksnoop c20-Os e33c: base = iter-0x28's 504-segment; zovia's
-    // only on-lineage 504-cache was created one iteration later).
+    // checkpoint pc EARLIER than any cache of that pc on the lineage.
     crossing_pc: Option<usize>,
 ) -> Option<State> {
     let base_state = env.state_by_cache_id(base_cid).map(|(_, s)| s.clone())?;
@@ -1262,7 +1187,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     if state.bcf.is_none() {
         return false;
     }
-    // FAITHFUL base (Phase 2, 2026-07-01). The kernel's ONE `base` from
+    // FAITHFUL base. The kernel's ONE `base` from
     // backtrack_states gives BOTH the goal anchor (`base->insn_idx`, the
     // replay start) AND the marking bound (parents[] = the chain up to base).
     // `base_pc` = `base->insn_idx` (anchor, for the prove/goal calls). The
@@ -1277,25 +1202,18 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // record_path_cond push at insn=base_pc, verifier.c:21117).
     let (prev_insn_pc, base_cid_dbg) = {
         // Shared target mask — IDENTICAL to unreachable_base_pc via the
-        // common helper. A drift here (e.g. missing the pkt_const_off drop)
-        // empties the cache-id walk at a different insn than the pc walk,
-        // leaving base_cid=None → the faithful REPLAY is skipped and the
-        // pc274 190-path family MISSes.
+        // common helper. A drift here empties the cache-id walk at a
+        // different insn than the pc walk, leaving base_cid=None and
+        // skipping the faithful REPLAY.
         let hidx = env.current_step_idx.or(state.history_idx);
         let targets = unreachable_target_regs(env, state, hidx);
         let landed = hidx.and_then(|hidx| {
             crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(env, hidx, state.parent_cache_id, &targets)
         });
         // Use only the immediate cache the suffix walker landed on (no
-        // chain-skip). A previous attempt walked back through
-        // parent_cache_id to find the first branch-target cache, but
-        // that over-eagerly added upstream conds to trajectories whose
-        // kernel-faithful prev_insn was actually NOT a scalar branch,
-        // changing their hash and breaking the byte-match for existing
-        // kernel-matched entries (e.g. anchor calico_tc_main hash
-        // 0xd13031db2681349e flipped to MISS). Closing this requires
-        // also aligning cache topology (sparse caching), not just
-        // walker logic.
+        // chain-skip through parent_cache_id): the kernel-faithful
+        // prev_insn is the landed cache's own, which need not be a
+        // scalar branch.
         let pp = landed.and_then(|(_base_pc, base_cid)| env.cached_prev_insn_pc(base_cid));
         let cid = landed.map(|(_, cid)| cid);
         (pp, cid)
@@ -1322,29 +1240,18 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
         return true;
     }
-    // LEAN EMISSION — THE DEFAULT (census arc 2026-07-04/05, memory
-    // project_over_emission_census_2026-07-04): emit the replay family
-    // (replay_base all rungs + ancestor replays depth 0-1) and fall through
-    // to the full reconstruction fan-out ONLY for rejects where the replay
-    // family produced nothing (base-less full-path goals — cilium bpf_lxc,
-    // from_tnl pc214 family). Measured basis: 4-object census (338/338
-    // kernel-queried hashes covered by the replay family where a base
-    // exists) + repr-19 16/19 parity + cilium-17 17/17 + E2-scale sweep
-    // LEAN 278/337 vs FAT 244/337 (+34: E2BIG class extinct, build-timeouts
-    // cured; 2 known 1-hash regressions tracked as chase targets alongside
-    // the other 57 first-misses). Control flow, the cvc5 prove of the
-    // natural goal (gates the return value), and mark_path_children_unsafe
-    // are IDENTICAL to the historical fat path; only bundle pushes differ.
-    // The skipped classes' code below is kept: it IS the base-less
-    // fallback path.
-    // DIAGNOSIS-ONLY escape hatch (2026-07-05 E2 regression triage):
-    // ZOVIA_BCF_LEAN=0 re-enables the full fat fan-out so a census can ask
-    // "would ANY anchor/class produce the missed hash". Not a tuning knob.
+    // LEAN EMISSION — THE DEFAULT: emit the replay family (replay_base all
+    // rungs + ancestor replays depth 0-1) and fall through to the full
+    // reconstruction fan-out ONLY for rejects where the replay family
+    // produced nothing (base-less full-path goals). Control flow, the cvc5
+    // prove of the natural goal (gates the return value), and
+    // mark_path_children_unsafe are IDENTICAL to the fat path; only bundle
+    // pushes differ. The skipped classes' code below is kept: it IS the
+    // base-less fallback path.
+    // DIAGNOSIS-ONLY escape hatch: ZOVIA_BCF_LEAN=0 re-enables the full
+    // fat fan-out so a census can ask "would ANY anchor/class produce the
+    // missed hash". Not a tuning knob.
     let lean = std::env::var("ZOVIA_BCF_LEAN").ok().as_deref() != Some("0");
-    // Faithful base→reject replay (ZOVIA_BCF_REPLAY=1), ADDITIVE: push the
-    // replay-derived entry alongside the reconstruction discharges (merge
-    // dedups by cond_hash). Lets us validate replay coverage without
-    // disturbing the existing path.
     // REPLAY = faithful base→reject re-execution (kernel bcf_track mirror).
     // DEFAULT-ON (kill-switch ZOVIA_BCF_REPLAY=0); ADDITIVE alongside the
     // reconstruction discharge (merge dedups by cond_hash). Pairs with
@@ -1383,13 +1290,11 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         // Kernel bcf_refine marks parents[] children_unsafe UNCONDITIONALLY
         // at its tail (verifier.c:24822) — after discharge FOUND, MISS, or
         // any goal/proof-formation failure alike. Returning here without
-        // marking left the reject's ancestor chain prune-safe, so later
-        // arrivals subsumed on it and their own rejects never happened:
-        // fibdsr16's 2838-backjump lineage planted absorbers at 1179/1165
-        // (cids 12995/13003) that extinguished the ICMP-arm descendant —
-        // the kernel-queried 0x003e1542d2fdd1d6 was never emitted. (Note
-        // the replay-family pushes above have already run by this point;
-        // the kernel's parallel is goals built, natural proof unavailable.)
+        // marking would leave the reject's ancestor chain prune-safe, so
+        // later arrivals would subsume on it and their own rejects never
+        // happen. (The replay-family pushes above have already run by this
+        // point; the kernel's parallel is goals built, natural proof
+        // unavailable.)
         crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
         return false;
     };
@@ -1404,7 +1309,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // `entry.cond_hash`: when cvc5 declines the K==K rewrite,
     // try_prove_unreachable returns the un-rewritten FALLBACK goal whose
     // hash differs from the hash-only build → the check never hits →
-    // round livelock (first prototype run: 4096 rounds, 18 entries).
+    // round livelock.
     let natural_cond_hash = if env.bcf_rounds_mode {
         crate::refinement::refine_unreachable::natural_goal_hash(state, base_pc, prev_insn_pc)
             .unwrap_or(entry.cond_hash)
@@ -1427,19 +1332,11 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         // Lean mode: the natural prove above still gates the return value
         // (and thus parent marking) exactly as before, but its entry and all
         // reconstruction twins below stay out of the bundle; the ancestor
-        // walk runs only the shallow replays.
-        // Ancestor replays at depth 0 AND 1: the census found min-depth 0
-        // suffices on fnf/l3/twep/thep, but to_lo_debug_co-re_v6's queried
-        // 0x673434f3469c3018 (pc2222) is replay_anc depth-1-only — the
-        // kernel's base lands two cache-hops below the walker on that
-        // reject. Depth ≤ 1 is the measured envelope so far.
-        // Aliased-VAR (no-rewrite) reconstruction twin at the natural base
-        // (lean v4): the E2 lean sweep's two LOAD regressions are BOTH
-        // no-rewrite shapes the replay never produces — to_lo_fib_no_log_
-        // co-re_v6 pc754 0xf00d1f29 = class no_rw, c17 from_hep_fib_dsr_
-        // no_log pc1216 0xb9e1f14d = class anc_norw d0 (fat-census
-        // attributed). Same lesson as 2026-05-27 (kernel queries via the
-        // aliased form on some programs; calico-19 once 19->9 without it).
+        // walk runs only the shallow replays (depth <= 1 — the kernel's
+        // base can land up to two cache-hops below the walker).
+        // Aliased-VAR (no-rewrite) reconstruction twin at the natural
+        // base: the kernel queries via the aliased form on some programs,
+        // a shape the replay never produces.
         if let Some(ok_no_rw) = crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(state, base_pc, prev_insn_pc) {
             let entry_no_rw = RefineEntry::new(
                 ok_no_rw.goal_root, ok_no_rw.sym.exprs, ok_no_rw.proof_bytes,
@@ -1488,14 +1385,11 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
             }
             cur = Some(parent_cid);
         }
-        // FALLBACK (lean v3, cilium/from_tnl lesson): when the replay family
-        // produced NOTHING for this reject — no cached base (base_cid=None,
-        // the base-less full-path goal shape: cilium bpf_lxc, from_tnl
-        // pc214) or every replay diverged — the reconstruction classes are
-        // the ONLY emitters for it, so fall through to the full fat path
-        // for THIS reject instead of returning early. Cilium fat bundles
-        // (774KB bpf_lxc) are entirely this shape; lean-v2 emitted 0 bytes
-        // there and the VM load failed EACCES with 0 queries.
+        // FALLBACK: when the replay family produced NOTHING for this
+        // reject — no cached base (base_cid=None, the base-less full-path
+        // goal shape) or every replay diverged — the reconstruction
+        // classes are the ONLY emitters for it, so fall through to the
+        // full fat path for THIS reject instead of returning early.
         if replay_goals_produced > 0 {
             if let Ok(flush_path) = std::env::var("ZOVIA_BCF_EAGER_FLUSH") {
                 let tmp = format!("{}.tmp", flush_path);
@@ -1522,25 +1416,20 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         }
     }
     env.bcf_proofs.push(entry);
-    // DEBUG (parent-hop validation, 2026-06-19): eagerly flush the
-    // accumulated bcf_proofs to a path after every discharge push, so the
-    // on-disk bundle reflects current proofs even when the run is killed by
-    // a wall-clock timeout before analyze() reaches its write_bundle. Lets
-    // us capture the accepted_entrypoint 21f06b60 entry despite the no_log
-    // non-termination. Writes atomically (tmp+rename). Default-OFF.
+    // ZOVIA_BCF_EAGER_FLUSH (default-OFF): eagerly flush the accumulated
+    // bcf_proofs to a path after every discharge push, so the on-disk
+    // bundle reflects current proofs even when the run is killed by a
+    // wall-clock timeout before analyze() reaches its write_bundle.
+    // Writes atomically (tmp+rename).
     if let Ok(flush_path) = std::env::var("ZOVIA_BCF_EAGER_FLUSH") {
         let tmp = format!("{}.tmp", flush_path);
         if crate::refinement::bundle::write_bundle(std::path::Path::new(&tmp), &env.bcf_proofs).is_ok() {
             let _ = std::fs::rename(&tmp, &flush_path);
         }
     }
-    // Also push the un-rewritten (aliased-VAR) form so previously-
-    // matched hashes that happened to be the aliased shape stay in the
-    // bundle alongside the kernel-shape rewrites. Without this, the
-    // fresh-VAR rewrite is destructive for programs whose discharge
-    // hash the kernel queries via the aliased form (calico-19
-    // regressed 19/19 → 9/19 when only the rewritten form was pushed,
-    // 2026-05-27).
+    // Also push the un-rewritten (aliased-VAR) form: the kernel queries
+    // some discharge hashes via the aliased shape, so both forms stay in
+    // the bundle alongside the kernel-shape rewrites.
     if let Some(ok_no_rw) = crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(state, base_pc, prev_insn_pc) {
         let entry_no_rw = RefineEntry::new(
             ok_no_rw.goal_root,
@@ -1561,11 +1450,10 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         }
     }
 
-    // EXPERIMENT both-folds (ZOVIA_BCF_BOTH_FOLDS=1, all-faithful mirror
-    // 2026-06-11): when FAITHFUL_FOLD is on, ALSO emit the legacy-fold form of
-    // the same obligation. The kernel folds per-site based on ITS state; one
-    // of the two forms hash-matches (from_nat 5edc48ab = legacy n=5 form;
-    // faithful emits the n=4 fold). ADDITIVE + deduped.
+    // Both-folds (ZOVIA_BCF_BOTH_FOLDS=1): when FAITHFUL_FOLD is on, ALSO
+    // emit the legacy-fold form of the same obligation — the kernel folds
+    // per-site based on ITS state, so either form may hash-match.
+    // ADDITIVE + deduped.
     if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_BOTH_FOLDS", true) {
         if let Some(ok_lf) = crate::refinement::refine_unreachable::try_prove_unreachable_fold_legacy(
             state, base_pc, prev_insn_pc,
@@ -1587,7 +1475,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         }
     }
 
-    // EXPERIMENT trajectory-suffix twins of the NATURAL discharge (additive,
+    // Trajectory-suffix twins of the NATURAL discharge (additive,
     // gated by BOTH_FOLDS like the legacy twin): the natural base may not be
     // a path-cond pc, so the anchor-union below never re-anchors exactly
     // there — emit the traj-window forms at (base_pc, prev_insn_pc) too.
@@ -1637,30 +1525,20 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // {rewrite, no-rewrite}; ADDITIVE + deduped by cond_hash, so it never
     // perturbs already-matched hashes — only adds.
     //
-    // VM-load ground truth (2026-05-29): this flips the to_hep_*_co-re_v6
-    // family (calico_tc_main reject) from -EACCES to full-load. NOTE: an
-    // offline (regset × PC-window) probe earlier FAILED to reproduce the
-    // needed deep hash and wrongly concluded it unreachable — the LIVE
-    // discharge (real base_pc + K==K/fresh-VAR rewrite firing in ancestor
-    // context) produces what the kernel needs. The VM load is the oracle.
-    // See feedback_byte_level_decode_first §2026-05-29 cont.5/cont.6.
-    //
     // Soundness: only cvc5-PROVEN sub-conjunctions are emitted; the kernel
     // re-checks every proof on load, so a full-load = all proofs valid
     // (FA=0 floor preserved). Risk is bundle bloat, bounded by dedup +
     // the small per-anchor goal set.
     //
     // THOROUGH-MODE ONLY: this is a coverage-widening enhancement that
-    // belongs to thorough multi-pass analysis (where the calico wins
-    // live). Thorough mode spawns single-pass children (each
-    // --no-bcf-thorough) that do the actual analysis + discharge, marked
-    // with ZOVIA_BCF_THOROUGH_PASS=1 by the parent (main.rs). We key on
-    // that marker — NOT config.bcf_thorough, which is false in the
-    // children where the work happens. A standalone `--no-bcf-thorough`
-    // run (the cilium 60s-budget recipe) lacks the marker, so reg-filter
-    // stays off there and its bundle is byte-identical to HEAD — the
-    // tight time budget isn't spent on extra cvc5 solves. Kill-switch:
-    // ZOVIA_BCF_REGFILTER=0.
+    // belongs to thorough multi-pass analysis. Thorough mode spawns
+    // single-pass children (each --no-bcf-thorough) that do the actual
+    // analysis + discharge, marked with ZOVIA_BCF_THOROUGH_PASS=1 by the
+    // parent (main.rs). We key on that marker — NOT config.bcf_thorough,
+    // which is false in the children where the work happens. A standalone
+    // `--no-bcf-thorough` run lacks the marker, so reg-filter stays off
+    // there and the tight time budget isn't spent on extra cvc5 solves.
+    // Kill-switch: ZOVIA_BCF_REGFILTER=0.
     if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_THOROUGH_PASS", true)
         && std::env::var("ZOVIA_BCF_REGFILTER").ok().as_deref() != Some("0")
     {
@@ -1700,26 +1578,14 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // zovia's walker reaches in one segment of jmp_history — zovia's
     // jmp_history is segmented per-cache-event, so a single walker
     // call can only collect predicates within one segment; the kernel's
-    // walker traverses one long history. Example: calico
-    // from_nat_debug_co-re reject_pc=1732, kernel demands 8-conj hash
-    // 0x673434f3469c3018 that requires base anchored pre-1562; zovia
-    // walker stops at base_pc=1680. Anchoring at each chain ancestor
+    // walker traverses one long history. Anchoring at each chain ancestor
     // produces the kernel-needed deeper hashes.
     //
     // ADDITIVE only: keeps the immediate-cache discharge (so existing
-    // matched hashes preserve their byte-for-byte alignment) and dedup
-    // by cond_hash before pushing. Validated 2026-05-27 against the
-    // calico-19 + cilium-17 + collected-9 VM-load gate.
-    //
-    // Note the existing comment above (`A previous attempt walked back
-    // through parent_cache_id…`) — that attempt REPLACED the immediate
-    // discharge with a chain-walked one and broke matched hashes. This
-    // is the additive variant that closes the same case without that
-    // regression class.
+    // matched hashes preserve their byte-for-byte alignment) and dedups
+    // by cond_hash before pushing.
     {
-        // Lean-bundle investigation (no_log 2026-05-30): the depth-64 ancestor
-        // shotgun is the dominant over-emission source (~1183 proto shapes vs
-        // the kernel's 22). Knob to measure/cap it. Default 64 (unchanged).
+        // ZOVIA_BCF_ANCESTOR_DEPTH caps the ancestor walk. Default 64.
         let max_ancestor_depth: usize = std::env::var("ZOVIA_BCF_ANCESTOR_DEPTH")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -1808,9 +1674,8 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // ancestors on the backtrack suffix of this path-unreachable
     // refinement are no longer prune-safe — a later arrival they'd
     // subsume may reach the same reject via a different path needing
-    // its own path-unreachable bundle entry (cilium bpf_wireguard
-    // pc246 route-B). Scoped to the same suffix base as the
-    // path_conds (kernel parents[0..vstate_cnt-1]).
+    // its own path-unreachable bundle entry. Scoped to the same suffix
+    // base as the path_conds (kernel parents[0..vstate_cnt-1]).
     crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
     // Retry-round mirror: first uncovered reject ends the round (fat /
     // base-less fallback path; same semantics as the lean return above).

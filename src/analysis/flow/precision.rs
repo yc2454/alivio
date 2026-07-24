@@ -77,14 +77,8 @@ pub fn mark_chain_precision_backward_seeded(
         return;
     }
     // Frame-indexed frontier — kernel `bt->reg_masks[bt->frame]`
-    // (verifier.c:4423-4431 bt_set_frame_reg). The old flat HashSet<Reg>
-    // let a CALLEE's write sever the CALLER's demand: Os ksnoop
-    // output_trace's first insn `r6 = r2` (combined pc 554) rewrote the
-    // caller-frame R6 demand into the callee's R2 arg lineage, so the
-    // 504-loop checkpoint (cid=33 twin, kernel cand first=507) never got
-    // r6 marked precise → imprecise-skip HIT at the r6=16 revisit where
-    // the kernel REGFAILs r6 [24,24]p1 vs [16,16] → e33c's value-null
-    // window died (probe163 [ZK eq504]/REGFAIL + [pwalk] pc=554, s17).
+    // (verifier.c:4423-4431 bt_set_frame_reg). A flat reg set would let a
+    // CALLEE's write sever the CALLER's demand across a static call.
     // Seed at the sink state's call depth (kernel bt_init(bt, st->curframe)).
     let start_depth = env.history.get(history_idx).map(|s| s.depth).unwrap_or(0);
     let mut frontier: HashSet<(usize, Reg)> = HashSet::new();
@@ -96,13 +90,11 @@ pub fn mark_chain_precision_backward_seeded(
     // frontier, precision moves INTO the slot; when it later crosses the
     // matching SPILL (`*(R10+off) = src`) precision moves back to the
     // spilled source reg AND the slot is marked precise on the lineage
-    // cached states. A register-only walk severed this chain at every fill
-    // (Load/LoadMap just dropped dst), so spilled scalars the kernel keeps
-    // precise (e.g. from_nat_no_log stack[-208], marked at 5118 kernel
-    // sites) stayed imprecise → loose stacksafe → proto arms merged.
+    // cached states. A register-only walk would sever this chain at every
+    // fill (Load/LoadMap just dropping dst), leaving spilled scalars the
+    // kernel keeps precise imprecise → loose stacksafe.
     // Tracks byte offsets (the same key `stack_subsumed_by`/`get_slot`
-    // use). Validated calico-19 19/19 + cilium-17 17/17 (2026-05-30).
-    // Frame-indexed like the reg frontier (kernel bt->stack_masks[frame]).
+    // use). Frame-indexed like the reg frontier (kernel bt->stack_masks[frame]).
     let mut stack_frontier: HashSet<(usize, i16)> = HashSet::new();
     stack_frontier.extend(sink_slots.iter().map(|&o| (start_depth, o)));
 
@@ -228,8 +220,8 @@ pub fn mark_chain_precision_backward_seeded(
             stack_frontier.retain(|&(fd, _)| fd != step_depth);
             stack_frontier.extend(sf_d.iter().map(|&o| (step_depth, o)));
             // ZOVIA_DBG_PWALK=LO:HI — per-step frontier dump for walks in
-            // a pc window (1482/-312 chase: diff vs kernel log_level-2
-            // mark_precise / backtrack_insn semantics).
+            // a pc window (diff vs kernel log_level-2 mark_precise /
+            // backtrack_insn semantics).
             if let Ok(v) = std::env::var("ZOVIA_DBG_PWALK")
                 && let Some((lo, hi)) = v.split_once(':')
                 && let (Ok(lo), Ok(hi)) = (lo.parse::<usize>(), hi.parse::<usize>())
@@ -269,57 +261,16 @@ pub fn mark_chain_precision_backward_seeded(
             // would abandon the spilled-slot lineage before reaching the
             // matching SPILL that converts the slot back to its source reg,
             // so the spilled scalar (and its source) never get marked
-            // precise. That left two paths spilling distinct constants to
-            // the same slot wrongly subsuming (search_pruning
-            // should_be_verified_nop_operation / tracking_for_u32_spill_fill).
+            // precise. That would let two paths spilling distinct constants
+            // to the same slot wrongly subsume.
             //
-            // BCF GATE: this stack-frontier continuation is base-verifier
-            // soundness (FA=0 floor for the selftest, `bcf_enabled=false`).
-            // In userspace-BCF mode the KERNEL re-checks the emitted bundle,
-            // so the extra precision is not needed for soundness — and the
-            // additional trajectory distinctness it produces explodes the
-            // no_log bundle past the kernel size limit (calico
-            // to_l3_no_log_co-re_v6: 19.4MB→40MB → E2BIG → load regression,
-            // caught by the calico-19 VM-load gate). So in BCF mode keep the
-            // pre-fix reg-frontier-only termination (the gate-clean baseline
-            // behavior). Base mode keeps the both-empty fix.
-            //
-            // 2026-06-02 faithfulness RE-STUDY (un-gate experiment, isolated
-            // binary): un-gating CONVERGES (no timeout) and is byte-neutral
-            // on _debug objects, but still bloats the no_log bundle
-            // to_l3_no_log_co-re_v6 19.3MB → 35.6MB (1.85×), and that bundle
-            // FAILS the VM load (0/1, was 1/1 baseline). The faithful
-            // precision is sound; the bloat is zovia's discharge OVER-emission
-            // (depth-64 ancestor shotgun + reg-filter) amplifying each extra
-            // trajectory into many obligations. So this stays gated until the
-            // no_log lean-bundle / emission-tightening work lands — then it
-            // can be un-gated. NOT a hard engine limit like the loop gate.
-            // Kernel-faithful termination: continue the backward walk while
-            // EITHER the register frontier OR the stack-slot frontier is
-            // non-empty (kernel `__mark_chain_precision` loops while
-            // `bt_reg_mask || bt_stack_mask`). A register FILL moves the last
-            // frontier reg into the stack frontier; stopping there would
-            // abandon the spilled-slot lineage before its matching SPILL.
-            //
-            // BCF-mode GATE (restored 2026-06-09, bisect-proven): in BCF mode
-            // default to the reg-frontier-only termination. History: the gate
-            // was removed 2026-06-03 (3c48b4e) on a re-validation claiming
-            // calico-19 "0 load regressions" — but that run loaded STALE
-            // cached bundles (bench --cache-bundles default). A clean bisect
-            // (fresh serial builds, whole-object test_loader, same VM/day)
-            // shows to_l3_no_log_co-re_v6 whole-object load: PASS at 92ebca4,
-            // FAIL at 3c48b4e — the faithful stack-frontier precision changes
-            // BCF-mode exploration enough that a kernel-queried hash is no
-            // longer emitted (the 2026-06-02 isolated study saw the same 0/1).
-            // Soundness is unaffected either way: base mode (selftest FA=0
-            // floor) always uses the faithful rule, and BCF bundles are
-            // fail-closed (kernel re-checks every entry by canonical hash).
-            // This is an EMISSION-PROFILE choice, not a soundness gate.
-            // 2026-06-12 UPDATE: the all-faithful single-pass mirror
-            // (repr-19 19/19 gate) runs WITH the faithful rule — it is
-            // now the BCF default too, so base and BCF share one rule.
+            // The faithful rule is the default in BOTH base and BCF modes.
             // Kill-switch ZOVIA_BCF_PRECISION_FAITHFUL=0 restores the
-            // legacy reg-frontier-only emission profile for A/B studies.
+            // legacy reg-frontier-only emission profile for A/B studies
+            // (soundness unaffected: base mode always uses the faithful
+            // rule, and BCF bundles are fail-closed — the kernel re-checks
+            // every entry by canonical hash; this is an EMISSION-PROFILE
+            // choice, not a soundness gate).
             let bcf_faithful_precision = crate::common::config::bcf_mirror_knob(
                 "ZOVIA_BCF_PRECISION_FAITHFUL",
                 env.bcf_enabled,
@@ -365,7 +316,7 @@ pub fn mark_chain_precision_backward_seeded(
             {
                 for &(_, r) in &frontier {
                     // ZOVIA_DBG_PREG=<RegDebug>:<cid> — who marks this reg
-                    // precise on this cached state (1482/-312 chase level N+1).
+                    // precise on this cached state.
                     if let Ok(v) = std::env::var("ZOVIA_DBG_PREG")
                         && let Some((rs, cs)) = v.split_once(':')
                         && format!("{:?}", r) == rs
@@ -382,18 +333,13 @@ pub fn mark_chain_precision_backward_seeded(
                     // ancestor state. The kernel's id-class propagation is
                     // (a) mark_precise_scalar_ids on CUR at walk start and
                     // (b) hist->linked_regs during the walk (zovia mirrors it
-                    // in bt_sync_linked_regs). mark_reg_precise's fan-out
-                    // here marked ancestors' unrelated-in-that-state id
-                    // classes: cid2104@1507's R5 became precise via R8's
-                    // id-class ([prec-fanout], 2af5badd 1482 link) → R5
-                    // seeded the next propagate → R3 at 1506 → slot -312
-                    // precise → the 1482 seed MISS where the kernel HITs
-                    // (probes #137-139: kernel old prec_regs=0x104 {R2,R8},
-                    // zovia +R5; kernel never sets spi38 in bt).
+                    // in bt_sync_linked_regs). A mark_reg_precise fan-out
+                    // here would mark ancestors' unrelated-in-that-state id
+                    // classes over-precise.
                     s.precise_regs.insert(r);
                 }
                 marked = s.precise_regs.iter().copied().collect();
-                // Stack-slot precision (gated, cont.19i): mark the
+                // Stack-slot precision: mark the
                 // spilled-scalar slots still in the stack frontier
                 // precise on this lineage cached state, so a later
                 // sibling's `stack_subsumed_by` (subsumption.rs: precise
@@ -408,10 +354,9 @@ pub fn mark_chain_precision_backward_seeded(
                 for &(_, slot_off) in &stack_frontier {
                     if let Some(slot) = cur_frame.stack.get_slot_mut(slot_off) {
                         slot.precise = true;
-                        // ZOVIA_DBG_PSLOT=<off> (generalizes the old
-                        // ZOVIA_DBG_P248): one line per lineage slot-precise
-                        // mark at that offset — sink info identifies the
-                        // demanding walk (1482/-312 chase 2026-07-16).
+                        // ZOVIA_DBG_PSLOT=<off>: one line per lineage
+                        // slot-precise mark at that offset — sink info
+                        // identifies the demanding walk.
                         if let Ok(v) = std::env::var("ZOVIA_DBG_PSLOT")
                             && v.parse::<i16>().ok() == Some(slot_off)
                         {
@@ -466,15 +411,12 @@ pub fn propagate_precision(env: &mut VerifierEnv, cur: &State, old: &State) {
     // matched cache's precise REGS *and* its precise spilled-scalar
     // STACK SLOTS (`is_spilled_reg && spilled_ptr.precise` →
     // bt_set_frame_slot) before one mark_chain_precision_batch walk.
-    // zovia propagated only regs — so a cache holding a PRECISE
-    // spilled state-tag (from_l3 fp-248: precise consts 5/6/1029/8197/
-    // 9221, kernel EQFAILs ×24k on it) never pushed that mark onto the
-    // arriving path's lineage; the arriving lineage's own checkpoints
-    // (e.g. the 1089-caches) stayed imprecise and wildcard-merged
-    // arrivals with DIFFERENT tags where the kernel keeps them apart
-    // (measured [ZK fse]/hit_dim 2026-07-10). Current-frame slots only
-    // (zovia's stack frontier is current-frame-scoped; calico is
-    // frame0-dominant — extend with per-frame frontiers if a
+    // Propagating only regs would let a cache holding a PRECISE spilled
+    // state-tag never push that mark onto the arriving path's lineage;
+    // the arriving lineage's own checkpoints would stay imprecise and
+    // wildcard-merge arrivals with DIFFERENT tags where the kernel keeps
+    // them apart. Current-frame slots only (zovia's stack frontier is
+    // current-frame-scoped — extend with per-frame frontiers if a
     // multi-frame case surfaces).
     let slots: Vec<i16> = old
         .frames
@@ -651,8 +593,7 @@ pub fn bcf_suffix_base_pc(
     'outer: loop {
         // Live-then-retired resolution (kernel st->parent includes
         // free_list states; an evicted base must still resolve or the
-        // suffix base degrades to None → base-less goal — the
-        // from_l3_fib_no_log pc222 0x94363000 miss).
+        // suffix base degrades to None → base-less goal).
         let parent_state = current_parent_id.and_then(|id| env.state_by_cache_id(id));
         let parent_pc = parent_state.map(|(pc, _)| pc);
         let (parent_history_stop, parent_grandparent_id) = (
@@ -718,14 +659,9 @@ pub fn bcf_suffix_base_pc(
                     // bt-empty while walking state `st`, `base = st->parent`.
                     // `parent_loc` (the cache at `current_parent_id`) IS
                     // `st->parent`; its cache pc == `base->insn_idx`, the
-                    // `bcf_track` replay start (:24424). VALIDATED vs box #15
-                    // (pc274 190/207, pc748 521). This is the FAITHFUL base —
-                    // the bcidx/parent-hop/range-hop/faithful-base heuristics
-                    // (an extra `.parent` over-hop) are deleted.
-                    // Kernel `backtrack_states` L24578-L24584 on
-                    // bt_empty: `base = st->parent`. zovia's analog
-                    // is the cached (live or retired) state at the
-                    // current parent_cache_id. Return its PC.
+                    // `bcf_track` replay start (:24424). zovia's analog is
+                    // the cached (live or retired) state at the current
+                    // parent_cache_id. Return its PC.
                     return parent_pc;
                 }
             } else if debug {
@@ -758,11 +694,8 @@ pub fn bcf_suffix_base_pc(
     //
     // Without this drain, every BCF discharge that walks back to pc 0
     // returns `None`, which `mark_path_children_unsafe` interprets as
-    // "no suffix bound — mark the whole lineage `children_unsafe`."
-    // That over-marking is what blows calico_tc_main from 1,801 insns
-    // (base verifier, no --bcf) to 1M timeout (with --bcf):
-    // 750 discharges × ~73 ancestors marked each, 96% of subsumption
-    // attempts short-circuit on poisoned cache entries.
+    // "no suffix bound — mark the whole lineage `children_unsafe`",
+    // poisoning subsumption across the whole cache.
     if last_pc_walked == Some(0) {
         for arg in [Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5] {
             bt.clear_reg(start_depth, arg);
@@ -897,8 +830,8 @@ fn update_frontier(
     }
 }
 
-/// Stack spill/fill precision transfer for the backward precision walk
-/// (cont.19i, gated). Mirrors the kernel `backtrack_insn` STACK_SPILL
+/// Stack spill/fill precision transfer for the backward precision walk.
+/// Mirrors the kernel `backtrack_insn` STACK_SPILL
 /// handling that `backtrack_insn_step` already implements for the
 /// discharge-base walker — but applied to the precision frontier so
 /// `SpilledReg.precise` gets set on the lineage.
@@ -1067,13 +1000,11 @@ fn spi_of(off: i16) -> Option<u32> {
 }
 
 /// Whether a stack-relative LDX/STX continues the precision chain into
-/// its slot is no longer guessed structurally (the old `fill_slot` /
-/// `store_slot` `off % 8` heuristic over-followed every slot-aligned
-/// access). It is now read from the breadcrumb's `stack_access` flag —
+/// its slot is read from the breadcrumb's `stack_access` flag —
 /// zovia's analog of the kernel's `hist->flags & INSN_F_STACK_ACCESS`,
 /// set forward only for a genuine register spill/fill (see
 /// [`crate::analysis::machine::history::Breadcrumb::stack_access`] and
-/// the forward marking in the memory transfer). The slot index is still
+/// the forward marking in the memory transfer). The slot index is
 /// recovered from the insn's own fixed offset via [`spi_of`], exactly as
 /// the kernel recovers it from `insn_stack_access_spi(hist->flags)`.
 

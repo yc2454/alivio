@@ -52,8 +52,6 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
             } else {
                 state.get_tnum(*r)
             };
-            // 3ab6@937 probe: every R3-dst mov in trace range — true pc,
-            // src tnum, post-mov tnum (does the const bail-out fire?).
             if crate::analysis::trace_pc_in_range(state.pc)
                 && dst == crate::analysis::machine::reg::Reg::R3
             {
@@ -70,10 +68,6 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
             // the next reference materializes `bcf_val(K)` (the fold).
             // Gate on TNUM-const exactly (not zovia's wider interval
             // const — that over-folds where the kernel keeps the chain).
-            // Measured (dsr twin 0x3ab6225aafb79e84 @937): `r3 = r9` with
-            // r9 tnum-const 5 between the two `if w3 != 0x5` crossings —
-            // the kernel's crossing-2 obligation carries the folded
-            // `0x5 == 0x5`; zovia's copied chain kept it unfolded.
             if state.get_tnum(dst).is_const() {
                 if let Some(d) = dst.bcf_idx()
                     && let Some(bcf) = state.bcf.as_mut()
@@ -243,13 +237,8 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
     //   u32_max = min(dst pre-op u32_max, src u32_max)  (scalar32_min_max_and, verifier.c:15747)
     //   umax    = min(dst pre-op umax,    src umax)     (scalar_min_max_and,   verifier.c:15778)
     // Captured before `forget` wipes dst (and before the op mutates it,
-    // covering the self-AND dst==src case). Deriving the result from the
-    // mask alone (the old apply_and_imm [0,mask]) dropped the pre-op
-    // bound across `w2 &= 0xffff`: the to_wep_no_log c16/17 ext-header
-    // offset arrived at the pc-450 AND with u=[0x68,0x4028] and left with
-    // u=[0,0xffff], so the cached pc-326 rung materialized `u<= 0xffff`
-    // where the kernel's base has `u<= 0x4028` — the only two dims of the
-    // 0x3f523a3e3a0c2d7e @655 first-miss quartet.
+    // covering the self-AND dst==src case); deriving the result from the
+    // mask alone would drop the pre-op bound.
     let (_, pre_u32_max) = state.domain.get_u32_bounds(dst);
     let (_, pre_umax) = state.domain.get_u64_bounds(dst);
     // Kernel src_reg: for BPF_K a known reg from the SIGN-EXTENDED imm
@@ -351,19 +340,11 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
         state.domain.assume_eq_imm(dst, c as i64);
     }
 
-    // REMOVED (cilium chase 2026-06-12): a Zone-era (af47007) zovia-only
-    // refinement bounded `x in [-1,0] & mask` to s32 [min(mask,0),
-    // max(mask,0)] — the (ret s>>31) & -errno idiom. The kernel's
-    // scalar32_min_max_and has NO such rule: with either operand
-    // possibly negative it leaves s32 at [S32_MIN, S32_MAX]; only the
-    // tnum + unsigned bounds refine. The tnum {0, mask} canNOT separate
-    // -134 from -136 (0xffffff78 ⊆ mask 0xffffff7a), so the kernel
-    // FORKS on a later `w5 != -136` where zovia's [-134, 0] interval
-    // statically resolved it — pruning the exact dead path whose
-    // path-unreachable obligation the kernel queries (bpf_host 2/21
-    // pc 246, hash 286d21e4fe094520). Keeping only kernel-derivable
-    // bounds here is the mirror requirement; any program that NEEDS the
-    // precise rule would fail in the real kernel anyway.
+    // Deliberately NO extra refinement for the `x in [-1,0] & mask`
+    // ((ret s>>31) & -errno) idiom: the kernel's scalar32_min_max_and has
+    // no such rule — with either operand possibly negative it leaves s32
+    // at [S32_MIN, S32_MAX]; only tnum + unsigned bounds refine. Keeping
+    // only kernel-derivable bounds is the mirror requirement.
 
     // --- BCF symbolic mirror. Mirrors kernel `bcf_alu` (verifier.c:15166)
     //     with the kernel-shape width discipline. ---
@@ -376,15 +357,12 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
     //     op_u32 &= fit_u32(dst_reg);                       // AND POST-op dst
     //
     // i.e. `op_u32 = fit_u32(dst_pre) && fit_u32(src) && fit_u32(dst_post)`
-    // (and likewise op_s32). Checking only `dst_post` (the previous
-    // behaviour) wrongly narrowed a W64 op whose operand was a full u64
-    // — `r9 &= 2` after `r9 = *(u64*)(r6+0x168)` — into the 32-bit
-    // EXTRACT+ZEXT form; the kernel keeps it plain 64-bit because the
-    // pre-op `r9` does not fit u32 (calico_tc_skb_accepted_entrypoint
-    // pc723 K5 — the 6-byte / canonical-hash gap vs kernel
-    // 0x1c0a558f34021ac3). For an immediate source the kernel builds a
-    // const `src_reg` from the width-extended imm; a constant always
-    // fits s32/u32 except a W64 imm outside the u32 / s32 range.
+    // (and likewise op_s32). Checking only `dst_post` would wrongly narrow
+    // a W64 op whose operand is a full u64 into the 32-bit EXTRACT+ZEXT
+    // form; the kernel keeps it plain 64-bit when the pre-op dst does not
+    // fit u32. For an immediate source the kernel builds a const `src_reg`
+    // from the width-extended imm; a constant always fits s32/u32 except
+    // a W64 imm outside the u32 / s32 range.
     let dst_bounds_post = bcf_reg_bounds(state, dst);
     let (src_fits_u32, src_fits_s32) = match (src, &src_bounds_pre) {
         (_, Some(sb)) => (sb.fit_u32(), sb.fit_s32()),
@@ -414,7 +392,7 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
         // `reg_expr` call emits a pure `bcf_val(K)` literal, matching
         // kernel's fresh-replay `bcf_reg_expr` const path. Without this,
         // a later branch on `dst` emits `ZEXT((VAR AND K))` chains for
-        // what the kernel emits as bare `K` (IG seccomp PC 142).
+        // what the kernel emits as bare `K`.
         if let Some(bcf) = state.bcf.as_mut()
             && bcf.clear_reg_if_const(d, &dst_bounds_post)
         {

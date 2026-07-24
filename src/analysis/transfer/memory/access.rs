@@ -61,15 +61,10 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
     // offset (`ptr += Reg(scalar)`), never the bare pointer base. The
     // kernel's `mark_chain_precision` is scalar-only: a pointer
     // dereference marks the scalar offset contributor precise (for the
-    // bounds check), not the pointer register itself. The previous
-    // `unwrap_or(base)` fallback marked the pointer base precise on every
-    // fixed-offset load, which then propagated (via `propagate_precision`)
-    // to scalar incarnations of that register downstream — the no_log
-    // R5-accumulator over-precision: `Load base=R5` at the calico_tc_main
-    // reject (R5 = MapValue ptr) seeded R5∈precise, which spread to the
-    // scalar-accumulator R5 at the fan-out pc and blocked subsumption.
-    // `check_store` (below) already marks contributor-only; this makes the
-    // load path consistent and kernel-faithful.
+    // bounds check), not the pointer register itself — marking the base
+    // would propagate (via `propagate_precision`) to scalar incarnations
+    // of that register downstream and block subsumption. `check_store`
+    // (below) marks contributor-only the same way.
     if let Some(hidx) = state.history_idx
         && base != Reg::R10
         && let Some(&sink) = state.var_off_contributor.get(&base)
@@ -326,7 +321,7 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
             // enforce when the pointee BTF id resolves to a known
             // size (>0).
             // Effective offset into the pointee struct = reg.offset
-            // (carried from prior `R = R + K` ALU per session 14a) plus the
+            // (carried from prior `R = R + K` ALU) plus the
             // load insn's immediate `off`. Programs use the
             // `R += sizeof_field; R = *(T *)(R - sizeof_field)` idiom
             // (jit_probe_mem.c) to test JIT probe-mem path; the deref is at
@@ -411,25 +406,14 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
             }
             // On cvc5-can't-prove, drop THIS path instead of halting
             // whole-section analysis. Rationale: zovia's interval-only
-            // kernel-mode can produce spurious unreachable paths (e.g.
-            // pc 366/369 same-predicate correlation lost in interval
-            // domain). Halting blocks DFS from exploring other branches
-            // that DO reach the target reject via shorter trajectories
-            // — needed for cilium wireguard 2/21 kernel hash
-            // 0xf4f14bfbef845f45 (BCF#1 Q45, kernel discharges via the
-            // "v9 > 60, v7 != 6" branch combo zovia misses today).
-            // End-to-end safety preserved: a genuinely reachable unsafe
-            // load is still rejected by kernel at load.
-            //
-            // 2026-05-27: was env-gated `ZOVIA_DROP_UNSAFE_PATH=1`
-            // (2a29baa). Made default after demonstrating no calico-19
-            // or collected-9 regressions; helper-narrow drop (5fddd90)
-            // and loop4/SCC backprop fixes have closed the bundle-size
-            // blowup risk that originally forced opt-in. The kernel
-            // (and selftest's `--kernel-mode` checker) remains the
-            // ultimate soundness gate; zovia's local FA count on a
-            // truly-reachable site is acceptable because the kernel
-            // catches it via canonical-hash MISS.
+            // kernel-mode can produce spurious unreachable paths
+            // (same-predicate correlation lost in the interval domain),
+            // and halting blocks DFS from exploring other branches that
+            // DO reach the target reject via shorter trajectories.
+            // End-to-end safety preserved: the kernel (and selftest's
+            // `--kernel-mode` checker) remains the ultimate soundness
+            // gate — a genuinely reachable unsafe load is still rejected
+            // at load via canonical-hash MISS.
             log::warn!(
                 target: "app",
                 "[bcf] dropping unprovable unsafe-load path at pc {} (base {:?}+{}, Type: {:?}) — DFS continues",

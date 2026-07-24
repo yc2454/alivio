@@ -39,16 +39,11 @@ pub(crate) fn transfer_load(
     state.kernel_tnum_imprecise.remove(&dst);
     // Kernel: every non-fill load lands in `mark_reg_unknown`, which
     // zeroes `reg->id` — a freshly loaded value never inherits the old
-    // register's scalar-equivalence class. zovia kept the stale id, so
-    // a later branch refinement on dst fanned out (`sync_linked_regs`
-    // mirror in branch/refinement.rs) into slots/regs holding UNRELATED
-    // older values — measured on from_tnl_fib_no_log_v6 c16: the id
-    // allocated at the pc-639 4-byte spill stayed on R1 across the
-    // 640..654 map loads, the pc-656 `==6` refinement wrote const 6
-    // into fp-344/fp-352, and the pc-1026..1033 compare ladder folded
-    // where the kernel forks (the fd0bf575781bb399 route). The
-    // stack-fill path below re-installs the SLOT's saved id (kernel
-    // copy_register_state on fill), so clearing first is kernel order.
+    // register's scalar-equivalence class (otherwise a later branch
+    // refinement via the `sync_linked_regs` mirror would fan out into
+    // slots/regs holding unrelated older values). The stack-fill path
+    // below re-installs the SLOT's saved id (kernel copy_register_state
+    // on fill), so clearing first is kernel order.
     state.clear_scalar_id(dst);
     // BCF: a load is a full register write; clear any prior `bcf_expr`
     // so future uses lazy-materialize against the post-load bounds
@@ -90,9 +85,7 @@ pub(crate) fn transfer_load(
         // zovia's `SpilledReg.source_reg.is_some()` is that exact
         // predicate (symmetric with the spill side above), so a read of
         // plain stack data (no spilled reg in the slot) is *not* tagged
-        // and the backtrack stops there — the kernel's behaviour, vs the
-        // old `off % 8` guess that followed every slot-aligned load and
-        // blew up the path-unreachable suffix.
+        // and the backtrack stops there.
         let slot_is_spilled_reg = state
             .stack_at(frame_level)
             .get_slot(slot_off)
@@ -103,15 +96,8 @@ pub(crate) fn transfer_load(
             // scalar READ zero-extends — coerce_reg_to_size does
             // `var_off = tnum_cast(var_off, size)` (upper bits known 0).
             // The generic-load tail below mirrors it for non-stack
-            // loads; this fill early-return skipped it, so e.g. a u8
-            // read of a STACK_MISC byte kept tnum UNKNOWN where the
-            // kernel has (0;0xff). Measured: clang-17 to_hep_debug
-            // pc2115 `w3 = *(u8*)(r10-0x37)` — the pc-2124 narrow
-            // re-spill cached the unbound tnum and the pc-2133 arrival
-            // MISSed its narrow-spill candidate on the fp-264
-            // precise-tnum dim where the kernel regsafe-HITs (first
-            // add-stream divergence at add #11016; the 0x30d4c783
-            // trio's poisoned-base root).
+            // loads; apply it on the fill early-return too so e.g. a u8
+            // read of a STACK_MISC byte gets tnum (0;0xff).
             if access_size < 8 && matches!(state.types.get(dst), RegType::ScalarValue) {
                 let m = (1u64 << (access_size as u32 * 8)) - 1;
                 let t = state.get_tnum(dst);
@@ -125,15 +111,9 @@ pub(crate) fn transfer_load(
             }
             // Kernel-faithful: spill/fill saves and restores the full
             // bpf_reg_state. zovia's slot doesn't carry ptr_const_off or
-            // var_off_contributor, so previously these stayed STALE
-            // across spill/fill cycles. Surfaced on ksnoop pc=521 where
-            // R4 was filled fresh from a const-offset map_value but
-            // zovia still saw ptr_const_off=8 + var_contrib=Some(R6)
-            // from a prior R4 lifetime, breaking BCF refine (wrong
-            // threshold + walker picking up R4 unnecessarily). Clear
-            // these for `dst` on fill to match kernel's "fresh value"
-            // semantics. Proper fix would preserve them through slot
-            // metadata.
+            // var_off_contributor, so clear them for `dst` on fill to
+            // match the kernel's "fresh value" semantics; a proper fix
+            // would preserve them through slot metadata.
             state.ptr_const_off.remove(&dst);
             state.var_off_contributor.remove(&dst);
             if let Some(idx) = env.current_step_idx
@@ -192,19 +172,10 @@ pub(crate) fn transfer_load(
     // Kernel check_mem_access tail (verifier.c:8291-8296): every
     // sub-8-byte scalar READ zero-extends — "b/h/w load zero-extends,
     // mark upper bits as known 0" via coerce_reg_to_size →
-    // reg->var_off = tnum_cast(var_off, size). A blanket
-    // Tnum::unknown() here left the upper bits unknown, so a later
-    // W32 branch refinement (__reg32_bound_offset analog, low-32
-    // scoped) could never recover them: to_lo_fib_no_log_co-re_v6
-    // r5 = u8 load @709 → `w5 != 6` fall-through @710 gave zovia
-    // tnum {6, ffffffff00000000} where the kernel has const 6 —
-    // the cached 762-state then MISSed on the tnum dim where the
-    // kernel HITs (probe #145 [ZK sv2] ip6680), diverging the add
-    // schedule at add #452 and extinguishing the 636-based goal
-    // lineage (0xf00d1f29 pc754). Guard on SCALAR dst like the kernel
-    // condition does — 32-bit ctx loads of rewritten pointer fields
-    // (skb->data etc.) leave a 64-bit pointer in dst and must not get
-    // a 32-bit-masked tnum.
+    // reg->var_off = tnum_cast(var_off, size). Guard on SCALAR dst like
+    // the kernel condition does — 32-bit ctx loads of rewritten pointer
+    // fields (skb->data etc.) leave a 64-bit pointer in dst and must
+    // not get a 32-bit-masked tnum.
     if matches!(state.types.get(dst), RegType::ScalarValue) {
         state.set_tnum(dst, Tnum::unknown_bits(access_size as u32 * 8));
     } else {
@@ -289,14 +260,11 @@ pub(crate) fn transfer_store(
     // Kernel `__check_reg_arg` SRC_OP hook (verifier.c ~4091): during
     // bcf_track, EVERY read of a non-const register materializes its
     // VAR + bound block ("Bind an expr for non-constants when it's
-    // first used"). The store-source read was zovia's missing case:
-    // stack spills materialize via `spill_at`'s reg_expr, but stores to
-    // map/ctx/pkt memory never touched the src's bcf expr — so a u8
-    // load stored to a map value contributed no `u<= 0xff` bound var
-    // to the replay goal (to_wep_debug pc1783 0xc70002dc = zovia's
-    // stream + two such leading bounds; to_l3_debug_v6 same family).
-    // reg_expr is first-ref-cached (kernel `reg->bcf_expr >= 0` out),
-    // so a later spill/cond reference of the same reg dedups.
+    // first used") — including the store-source read here, so e.g. a u8
+    // load stored to a map value contributes its `u<= 0xff` bound var
+    // to the replay goal. reg_expr is first-ref-cached (kernel
+    // `reg->bcf_expr >= 0` out), so a later spill/cond reference of the
+    // same reg dedups.
     if env.replay_mode
         && let Operand::Reg(r) = src
         && matches!(state.types.get(*r), RegType::ScalarValue)
@@ -461,11 +429,7 @@ pub(crate) fn transfer_store(
                     // `mark_chain_precision(value_regno)` backward walk —
                     // "backtrack the register to make sure it's a known
                     // zero". spill_at's local precise_regs mark alone
-                    // never reaches CACHED ancestors: to_wep c15 pc1026
-                    // zero-store left r1 imprecise in the pc1023 cache,
-                    // so the taken-leg (r1=1) wrongly subsumed against
-                    // it where the kernel's precise const-0 rejects it
-                    // (the add-#45 cadence seam).
+                    // never reaches CACHED ancestors, so run the walk.
                     let is_aligned = full_offset % 8 == 0;
                     let is_scalar = matches!(
                         state.types.get(*r),

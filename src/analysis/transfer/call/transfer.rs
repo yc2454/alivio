@@ -29,11 +29,8 @@ use crate::analysis::transfer::alu::helpers::bcf_reg_bounds;
 /// reject and the `check_helper_mem_access` size/pointer rejects — the
 /// kernel runs `bcf_prove_unreachable`; a matching `kind=UNREACHABLE`
 /// bundle entry then discharges the dead path (`bcf_take_discharge` →
-/// `return 0`). zovia already mirrors the generic-load hook
-/// (verifier.c:8259 → `memory::access`) but not this helper-arg one, so
-/// a path the kernel proves unreachable via the bundle was a hard
-/// reject here (e.g. `calico_tc_skb_accepted_entrypoint` pc723:
-/// `bpf_csum_diff` R1 scalar). Reactive and solver-gated:
+/// `return 0`). Companion to the generic-load hook
+/// (verifier.c:8259 → `memory::access`). Reactive and solver-gated:
 /// `try_emit_path_unreachable_entry` only drops the path on a checkable
 /// cvc5 unsat proof of the accumulated `path_cond`, so a genuinely
 /// unsafe program is still rejected. Scoped to the arg-validation
@@ -176,11 +173,7 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
         // SCALAR_VALUE (the reg is readable/spillable, just no longer a
         // pointer — a later deref still rejects as "invalid mem access
         // 'scalar'"); only unprivileged loads `__mark_reg_not_init` →
-        // NOT_INIT. The BCF corpus loads privileged, so using NOT_INIT
-        // unconditionally produced spurious `Rn !read_ok` on benign
-        // post-tail-call spills/reads of an invalidated former-pkt reg
-        // (calico_tc_main: R6 pkt-ptr → tail_call → spill → false reject,
-        // ~800 insns before the real kernel reject).
+        // NOT_INIT.
         let pkt_invalid_priv = env.ctx.is_privileged();
         let pkt_invalid_ty = || {
             if pkt_invalid_priv {
@@ -238,12 +231,6 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
     // bpf_sk_release: not allowed in flow_dissector / sockops / tracing
     // / sock-cgroup / lwt-* prog types (kernel's per-prog-type
     // func_proto returns NULL for BPF_FUNC_sk_release in these).
-    // Closes the sockmap_mutate FA on
-    // `test_flow_dissector_update` exposed once we widened
-    // `bpf_map_update_elem` R3 for SOCKMAP/SOCKHASH — without the
-    // widening, the test was rejected at the update site; with it,
-    // execution reaches sk_release, which the kernel separately
-    // forbids in flow_dissector.
     if helper == constants::BPF_SK_RELEASE
         && matches!(
             env.ctx.prog_kind,
@@ -308,8 +295,6 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
         //     via `extract_value_kptr_fields(pointee_btf_id)`).
         // Kernel `process_kf_arg_ptr_to_kptr` (verifier.c v6.15 ~L13266)
         // accepts both shapes uniformly via `reg_btf_record(reg)`.
-        // Closes the local_kptr_stash + map_kptr `__kptr` xchg-into-alloc'd
-        // -object idioms.
         use crate::parsing::elf::{KptrField, KptrFieldKind};
         let r1 = state.types.get(Reg::R1);
         let resolved: Option<(KptrFieldKind, u32)> = match r1 {
@@ -420,10 +405,7 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
         // the kernel demands a strict struct-name match between R2's
         // pointee BTF and the kptr field's pointee BTF — different
         // BTFs (vmlinux / module / prog) are normalized via the type
-        // name. Without this, `bpf_obj_new(struct node_data2)` followed
-        // by `bpf_kptr_xchg(&mapval->node /* expects node_data */, ...)`
-        // is accepted as the FA on local_kptr_stash_fail::stash_rb_nodes
-        // showed. Skip the check when R2 is null (no pointee) or its
+        // name. Skip the check when R2 is null (no pointee) or its
         // pointee BTF id is unknown (lite-scope producers).
         if !r2_is_null {
             let kptr_name = env.ctx.btf.struct_name(pointee_btf_id);
@@ -452,12 +434,8 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
             // from `const volatile T_btf_ids[idx]`: libbpf relocates
             // those entries to concrete btf_ids at load time, but we
             // read the pre-relocation `.rodata` zero and resolve to
-            // "unknown". Closes test_bpf_ma::test_batch_percpu_alloc_free
-            // and test_percpu_free_through_map_free without weakening
-            // the strict mismatch check for cases where both sides
-            // resolve concretely (still rejects e.g.
-            // local_kptr_stash_fail::stash_rb_nodes' node_data2 vs
-            // expected node_data).
+            // "unknown". The strict mismatch check still applies when
+            // both sides resolve concretely.
             if let (Some(a), Some(b)) = (kptr_name, r2_name)
                 && a != b
                 && b != "unknown"
@@ -474,9 +452,7 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
         // model: when RCU is held, aliases survive as
         // `PTR_TO_BTF_ID | MEM_RCU` (writable / accepted by per-cpu-
         // ptr); otherwise they must be `mark_reg_unknown`-style
-        // invalidated. Closes percpu_alloc_array::test_array_map_10
-        // (bpf_rcu_read_lock around the body) while keeping
-        // percpu_alloc_fail::test_array_map_3 (no RCU) FA-safe.
+        // invalidated.
         if let Some(id) = r2_ref {
             state.release_ref(id);
             if state.in_rcu_read_section() {
@@ -572,10 +548,6 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
     //     helper-proto allowlist in `raw_tp_prog_func_proto`, not from
     //     `may_update_sockmap`, but kernel surfaces the same "cannot
     //     update sockmap in this context" message.
-    //
-    // Closes test_sockmap_invalid_update::bpf_sockmap +
-    // verifier_sockmap_mutate::test_sockops_update; preserves PASS for
-    // test_sockops_delete + the existing raw_tp_delete reject.
     if matches!(
         helper,
         constants::BPF_MAP_UPDATE_ELEM | constants::BPF_MAP_DELETE_ELEM
@@ -610,7 +582,7 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
 
     // bpf_ktime_get_coarse_ns: not in the helper whitelist for tracing
     // program types (kprobe, tracepoint, perf_event, raw_tracepoint*).
-    // Mirrors kernel's per-prog-type helper allowlist (D1).
+    // Mirrors kernel's per-prog-type helper allowlist.
     if helper == constants::BPF_KTIME_GET_COARSE_NS
         && matches!(
             env.ctx.prog_kind,
@@ -708,12 +680,11 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
     // Normal helper handling
     // ========================================================================
 
-    // BCF symbolic R0 clear (β+ Step 0, moved here from apply_return_bounds
-    // 2026-05-12): the previous in-callback site ran AFTER update_call_types
-    // and overrode anchor bindings that update_call_types had just set for
-    // direct-PtrToMapValue returns (array-map lookup with const key,
-    // bpf_get_local_storage). Clearing here, before the type update, lets
-    // those anchor calls be the final word.
+    // BCF symbolic R0 clear (β+ Step 0). MUST run before
+    // update_call_types: clearing later would override the anchor bindings
+    // update_call_types sets for direct-PtrToMapValue returns (array-map
+    // lookup with const key, bpf_get_local_storage). Clearing here, before
+    // the type update, lets those anchor calls be the final word.
     if let Some(bcf) = state.bcf.as_mut() {
         bcf.clear_reg(0);
     }
@@ -742,10 +713,8 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
 
     // 3. Update DBM - forget caller-saved registers and reset Tnums.
     // UNCONDITIONAL (see update_call_types): the kernel scratches r0-r5
-    // at every helper call regardless of bpf_fastcall — the old
-    // by-helper-id skip was unfaithful (probe #114: seed-mask 0x32f vs
-    // kernel 0x32b at fibdsr pc1342) and value preservation belongs to
-    // the spill/fill pattern, which is verified as-written.
+    // at every helper call regardless of bpf_fastcall; value preservation
+    // belongs to the spill/fill pattern, which is verified as-written.
     {
         for r in [Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5] {
             state.domain.forget(r);
@@ -755,12 +724,8 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
         // Kernel check_helper_call resets ALL caller-saved regs r0-r5 via
         // mark_reg_not_init (verifier.c:12370-12373) — the whole
         // bpf_reg_state, including ptr_reg->off; R0's return type is then
-        // re-marked with off=0 (mark_reg_known_zero). Zovia's side-maps
-        // survived the call: bcc ksnoop c20-O2 pc 583 (kernel MISS
-        // 0x0e93b012fb58f713) — `r0 += 0xf08` at .text 160 left
-        // ptr_const_off[r0]=0xf08 across the map_lookup at .text 547, so
-        // `r4 = r0` (.text 578) copied it and the refine threshold came
-        // out 0x30a0 (16296 − 0xf08) where the kernel emits 0x3fa8.
+        // re-marked with off=0 (mark_reg_known_zero). The ptr_const_off /
+        // var_off_contributor side-maps must be cleared to match.
         for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5] {
             state.ptr_const_off.remove(&r);
             state.var_off_contributor.remove(&r);
@@ -829,14 +794,7 @@ fn initialize_uninit_mem_args(
                                 // slot holding a spilled reg does
                                 // __mark_reg_unknown(spilled_ptr) + scrub_spilled_slot
                                 // on EVERY byte of that slot — not just the written
-                                // bytes. Without this, a partial helper write (e.g.
-                                // skb_load_bytes len=2 at fp-224 over an aligned u32
-                                // spill) left zovia's unwritten spill bytes as SPILL
-                                // where the kernel scrubs them to MISC: the cached
-                                // 2244-state's spi27 [M,M,S,S,M×4] vs kernel [M×8] —
-                                // the measured seed-verdict flip of the
-                                // 0x2af5baddb8c6c1fb family (from_tnl c15, probe
-                                // #132 vs [slots3], 2026-07-16).
+                                // bytes.
                                 if let Ok(off16) = i16::try_from(off) {
                                     stack.scrub_spilled_slots_for_write(off16, max_bytes);
                                 }
@@ -855,18 +813,11 @@ fn initialize_uninit_mem_args(
                                         // STACK_MISC + __mark_reg_unknown
                                         // (verifier.c:8606 / :12094 byte-wise
                                         // BPF_WRITE). Without this, a constant
-                                        // a caller spilled into the buffer
-                                        // before the call (e.g. cilium
-                                        // wireguard pc154 `*(u32*)(r10-0x60)=0`
-                                        // then `skb_load_bytes` writes it)
-                                        // survives in zovia's slot model, so
-                                        // zovia "proves" a downstream branch
-                                        // (pc171 `if w2==0`) the kernel can't
-                                        // — pruning the path BCF explores and
-                                        // bundles (cilium D2; also a latent
-                                        // soundness hole: reading a helper's
+                                        // the caller spilled into the buffer
+                                        // before the call would survive in the
+                                        // slot model — reading a helper's
                                         // uninitialized output as a known
-                                        // value).
+                                        // value is a soundness hole.
                                         stack.invalidate_slot(slot);
                                     }
                                 }
@@ -910,16 +861,7 @@ pub(crate) fn apply_return_bounds_for_cb_helper(state: &mut State, helper: u32) 
 /// `lo`). Downstream `bound_reg32` emits `JLE(v, hi)` instead of
 /// `JSLE(v, hi)` and skips the matching `JSGE(v, lo)` — silently
 /// changing the canonical hash so the kernel's BCF refine_cond
-/// lookup misses (calico-style byte-match arc).
-///
-/// Concrete victims:
-/// - `bpf_probe_read_str` (trace_sys_enter_execve PC 30, kernel
-///   hash `0x928a475f03d2eaca`).
-/// - `bpf_get_stack` (test_get_stack_rawtp PC 61, kernel hash
-///   `0x9e258c0726905994`).
-/// - `bpf_csum_diff`, `bpf_get_branch_snapshot` (similar shape;
-///   no concrete reject site yet, but the same divergence
-///   would silently break their bundles).
+/// lookup misses.
 fn apply_mixed_sign_ret_bounds(state: &mut State, lo: i64, hi: i64) {
     debug_assert!(lo < 0 && hi >= 0,
         "apply_mixed_sign_ret_bounds requires lo<0<=hi; got lo={lo} hi={hi}");
@@ -989,9 +931,7 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             // pre-cache R0's bcf_expr as the kernel-shape unbounded
             // VAR_64; otherwise materialize_reg takes the fit_s32 path
             // (32-bit var + spurious bcf_bound_reg32 preds), diverging
-            // from the kernel CONJ (cilium wireguard D3/D4: pc167
-            // `if w0 s<0` on a skb_load_bytes return — kernel emits a
-            // single `JSGE(EXTRACT32(v64),0)`, zovia emitted 3 clauses).
+            // from the kernel CONJ.
             // The abstract-domain bound below is kept (zovia-only
             // verification precision); only the BCF goal is made faithful.
             | constants::BPF_MAP_UPDATE_ELEM
@@ -999,14 +939,12 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             | constants::BPF_SKB_STORE_BYTES
             // BPF_SKB_LOAD_BYTES intentionally NOT pre-cached: pre-caching
             // R0 as an unbounded VAR_64 here freezes its BCF expr before
-            // the subsequent `w0 == 0` branch narrows R0's low-32 to 0, so
-            // the kernel's post-narrow bounds (umax=0xffffffff_00000000,
-            // smax=0x7fffffff_00000000) never reach the goal (from_nat
-            // 0x23a1dc). Letting it materialize lazily is faithful: at the
-            // narrowed point R0 = [low-32=0, high unknown] fails
-            // fit_u32/fit_s32 (high 32 unknown) so it still takes the
-            // VAR_64 path — now WITH bound_reg64 preds. (Re-validate the
-            // cilium wireguard pc167 `if w0 s<0` 1-vs-3-clause case.)
+            // a subsequent `w0 == 0` branch narrows R0's low-32 to 0, so
+            // the kernel's post-narrow bounds would never reach the goal.
+            // Letting it materialize lazily is faithful: at the narrowed
+            // point R0 = [low-32=0, high unknown] fails fit_u32/fit_s32
+            // (high 32 unknown) so it still takes the VAR_64 path — now
+            // WITH bound_reg64 preds.
             | constants::BPF_XDP_ADJUST_HEAD
             | constants::BPF_L3_CSUM_REPLACE
             | constants::BPF_L4_CSUM_REPLACE
@@ -1019,11 +957,7 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             // do_refine_retval_range does NOT — its R0 stays a fully
             // unbounded scalar, so bcf_reg_expr at the first read emits a
             // bare VAR_64 with NO bound preds. Without the pre-cache,
-            // zovia's first read (e.g. `r0 <<= 32` right after the call,
-            // from_wep_fib_debug_co-re_v6 accepted_entrypoint insn 8268)
-            // emitted an orphaned [-4095, u32max] bound pair — the ONLY
-            // byte diff between zovia's goal d6073e8ede738404 and the
-            // kernel-queried 0xb809d31ada13b036 (b809 chase 2026-07-12).
+            // zovia's first read would emit an orphaned bound pair.
             | constants::BPF_CSUM_DIFF
     );
     if zovia_narrower_than_kernel {
@@ -1037,7 +971,7 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             }
         }
     }
-    // NOTE: the BCF R0 bcf_expr clear was moved to the top of
+    // NOTE: the BCF R0 bcf_expr clear lives at the top of
     // `transfer_call` (before `update_call_types`) so it doesn't override
     // anchors set during type assignment. See the matching comment there.
     match helper {
@@ -1062,13 +996,7 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
         | constants::BPF_SOCK_MAP_UPDATE => {
             // Kernel `do_refine_retval_range` (verifier.c:11733) does NOT
             // narrow R0 for these helpers — only for get_stack family +
-            // get_smp_processor_id. Zovia previously narrowed to
-            // [-MAX_ERRNO, 0]; removing the narrowing on 2026-05-24
-            // exploded bpf_wireguard 18MB→579MB (over kernel E2BIG).
-            // Retrying after 2026-05-25 loop4/SCC backprop fixes
-            // (6f35e7b/7677f2d/ff72cf3) to see if cascade compression
-            // makes this affordable now — gates the c14 bpf_lxc 2/21
-            // byte-match (kernel hash 0x286d21e4fe094520).
+            // get_smp_processor_id.
             // (NO-OP: bounds left at helper-return default — fully
             // unbounded scalar, matching kernel.)
         }
@@ -1152,11 +1080,6 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
     // We mirror at the helper-return narrow point: each call's fresh R0 gets
     // its own SEXT(VAR_32) + 2 bound preds, even if R0 is overwritten before
     // a symbolic use.
-    //
-    // Concrete repro this fixes: test_get_stack_rawtp has 4 bpf_get_stack
-    // calls before the refine site at PC 61. Kernel's CONJ at PC 61 has 4
-    // VAR_32s (one per call) × 2 bound preds = 8 preds. Pre-fix zovia
-    // emitted just 1 (last call's R0). Now matches.
     let kernel_narrows_r0_via_do_refine = matches!(
         helper,
         constants::BPF_GET_STACK
@@ -1247,11 +1170,9 @@ pub(crate) fn transfer_call_rel(
         // Static call-graph gate: kernel rejects a global subprog whose
         // body transitively reaches a MIGHT_SLEEP helper/kfunc when the
         // call site is inside an irq-, preempt-, or RCU-disabled region
-        // (verifier.c v6.15 ~L10543). Path-independent (closes
-        // irq_sleepable_*_subprog*, preempt_global_sleepable_subprog_
-        // indirect, and rcu_read_lock_sleepable_*_global_subprog FAs
-        // that escape the per-call MIGHT_SLEEP gate when the
-        // dataflow-pruned path dead-codes the inner sleepable call).
+        // (verifier.c v6.15 ~L10543). Path-independent: catches sleepable
+        // calls that escape the per-call MIGHT_SLEEP gate when the
+        // dataflow-pruned path dead-codes the inner sleepable call.
         let explicit_rcu_baseline =
             if state.implicit_rcu_at_entry { 1 } else { 0 };
         let rcu_active = state.rcu_read_depth > explicit_rcu_baseline;

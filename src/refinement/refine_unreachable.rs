@@ -43,19 +43,16 @@ pub fn try_prove_unreachable(
     try_prove_unreachable_inner(state, base_pc, prev_insn_pc, true, None, false, None, None, false)
 }
 
-// EXPERIMENT (all-faithful single-pass mirror, 2026-06-11): per-call fold-mode
-// override so a caller can emit BOTH fold forms of the same obligation. The
-// kernel folds a reg iff ITS state knows the const at the site; whichever form
-// it computes, one of our two variants hash-matches (from_nat 5edc48ab: the
-// kernel keeps the trivially-true `(v0!=6)` conjunct that FAITHFUL_FOLD elides).
+// Per-call fold-mode override so a caller can emit BOTH fold forms of the
+// same obligation. The kernel folds a reg iff ITS state knows the const at
+// the site; whichever form it computes, one of our two variants hash-matches.
 thread_local! {
     static FOLD_OVERRIDE: std::cell::Cell<Option<bool>> =
         const { std::cell::Cell::new(None) };
-    // EXPERIMENT (all-faithful mirror 2026-06-12): when set, the window
-    // filter is the TRAJECTORY-suffix rule (filter_path_conds_traj_suffix)
-    // instead of the numeric pc rule — mirrors the kernel's linear
-    // base→reject replay when zovia's path crossed higher-pc code before
-    // the base (from_l3_co-re_v6 fe23e625). ADDITIVE via union modes.
+    // When set, the window filter is the TRAJECTORY-suffix rule
+    // (filter_path_conds_traj_suffix) instead of the numeric pc rule —
+    // mirrors the kernel's linear base→reject replay when zovia's path
+    // crossed higher-pc code before the base. ADDITIVE via union modes.
     static TRAJ_SUFFIX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     // Retry-round covered check (ZOVIA_BCF_ROUNDS): build the natural goal
     // and return WITHOUT proving. The kernel's FOUND path
@@ -148,20 +145,19 @@ pub fn try_prove_unreachable_fold_legacy(
 /// the base_pc suffix filter, also restricts the path_conds to a small
 /// register set computed via VAR→reg provenance def-use closure (mirrors
 /// the kernel's `bcf_reg_expr` data-dependency selection). This produces
-/// the kernel's multi-register reject conjunctions (e.g. hash B
-/// `0x4eeecf4b98c670ca`) that the PC-suffix filter alone cannot isolate.
+/// the kernel's multi-register reject conjunctions that the PC-suffix
+/// filter alone cannot isolate.
 ///
 /// Returns `None` when no provenance seed exists (no reg-backed branch in
 /// the suffix) — the caller falls back to the unfiltered discharges.
 /// Emitted ADDITIVELY by the caller and deduped by `cond_hash`; never
 /// replaces the unfiltered discharge (which keeps already-matched hashes
-/// byte-stable). See [[feedback_byte_level_decode_first]] §2026-05-29.
+/// byte-stable).
 /// `hops` controls the provenance def-use closure depth (1 → seed + its
 /// direct value-deps; 2 → one more layer). PC-independent: selects over
 /// the FULL trajectory, since the kernel's bcf_reg_expr materializes a
 /// register's recorded condition regardless of how far back it was
-/// emitted. Live default-on (see caller in branch/mod.rs); VM ground
-/// truth shows it flips the to_hep_*_co-re_v6 family to full-load.
+/// emitted. Live default-on (see caller in branch/mod.rs).
 pub fn try_prove_unreachable_reg_filtered(
     state: &State,
     hops: usize,
@@ -193,11 +189,9 @@ pub fn try_prove_unreachable_no_rewrite(
     try_prove_unreachable_inner(state, base_pc, prev_insn_pc, false, None, false, None, None, false)
 }
 
-/// Kernel `bcf_track` replay-fold, extracted verbatim from the inline
-/// `do_fresh_var_rewrite && faithful_fold` block (2026-07-18) so the
-/// refine_map goal path can run the SAME pass. Pure extraction — the
-/// unreachable-class call site behavior is unchanged. See the block
-/// comment below for the 3-way bcf_reg_expr mirror semantics.
+/// Kernel `bcf_track` replay-fold, shared by the unreachable-class and
+/// refine_map goal paths. See the block comment below for the 3-way
+/// bcf_reg_expr mirror semantics.
 pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>) {
     // Faithful bcf_reg_expr replay-fold. Single forward pass over
     // path_conds (already in suffix order). For each scalar↔const
@@ -215,15 +209,10 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
     // through. Original LHS VARs of rewritten/folded branches are
     // collected as orphaned and their now-dangling bound preds dropped.
     use std::collections::{HashMap, HashSet};
-    // Re-mint fidelity (no_log 618296, 2026-05-30): key the per-reg
-    // materialization cache by (reg, materialize_pc) instead of reg
-    // alone, so a reg REDEFINED between two suffix references (e.g. R0
-    // null-checked at pc581, clobbered by the helper call at pc584, then
-    // null-checked again at pc585) gets a FRESH VAR per incarnation —
-    // mirroring the kernel resetting reg->bcf_expr=-1 on every def
-    // (verifier.c bcf_reg_expr). Without this zovia shares one VAR across
-    // both null-checks (kernel emits VAR3{JNE0}+VAR4{JEQ0}, two vars).
-    // Gated additive: only changes behaviour when materialize_pc differs.
+    // Key the per-reg materialization cache by (reg, materialize_pc)
+    // instead of reg alone, so a reg REDEFINED between two suffix
+    // references gets a FRESH VAR per incarnation — mirroring the kernel
+    // resetting reg->bcf_expr=-1 on every def (verifier.c bcf_reg_expr).
     // Value = (natural-form expr slot, nat_is_64): a 64-bit-materialized
     // reg caches its 64-bit VAR and EXTRACTs for a jmp32 compare; a
     // 32-bit-fit reg caches its branch-width var (legacy).
@@ -281,55 +270,34 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
         for v in sym.collect_vars(arg0) {
             newly_orphaned.insert(v);
         }
-        // PRE-NARROW materialization (no_log 618296): the kernel's
-        // bcf_reg_expr materializes a reg at its FIRST reference using
-        // the range as of ENTERING that insn — i.e. BEFORE the branch's
-        // own narrowing. zovia's `lhs_bounds` is post-narrow (the taken
-        // side), so a reload/null reg narrowed to a const by its own
-        // first-reference branch (R1 reload ==6 @729; R0 null @581/585)
-        // wrongly folds to a `K op K` literal. Using the pre-narrow
-        // range keeps it a VAR{bound} the kernel-faithful way (reload →
-        // VAR2{JLE0xff,JEQ6}; nulls → VAR{JNE0}/VAR{JEQ0}). Gated.
-        // Carried conds (pc < base, e.g. R2's !=6 recorded at pc530 but
-        // materialized at the base) reflect the reg's FINAL narrowed
-        // range carried into the suffix → post-narrow `lhs_bounds`
-        // ([7,255]→JGE7). In-suffix branches (pc ≥ base, e.g. reload R1
-        // ==6 @729, R0 nulls @581/585) are materialized AT their own
-        // branch → the range ENTERING it, i.e. pre-narrow `pre_bounds`
-        // ([0,255]→VAR{JLE0xff}, not folded). Mirrors kernel bcf_reg_expr
-        // first-reference-range semantics. Gated.
-        // Default ON (all-faithful mirror 2026-06-12); kill-switch =0.
+        // PRE-NARROW materialization: the kernel's bcf_reg_expr
+        // materializes a reg at its FIRST reference using the range as of
+        // ENTERING that insn — i.e. BEFORE the branch's own narrowing.
+        // zovia's `lhs_bounds` is post-narrow (the taken side), so a reg
+        // narrowed to a const by its own first-reference branch would
+        // wrongly fold to a `K op K` literal; the pre-narrow range keeps
+        // it a VAR{bound} the kernel-faithful way. Mirrors kernel
+        // bcf_reg_expr first-reference-range semantics.
+        // Default ON; kill-switch ZOVIA_BCF_FOLD_PRENARROW=0.
         let prenarrow_on =
             crate::common::config::bcf_mirror_knob("ZOVIA_BCF_FOLD_PRENARROW", true);
         // In-suffix branches (pc ≥ base) materialize the reg AT their own
         // branch, so they use the range ENTERING it — PRE-narrow
         // `pre_bounds` — mirroring kernel bcf_reg_expr, which runs before
         // reg_set_min_max narrows (the branch's own narrowing is the
-        // recorded COND, not a bound pred). This is correct for both the
-        // reload R1==6 @729 (→ VAR{JLE0xff}, not folded to K6) AND the
-        // proto switch w2 @506 (u8 load → ULE(w2,0xff) bound + JSLE(w2,5)
-        // branch cond, NOT ULE(w2,5)). Carried conds (pc < base) reflect
-        // the reg's FINAL narrowed range carried into the suffix →
-        // post-narrow `lhs_bounds`.
-        // NB: this uniform per-branch rule canNOT recover from_nat 23a1dc's
-        // r0 bounds, because r0's narrowing (`if w0==0` @445) is itself a
-        // pre-window carried narrowing in the kernel (whose window opens at
-        // pc 504, the w0==0 jump target) — r0 enters the window already
-        // narrowed (umax=0xffffffff00000000). zovia's replay window opens
-        // earlier (includes 445), so r0's first ref is the 445 branch
-        // (pre-narrow = unbounded). The real fix is replay-base placement
-        // (open at 504), NOT a per-branch pre/post toggle: r0 and w2 need
-        // OPPOSITE bound-timing under one window, so no single rule serves
-        // both. (Reverted a const-distinguisher that fixed r0 but
-        // regressed w2's umax 0xff→5.)
+        // recorded COND, not a bound pred). Carried conds (pc < base)
+        // reflect the reg's FINAL narrowed range carried into the suffix
+        // → post-narrow `lhs_bounds`. NB: a cond whose narrowing is
+        // pre-window in the kernel but in-window under zovia's wider
+        // replay window cannot be served by this per-branch rule — that
+        // requires replay-base placement, not a pre/post toggle.
         let use_pre = prenarrow_on
             && base_pc.map(|bp| pc >= bp).unwrap_or(false);
         let mat_bounds = if use_pre { &pre_bounds } else { &lhs_bounds };
         // Re-mint cache key: under the flag, key by (reg, materialize_pc)
         // so a redefined reg (call/reload between references) gets a fresh
         // VAR per incarnation (kernel resets reg->bcf_expr on def). Flag
-        // off → reg-only key (legacy behaviour, keeps the 12 working
-        // discharges byte-stable until VM-gated).
+        // off → reg-only key (legacy behaviour).
         let key = if prenarrow_on { (lhs_reg, lhs_pc) } else { (lhs_reg, None) };
         if let Some(&(fv, nat_is_64)) = fresh_var_for_reg.get(&key) {
             // CACHED: reuse the reg's already-materialized VAR. A 64-bit
@@ -364,11 +332,7 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
             // UNCACHED + non-const + high bits set: the reg does NOT fit
             // u32/s32, so the kernel materializes a 64-BIT VAR (bcf_var
             // (false)) with 64-bit bound-preds and EXTRACTs [31:0] for a
-            // jmp32 compare (verifier.c bcf_reg_expr VAR_64 path). The old
-            // code made a branch-width (32-bit) var, DROPPING the reg's
-            // 64-bit ULE/JSLE conjuncts (from_nat 23a1dc: r0 from
-            // skb_load_bytes, w0==0 → umax=0xffffffff00000000,
-            // smax=0x7fffffff00000000 — the two missing bounds on V0).
+            // jmp32 compare (verifier.c bcf_reg_expr VAR_64 path).
             let v64 = sym.add_var_bits(false);
             fresh_var_for_reg.insert(key, (v64, true));
             let bound_pred_slots = sym.bound_reg_emit_preds(v64, mat_bounds, false);
@@ -447,9 +411,8 @@ fn try_prove_unreachable_inner(
     let bcf_ref = state.bcf.as_ref()?;
     let mut sym: SymbolicState = (**bcf_ref).clone();
 
-    // EXPERIMENT dump (ZOVIA_DUMP_PRETRIM=1): full PRE-trim recorded cond
-    // list at this reject — (pc, is_branch, narrowed (k,op)) per cond — to
-    // diff zovia's recording against a kernel form (673434f3 chase).
+    // ZOVIA_DUMP_PRETRIM=1: dump the full PRE-trim recorded cond list at
+    // this reject — (pc, is_branch, narrowed (k,op)) per cond.
     if std::env::var("ZOVIA_DUMP_PRETRIM").ok().as_deref() == Some("1") {
         let mut s = String::new();
         for i in 0..sym.path_conds.len() {
@@ -523,8 +486,7 @@ fn try_prove_unreachable_inner(
     // expression with a fresh `K op K` literal. Mirrors kernel
     // `bcf_track`'s fresh-replay where `bcf_reg_expr` re-materializes
     // the dst via `tnum_is_const → bcf_val(K)` because the replay starts
-    // with `bcf_expr = -1`. Ground-truth probe 2026-05-23 confirms PC 1215
-    // emits `17 == 17` via this path (calico from_wep_fib_dsr_debug).
+    // with `bcf_expr = -1`.
     //
     // Done as a graph rewrite (add fresh exprs, swap path_cond slot)
     // rather than a full per-replay rebuild so existing cvc5 contradictions
@@ -535,23 +497,14 @@ fn try_prove_unreachable_inner(
     // specific entry.
     debug_assert_eq!(sym.path_conds.len(), sym.path_cond_narrowed_const.len());
     let original_path_conds = sym.path_conds.clone();
-    // Faithful bcf_reg_expr fold (no_log proto-arm arc, 2026-05-31).
-    // When set, REPLACE the legacy K==K + per-reg fresh-VAR passes with a
-    // single forward pass that mirrors the kernel's bcf_reg_expr 3-way
-    // decision exactly (cached→reuse VAR / uncached+const→bcf_val literal /
-    // uncached+non-const→fresh VAR+bounds), processing path_conds in suffix
-    // order so the per-reg cache (`fresh_var_for_reg`) reproduces the
-    // kernel's first-materialize-and-cache. Closes the two residual fold
-    // diffs that keep zovia off hash 0x78171d on the proto==6 arm:
-    //   (A) JEQ6@530 was K==K-folded to `6 JEQ 6` because the legacy gate
-    //       used base_pc; the reg is materialized by the prev-insn branch
-    //       (pc529) so the kernel keeps it CACHED → `VAR JEQ 6`;
-    //   (B) a const-0 reg was minted as a fresh VAR+JLE0 bound instead of
-    //       folded to the literal `0x0`.
-    // Default-OFF: env-gated so the 21 to_hep reg-filter wins stay
-    // byte-identical until VM-gated. See project_no_log_subsumption_arc.md.
-    // Default ON (all-faithful mirror 2026-06-12): this fn only runs with
-    // a BCF symbolic state present. Kill-switch ZOVIA_BCF_FAITHFUL_FOLD=0.
+    // Faithful bcf_reg_expr fold. When set, REPLACE the legacy K==K +
+    // per-reg fresh-VAR passes with a single forward pass that mirrors
+    // the kernel's bcf_reg_expr 3-way decision exactly (cached→reuse VAR
+    // / uncached+const→bcf_val literal / uncached+non-const→fresh
+    // VAR+bounds), processing path_conds in suffix order so the per-reg
+    // cache (`fresh_var_for_reg`) reproduces the kernel's
+    // first-materialize-and-cache. Default ON: this fn only runs with a
+    // BCF symbolic state present. Kill-switch ZOVIA_BCF_FAITHFUL_FOLD=0.
     let faithful_fold = FOLD_OVERRIDE.with(|c| c.get()).unwrap_or_else(|| {
         crate::common::config::bcf_mirror_knob("ZOVIA_BCF_FAITHFUL_FOLD", true)
     });
@@ -568,11 +521,11 @@ fn try_prove_unreachable_inner(
             // rewrite if LHS was cached at or after base_pc — kernel
             // would have returned the cached var and emitted `VAR op K`,
             // preserving the binding constraint needed for cvc5 to prove
-            // the overall formula unsat (e.g. wepfd PC 1474 R1==6 cached
-            // via spill/fill propagation from R7's PC 1467 spill, pairs
-            // with R7!=6 at PC 1468 for the contradiction). Conservatively
-            // rewrite when base_pc is unknown (mirrors kernel's
-            // `base_pc=NULL` keep-all behavior).
+            // the overall formula unsat (e.g. a const cached via
+            // spill/fill propagation pairing with an earlier `!=K` for
+            // the contradiction). Conservatively rewrite when base_pc is
+            // unknown (mirrors kernel's `base_pc=NULL` keep-all
+            // behavior).
             let lhs_uncached_in_fresh_replay = match (lhs_pc, base_pc) {
                 (None, _) => true,
                 (Some(_), None) => false,
@@ -635,15 +588,13 @@ fn try_prove_unreachable_inner(
     }
 
     if do_fresh_var_rewrite && !faithful_fold {
-    // Per-reg fresh-VAR rewrite (2026-05-27): mirror kernel's bcf_track
-    // fresh-replay where bcf_reg_expr(R) materializes a fresh VAR (plus
-    // bound preds) for each reg whose bcf_pre=-1. Generalizes the K==K
-    // rewrite above to non-narrowing branches. Inserts bound preds for
-    // the fresh VAR immediately BEFORE the branch they materialize for —
-    // matches kernel order, since bcf_canonical_hash is position-
-    // sensitive within CONJ. Calico from_l3_debug_co-re pc=1276:
-    // kernel 5-conj 0x5edc has interleaved order [bound_V0, V0!=6,
-    // bound_V1, V1!=6, V1==6].
+    // Per-reg fresh-VAR rewrite: mirror kernel's bcf_track fresh-replay
+    // where bcf_reg_expr(R) materializes a fresh VAR (plus bound preds)
+    // for each reg whose bcf_pre=-1. Generalizes the K==K rewrite above
+    // to non-narrowing branches. Inserts bound preds for the fresh VAR
+    // immediately BEFORE the branch they materialize for — matches
+    // kernel order, since bcf_canonical_hash is position-sensitive
+    // within CONJ.
     //
     // ADDITIVE in safety: produces additional canonical-hash bytes
     // for non-narrowing branches; rewritten goals are equi-unsat with

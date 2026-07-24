@@ -168,7 +168,7 @@ pub fn analyze_program_full(
     // prog kinds (kprobe, tracepoint, raw_tp[_writable], perf_event)
     // cannot use maps whose value record carries bpf_spin_lock,
     // bpf_timer, bpf_list_head, or bpf_rb_root. Socket filter cannot
-    // use bpf_spin_lock. Closes the test_helper_restricted FA cluster.
+    // use bpf_spin_lock.
     if let Some(err) = check_map_prog_compatibility(&env) {
         error!(target: "app", "[Analysis] Map/prog incompatibility: {}", err.description());
         return AnalysisResult {
@@ -396,9 +396,7 @@ pub fn analyze_program_full(
 
     // Audit hook: dump per-PC subsumption-miss histogram.
     // Gated on `ZOVIA_DUMP_PRUNING=1` so it stays out of the sweep
-    // path entirely. Used to pinpoint the dominant miss reason on
-    // timeout-prone tests — see audit notes in the precision/liveness
-    // workstream.
+    // path entirely. Pinpoints the dominant subsumption-miss reason.
     if std::env::var("ZOVIA_DUMP_PRUNING").ok().as_deref() == Some("1") {
         crate::analysis::flow::diag::dump_subsumption_miss_histogram(&env);
     }
@@ -407,11 +405,7 @@ pub fn analyze_program_full(
     }
     // Cache-topology probe: when ZOVIA_DUMP_CACHE_AT_PC=N is set, dump
     // the count and per-entry reg/range/type snapshot for every cached
-    // state at PC=N. Used to diagnose cache-event divergence vs the
-    // kernel (e.g. is zovia caching 2 distinct states at PC 1674 like
-    // the kernel does for to_wep's MISS trajectory, or merging via
-    // subsumption to just 1?). Cheap one-shot diagnostic, gate-off by
-    // default. See feedback_bytematch_revised_2026-05-21.md.
+    // state at PC=N. Cheap one-shot diagnostic, gate-off by default.
     if let Ok(pcs) = std::env::var("ZOVIA_DUMP_CACHE_AT_PC") {
         for pc_s in pcs.split(',') {
             if let Ok(pc) = pc_s.trim().parse::<usize>() {
@@ -441,11 +435,6 @@ pub fn analyze_program_full(
     // consumer (kernel discharge in test_loader) treats each entry as
     // standalone, so partial output is safe and strictly better than
     // empty.
-    // Concretely: calico to_hep_debug_co-re's calico_tc_host_ct_conflict
-    // discharges PC 377 (hash 0x9492...) successfully, then hits a
-    // zovia-side precision failure at PC 535 (R4 !read_ok). Without this
-    // change, the 0x9492 proof is dropped and the kernel MISSes despite
-    // zovia having computed the correct proof.
     if let Some(path) = config.bcf_bundle_out.as_deref()
         && !env.bcf_proofs.is_empty()
     {

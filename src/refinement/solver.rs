@@ -4,7 +4,7 @@
 //! SMT-LIB v2 query. Treated as a black-box subprocess — we feed SMT-LIB,
 //! collect the raw proof bytes from a file the solver writes.
 //!
-//! Working invocation (matches Phase 0 manual test):
+//! Working invocation:
 //! ```text
 //! cvc5 --produce-proofs --dump-proofs --proof-format=bcf \
 //!      --bcf-proof-out=<output.bcf> <input.smt2>
@@ -147,15 +147,14 @@ pub fn cvc5_path() -> Result<PathBuf> {
 /// Returns `Err(NotUnsat)` if cvc5 reported `sat` or `unknown` — i.e., the
 /// refinement condition isn't unsat, so the program isn't safe.
 pub fn solve(smtlib: &str) -> Result<Vec<u8>> {
-    // Memo cache: `solve` is a pure function of the SMT-LIB text, and the
-    // profile shows verification wall-time is dominated by cvc5 process
-    // spawns (82% of main-thread samples in poll/posix_spawn on
-    // from_nat_fib). Kernel-parity exploration re-derives the SAME goal at
-    // many states (per-arm/per-path discharges of identical conditions),
-    // so identical queries repeat heavily. Cache BOTH directions: unsat
-    // proof bytes and NotUnsat verdicts (sat/unknown gate path-unreachable
-    // decisions and repeat just as much). Keyed by the full query text —
-    // no hash-collision risk on proof reuse. Infra-only: same input, same
+    // Memo cache: `solve` is a pure function of the SMT-LIB text, and
+    // verification wall-time is dominated by cvc5 process spawns.
+    // Kernel-parity exploration re-derives the SAME goal at many states
+    // (per-arm/per-path discharges of identical conditions), so identical
+    // queries repeat heavily. Cache BOTH directions: unsat proof bytes
+    // and NotUnsat verdicts (sat/unknown gate path-unreachable decisions
+    // and repeat just as much). Keyed by the full query text — no
+    // hash-collision risk on proof reuse. Infra-only: same input, same
     // output, no verifier-behavior change.
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -233,9 +232,7 @@ fn solve_uncached(smtlib: &str) -> Result<Vec<u8>> {
         // sequence of finer steps — each individual step may still be
         // emitted as "trusted" (lots of `WARNING: applying trusted step
         // rewrite` lines at check time), but the overall structure is
-        // shaped so the checker can walk it. Verified end-to-end against
-        // BCF's bcf-checker on Linux 2026-05-12; see
-        // `feedback_pass_definitions.md` for the workflow.
+        // shaped so the checker can walk it.
         .arg("--proof-granularity=theory-rewrite")
         .arg(format!("--bcf-proof-out={}", proof_path.display()))
         .arg(&smt_path)

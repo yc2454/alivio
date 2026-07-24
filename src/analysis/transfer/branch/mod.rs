@@ -93,9 +93,7 @@ fn record_path_cond_for_side(
     // per-side because OR_NULL pointers demote to SCALAR_VALUE only
     // on the null branch (`mark_ptr_or_null_reg`, verifier.c:17318),
     // so kernel records the path_cond on the null side and skips
-    // the non-null side. Without per-side checks, zovia missed the
-    // null-branch conjunct (inspektor-gadget seccomp PC 142, PC 89
-    // `if r0 != 0` fall-through after map_lookup_elem).
+    // the non-null side.
     if !state.types.get(left).is_scalar() {
         return;
     }
@@ -113,8 +111,7 @@ fn record_path_cond_for_side(
     let bcf = state.bcf.as_mut().expect("checked above");
     bcf.set_current_pc(src_pc);
     // Snapshot LHS's bcf_expr materialization PC before reg_expr lazy-
-    // materializes (see K==K rewrite gate in
-    // feedback_kernel_probe_record_path_cond_2026-05-23.md).
+    // materializes (consumed by the K==K rewrite gate).
     let lhs_materialize_pc: Option<usize> = bcf.get_reg_pc(l_idx);
     // PATH B: was the LHS reg uncached entering THIS branch? (kernel
     // `bcf_pre == -1` → `bcf_bound_reg` emits its bound conjuncts; cached →
@@ -139,11 +136,8 @@ fn record_path_cond_for_side(
             None => bcf.add_val(0, jmp32),
         },
     };
-    // Micro-probe (3ab6225a@937 crossing-2 fold chase, 2026-07-18):
-    // at in-trace-range branch pcs, print the LHS materialization
-    // decision — cached-vs-fresh, the bounds' const-ness, and the
-    // resulting cmp_l expr kind — to answer why the pc-694 second
-    // `w3 != 5` crossing records unfolded where the kernel folds.
+    // Debug: at in-trace-range branch pcs, print the LHS materialization
+    // decision (cached-vs-fresh, bounds const-ness, resulting cmp_l kind).
     if crate::analysis::trace_pc_in_range(src_pc) {
         let cmp_l_kind = match bcf.expr_at(cmp_l) {
             Some(e) => format!("code={:#04x} nargs={}", e.code, e.args.len()),
@@ -161,9 +155,7 @@ fn record_path_cond_for_side(
     // branch cond is pushed, in umin/umax/smin/smax order, and ONLY when the reg
     // was freshly materialized this branch (`bcf_pre == -1`). Emitting the block
     // here (before `add_cond_at_narrowed`) reproduces the kernel's
-    // [u>=K, u<=M, …] block-then-branch ORDER and per-reg first-ref dedup that
-    // the post-branch replay arm (and the recording BOUND_SYNC arm) get wrong.
-    // calico from_nat_fib pc748 d53387e3: V0's [u>=6, u<=0xff] precede `s>5`.
+    // [u>=K, u<=M, …] block-then-branch ORDER and per-reg first-ref dedup.
     // Const-materialized operands carry no VAR → no bound block (their value is
     // emitted directly via the K==K rewrite).
     // ZOVIA_BCF_REPLAY_FIRSTREF (default-ON) disables this deferred (branch-only)
@@ -210,12 +202,7 @@ fn record_path_cond_for_side(
     // the fill happened before the replay window. Mirror it forward:
     // stamp the fresh binding onto expr-less slots spilling the same id,
     // so later in-window fills restore the SAME var instead of minting a
-    // second one. Measured: bcc ksnoop c20-O2 kretprobe @682 (kernel MISS
-    // 0x8ad35a53d2c7d5e6) — kernel shares v1 across all three
-    // loop-iteration equalities incl. the anchor-held first use (r3 is
-    // clobbered by `r3 = -1` each iteration, so no live reg carries the
-    // copy at the next fill); zovia's twin 4d22ca4445163d06 shared only
-    // from the first in-window fill on.
+    // second one.
     if state.bcf.as_ref().is_some_and(|b| b.replay_share_slot_vars) {
         // No was-uncached gate: the copy's binding may predate this branch
         // (start-push materialization, in-window fill, earlier read) — the

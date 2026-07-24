@@ -74,9 +74,7 @@ pub fn encode(state: &SymbolicState) -> Result<String> {
     //
     // CRITICAL: BCF's userspace `bcf-checker` rejects proofs derived from
     // multiple top-level `(assert …)` forms with `-EINVAL` (silently in
-    // non-batch mode). Empirically verified on macOS-cvc5 → Linux-checker
-    // round-trip 2026-05-12: identical formula split across two asserts
-    // is rejected, while wrapping the same conjuncts inside one
+    // non-batch mode); wrapping the same conjuncts inside one
     // `(assert (and …))` is accepted. The kernel checker mirrors this
     // (the on-disk proof format encodes a single goal). So we emit all
     // path conditions + the refinement condition as ONE assertion via

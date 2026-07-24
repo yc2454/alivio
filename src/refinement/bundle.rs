@@ -188,23 +188,14 @@ pub fn write_bundle(path: &Path, entries: &[RefineEntry]) -> io::Result<usize> {
         .collect();
     let mut seen: std::collections::HashSet<u64> =
         serialized.iter().map(|s| s.cond_hash).collect();
-    // OVERSIZED-GOAL GUARD (cilium clang-14 bpf_host, 2026-06-12): the
-    // kernel's proof checker caps clause width at U8_MAX literals
-    // (bcf_checker.c:434, resolvent `dst->vlen + src->vlen > U8_MAX` →
-    // -EINVAL). cvc5 proofs over very large goals (clang-14 emitted 186
-    // entries with ~33KB goals / ~3600 exprs / vlen up to 197; healthy
-    // entries are ≤8KB) produce resolvents past that cap, so
-    // bcf_bundle_prevalidate rejects the entry — and a single rejected
-    // entry fails prevalidate for the WHOLE bundle, bricking every
-    // program load in the object (-EINVAL on prog 0, no verifier log;
-    // first seen as entry[1737] hash 563d3189a0196b13). An entry the
-    // kernel can never check is pure poison — drop it. Stripping the
-    // 186 left clang-14's bundle identical in entry count (1737) to
-    // every other variant — and it then LOADED 32/32.
-    // Threshold 24KB: the largest KERNEL-ACCEPTED goal observed is
-    // 19,208B (calico from_hep_co-re_v6, loads fine), the smallest
-    // rejected monster ≥24.5KB — 24KB sits in the empty gap, so the
-    // guard is a provable no-op on every gated calico bundle.
+    // OVERSIZED-GOAL GUARD: the kernel's proof checker caps clause width
+    // at U8_MAX literals (bcf_checker.c:434, resolvent `dst->vlen +
+    // src->vlen > U8_MAX` → -EINVAL). cvc5 proofs over very large goals
+    // produce resolvents past that cap, and a single rejected entry fails
+    // bcf_bundle_prevalidate for the WHOLE bundle, bricking every program
+    // load in the object. An entry the kernel can never check is pure
+    // poison — drop it. The 24KB threshold sits above every
+    // kernel-accepted goal observed and below every rejected one.
     // TODO(principled): replicate the checker's exact resolvent-width
     // rule over the proof steps instead of the size heuristic.
     const MAX_GOAL_BYTES: usize = 24 * 1024;
@@ -217,10 +208,8 @@ pub fn write_bundle(path: &Path, entries: &[RefineEntry]) -> io::Result<usize> {
         // Kernel checker var cap (bcf_checker.c:1115 BCF_MAX_VAR_MAP =
         // 128): a goal with more variables fails bcf_check_proof during
         // bcf_bundle_prevalidate and the kernel rejects the WHOLE bundle
-        // with -EINVAL before verification. Measured: bcc ksnoop c20-Os
-        // at 6b05832 — deep-window replay goals reached 147-341 vars and
-        // the 5.9MB bundle EINVAL'd (zero discharge queries). Kernel-
-        // queried goals are far smaller; drop what the checker can't map.
+        // with -EINVAL before verification. Drop what the checker can't
+        // map.
         let nvars = e
             .goal_exprs
             .iter()

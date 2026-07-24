@@ -20,8 +20,8 @@
 //! All predicates use bit-width 32 when **both** `ptr_reg` and `size_reg`
 //! fit in s32 (kernel verifier.c:5306-5310), and 64 otherwise. The
 //! constant K (= `ptr_reg->off`, the accumulated pointer const offset
-//! after `ptr += imm` ops) comes from `state.ptr_const_off`, mirroring
-//! the refine_stack treatment landed for the multi-contributor case.
+//! after `ptr += imm` ops) comes from `state.ptr_const_off`, as in
+//! refine_stack, so multi-variable-contributor chains stay exact.
 //!
 //! This shape is critical for `bcf_bundle_try_discharge`: the kernel
 //! computes `canonical_hash` on its runtime CONJ and looks the bundle up
@@ -63,29 +63,22 @@ pub fn try_refine_map_access(
     // kernel computes on its runtime CONJ.
     let pre_count = sym.path_conds.len();
     // Kernel bcf_track slices the cond stream POSITIONALLY (the suffix
-    // of the walk from the base state to cur), not by pc value. The two
-    // coincide on straight-line paths — but when the path WRAPS a loop,
-    // earlier-iteration crossings carry pcs numerically >= base_pc and
-    // the pc filter over-keeps them. Measured: bcc ksnoop c20-O1
-    // (kernel MISS 0x7b883057f2f77b41 @521): base = the guard-pc-560
-    // state (kernel first=581); zovia's pc-filtered goal (9252d3ba)
-    // kept 5 iteration-1 conds at pcs 571-581 the kernel goal lacks.
-    // `base_conds_len` = the base state's own path_conds length (its
-    // snapshot is a prefix of cur's stream — same lineage) = the exact
-    // positional cut. To keep every currently-byte-matching straight-
-    // line goal bit-stable, the positional path engages ONLY when it
-    // disagrees with the legacy pc filter (i.e., a loop wrap actually
-    // over-kept); it then also runs the kernel replay-fold
+    // of the walk from the base state to cur), not by pc value; the two
+    // coincide on straight-line paths, but when the path wraps a loop
+    // the pc filter over-keeps earlier-iteration conds. `base_conds_len`
+    // = the base state's own path_conds length (its snapshot is a prefix
+    // of cur's stream — same lineage) = the exact positional cut. The
+    // positional path engages only when it disagrees with the legacy pc
+    // filter, and then also runs the kernel replay-fold
     // (faithful_fold_pass — bcf_refine tail resets bcf_expr, so
     // pre-base operand chains rematerialize as fresh VARs + bound
     // preds; verifier.c:894-926 lazy bcf_reg_expr).
-    // DEFAULT OFF (2026-07-18): the cut itself is kernel-correct, but a
-    // coherent goal ALSO needs the refine predicate rebuilt over the same
-    // fresh expr table (kernel bcf_track = ONE replay table; zovia's
-    // refine pred is built from the live reg chains, so the fold pass's
-    // fresh vars orphan it → cvc5 SAT → no goal). Enabling requires the
-    // replay-rebuild integration for refine goals — see
-    // project_full_target_standing_2026-07-18.md fix design.
+    // DEFAULT OFF: a coherent goal also needs the refine predicate
+    // rebuilt over the same fresh expr table (kernel bcf_track = ONE
+    // replay table; zovia's refine pred is built from the live reg
+    // chains, so the fold pass's fresh vars orphan it → cvc5 SAT → no
+    // goal). Enabling requires replay-rebuild integration for refine
+    // goals.
     let positional_enabled =
         std::env::var("ZOVIA_BCF_REFINE_POSITIONAL_CUT").ok().as_deref() == Some("1");
     let mut positional_engaged = false;
@@ -271,11 +264,8 @@ pub fn try_refine_map_access(
     // most BCF_MAX_VAR_MAP = 128 variables (bcf_checker.c:1115); an entry
     // whose goal exceeds it FAILS bcf_bundle_prevalidate and the kernel
     // rejects the WHOLE bundle with -EINVAL before any verification.
-    // Measured: bcc ksnoop c20-Os — 50 deep-rung ladder goals reached up
-    // to 341 vars and the 5.9MB bundle EINVAL'd at load (zero discharge
-    // queries; the 1eda1b4 bundle loaded normally). Kernel-queried goals
-    // are small; anything past the cap is dead weight that bricks the
-    // bundle — drop it before wasting a solve.
+    // Anything past the cap is dead weight that bricks the bundle —
+    // drop it before wasting a solve.
     {
         use crate::refinement::bcf::{BCF_OP_MASK, BCF_VAR};
         let nvars = sym

@@ -429,19 +429,12 @@ fn try_bcf_refine_map(
     let size_reg = env.bcf_size_reg;
     // Mirror kernel `bcf_refine_access_bound` (verifier.c:5455-5468):
     // include ptr regno in reg_masks ONLY when its var_off is non-const,
-    // and include size_regno ONLY when its var_off is non-const. zovia
-    // previously included `base` unconditionally — for ksnoop's
-    // `bpf_perf_event_output(R4=map_value, ..., R5=size)` where R4 was
-    // spill/filled from a const-offset map_value, R4's backtrack chain
-    // crossed a helper call (pc=333 bpf_probe_read_kernel) → walker
-    // -EFAULT → base_pc=None → refine bailed. Kernel skips R4 here
-    // (reg_masks=0x20, R5 only) and the walker stops at the cached
-    // state at PC 498.
+    // and include size_regno ONLY when its var_off is non-const.
     // Kernel `tnum_is_const(ptr_reg->var_off)` analog: use ptr_off range
     // from the interval domain. min == max ⇒ no variable contribution.
     // var_off_contributor is unreliable here because zovia's spill/fill
     // doesn't always clear it when a fresh const-offset map_value is
-    // filled (ksnoop pc=520 `r4 = *(u64 *)(r10 -184)` shape).
+    // filled.
     let ptr_is_const = match state.domain.as_interval().and_then(|i| i.get_ptr_offset(base)) {
         Some(ptr_off) => ptr_off.min_offset() == ptr_off.max_offset(),
         None => true,
@@ -490,11 +483,6 @@ fn try_bcf_refine_map(
                   state.pc, base, insn_off, size, map_limit, size_reg, base_pc,
                   state.parent_cache_id, state.history_idx);
     }
-    // e33c chase (2026-07-19): tag each reject with whether its history
-    // window crossed the null-map-skip landing (combined pc 551 = std 547).
-    // The kernel goal e33c has a mid-window map-lookup-null conjunct; if NO
-    // zovia 580-reject lineage crosses 551, the null-branch never reaches
-    // this reject (exploration/pruning) rather than a base-window gap.
     if std::env::var("ZOVIA_DBG_NULLSCAN").ok().as_deref() == Some("1") {
         let mut cur = state.history_idx;
         let mut steps = 0;
@@ -521,7 +509,7 @@ fn try_bcf_refine_map(
     // predicate come from ONE replay expr table — the kernel's actual
     // goal-formation semantics. Required for loop-wrapping suffixes where
     // the live-state goal keeps pre-base chains and over-spanning conds
-    // (bcc ksnoop 0x7b883057f2f77b41 @521 — see replay_to_reject doc).
+    // (see replay_to_reject doc).
     // base_pc=None: the replayed sym's path_conds ARE exactly the suffix,
     // no filtering wanted. Dedupe by cond_hash before pushing.
     // Never nest replays: a mid-replay access failure runs the legacy
@@ -537,25 +525,18 @@ fn try_bcf_refine_map(
             //   at the base boundary): rebuilds pristine operand bounds
             //   where caching widened them (kernel replays st->parent
             //   snapshots, which are never widened).
-            // Variant order fixed: the two fix-#17 shapes FIRST (bundle
-            // entry order — existing bundles stay prefix-stable), then the
+            // Variant order is FIXED so existing bundles stay
+            // prefix-stable: the two plain/parent shapes first, then the
             // slot-share shapes (kernel bcf_track bt slot-demand
-            // materialization; bcc ksnoop 0x357a84611c9e93b9 — a loop-
-            // invariant stack slot filled per iteration shares ONE var),
-            // then the ancestor-cache LADDER: the kernel's backtrack_states
-            // walks parent STATES and its base freely crosses call/loop
-            // boundaries — measured on bcc ksnoop c20-Os/-O2 (output_trace
-            // kept as a subprogram): the kernel bases for the @580/@583
-            // goals sit in the CALLER's arg-copy loop (base_first
-            // 532/543/554/565…, one per iteration) while zovia's bt lands
-            // inside the callee, so no rung-0 replay can record the
-            // caller-side guard conds (folded `0xd u<= 0xe` + u8-guard
-            // pair). One replay per ancestor rung offers each boundary;
-            // additive + hash-deduped like the rung-0 shapes. Deep rungs
-            // run the slot-share shapes only (multi-iteration windows
-            // re-fill loop-invariant slots; kernel shares ONE var).
-            // Pre-solve hash dedupe keeps the ladder's cvc5 cost bounded
-            // to novel goals.
+            // materialization — a loop-invariant stack slot filled per
+            // iteration shares ONE var), then the ancestor-cache LADDER:
+            // the kernel's backtrack_states walks parent STATES and its
+            // base freely crosses call/loop boundaries, so one replay per
+            // ancestor rung offers each boundary; additive + hash-deduped
+            // like the rung-0 shapes. Deep rungs run the slot-share shapes
+            // only (multi-iteration windows re-fill loop-invariant slots;
+            // kernel shares ONE var). Pre-solve hash dedupe keeps the
+            // ladder's cvc5 cost bounded to novel goals.
             let mut rung_cids: Vec<u32> = vec![cid];
             {
                 let mut cur =
@@ -572,11 +553,7 @@ fn try_bcf_refine_map(
             // states (st->parent of the live state) — on post-marking
             // instances those are the FRESH caches of this lineage, which
             // the landed cache's stored creation-time ancestry can skip
-            // entirely. Measured: bcc ksnoop c20-O2 kretprobe @682 (kernel
-            // MISS 0x8ad35a53d2c7d5e6) — reject parent_cid=146 (fresh)
-            // while the demand walk landed at fossil cid=26; the kernel
-            // base's 660-byte window falls between fossil rungs 0 (226B)
-            // and 1 (705B). Offer one rung per dynamic-ancestry cache as
+            // entirely. Offer one rung per dynamic-ancestry cache as
             // well (ADDITIVE, appended after the fossil rungs so existing
             // bundle order is prefix-stable); stop where the dynamic chain
             // joins the fossil one. Deep-rung policy (share-only) + the
@@ -662,10 +639,8 @@ fn try_bcf_refine_map(
             // Deep-path crossing cuts: the kernel base can be a segment
             // start (a per-iteration checkpoint pc) EARLIER than any
             // on-lineage cache of that pc — reachable only by cutting a
-            // DEEP rung's long path at crossings of the OTHER rungs' pcs
-            // (bcc ksnoop c20-Os e33c: base = iter-0x28's 504-segment,
-            // one iteration before the only 504-cache's creation). One
-            // replay per (distinct rung pc × last-4 crossings) on the
+            // DEEP rung's long path at crossings of the OTHER rungs' pcs.
+            // One replay per (distinct rung pc × last-4 crossings) on the
             // deepest rung's path; share-only; hash-dedupe bounds cost.
             if let Some(&deep_cid) = rung_cids.last() {
                 let mut cut_pcs: Vec<usize> = rung_cids
@@ -714,13 +689,8 @@ fn try_bcf_refine_map(
     // bcf_track's replay, a nested refine only runs refine_cb (the state
     // refinement, so the replayed path continues) and returns BEFORE the
     // bundle-discharge attempt AND before the parents children_unsafe
-    // marking loop. Zovia's mid-replay refines previously pushed entries
-    // and marked ancestors from REPLAY states — side effects the kernel
-    // never has; the ladder's extra replays amplified them until they
-    // perturbed later goal formation (bcc ksnoop c20-O1: kernel-FOUND
-    // 0x008689dd63b62e27 stopped being formed). Refine outcome (continue
-    // past the access) is preserved; only the emission side effects are
-    // gated.
+    // marking loop. Refine outcome (continue past the access) is
+    // preserved; only the emission side effects are gated.
     if env.replay_mode {
         return true;
     }
@@ -770,16 +740,10 @@ fn try_bcf_refine_map(
     // every cached ancestor on this refinement's backtrack suffix is no
     // longer prune-safe, because a later arrival that would otherwise
     // subsume against it may reach the same reject via a DIFFERENT path
-    // and need its own (different-hash) discharge entry. Branch-side
-    // refinement (`refine_unreachable`) already calls this in
-    // `branch/mod.rs`; the map/stack refinements were missing it, which
-    // let zovia subsume kernel-distinct paths at convergence PCs and
-    // drop their per-path discharges (inspektor-gadget seccomp PC 142:
-    // runc-neg's map-refine fires first; without this mark, its PC 141
-    // ancestor stays prune-safe and the later path-A arrival at PC 141
-    // gets subsumed there — the kernel sets `children_unsafe=1` and
-    // exempts it from subsumption, so path A continues to PC 142 and
-    // emits its own discharge with hash 0x6eb7).
+    // and need its own (different-hash) discharge entry — the kernel sets
+    // `children_unsafe=1` and exempts such ancestors from subsumption.
+    // Branch-side refinement (`refine_unreachable`) calls this in
+    // `branch/mod.rs`; the map/stack refinements need it too.
     crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, landed.map(|(_, cid)| cid));
     true
 }

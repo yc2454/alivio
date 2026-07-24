@@ -53,7 +53,7 @@ pub fn try_refine_stack_oob(
     // the cached base state's immediate predecessor was a scalar
     // conditional branch, retain that branch's cond + its var's bound
     // preds even when source_pc < base_pc (mirror of
-    // try_emit_path_unreachable_entry's wiring; landed 2026-05-22).
+    // try_emit_path_unreachable_entry's wiring).
     if let Some(bp) = base_pc {
         sym.filter_path_conds_from_pc(bp, prev_insn_pc);
     }
@@ -112,8 +112,7 @@ pub fn try_refine_stack_oob(
     // NOT already proven the lower bound safe — `if (min_off <
     // lower_bound)` (verifier.c:5339), `min_off = ptr_reg->smin_value
     // + off`. zovia's `ptr_reg->smin_value` = the frame-relative
-    // offset min (`dist_lo`); `off` = the access insn offset. For
-    // shift_constraint min_off = -16 ≥ -512 ⇒ single-sided high_pred.
+    // offset min (`dist_lo`); `off` = the access insn offset.
     let min_off = dist_lo + instruction_offset;
     let oob = if min_off < lower_bound {
         let low_thresh = lower_bound - total_off;

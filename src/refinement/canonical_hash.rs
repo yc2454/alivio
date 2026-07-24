@@ -165,14 +165,13 @@ mod tests {
 
     /// Regression test: byte-for-byte the kernel-side canonical_hash agrees
     /// with zovia's on the shift_constraint goal layout. Locks the hash to
-    /// the value the kernel produced after the slot_map fix
-    /// (kernel/bpf/canonical_hash.c, see also feedback_kernel_canonical_hash_layout.md).
+    /// the value the kernel produces (kernel/bpf/canonical_hash.c).
     /// If either impl changes its encoding, this asserts loudly before the
     /// next end-to-end test would silently miss the bundle entry.
     #[test]
     fn shift_constraint_kernel_layout_hash() {
-        // Replicate kernel's expression table per kexpr[] dump from VM
-        // run on 2026-05-13 (see feedback_kernel_vs_zovia_divergence.md).
+        // Replicate the kernel's expression table for the shift_constraint
+        // goal (kexpr[] layout from kernel/bpf/canonical_hash.c).
         let mut e: Vec<BcfExpr> = Vec::new();
         let mut slot: u32 = 0;
         let mut push = |exprs: &mut Vec<BcfExpr>, slot: &mut u32, expr: BcfExpr| -> u32 {
@@ -222,9 +221,8 @@ mod tests {
 
         let h = hash_expr(s44, &e);
         // The kernel emits the same 140 encoded bytes for this layout
-        // after the slot_map fix (see kernel/bpf/canonical_hash.c). Lock
-        // the hash here so future encoding changes break loudly on either
-        // side.
+        // (see kernel/bpf/canonical_hash.c). Lock the hash here so future
+        // encoding changes break loudly on either side.
         assert_eq!(
             h, 0x53bad2296570f686,
             "canonical_hash on shift_constraint kernel layout regressed"

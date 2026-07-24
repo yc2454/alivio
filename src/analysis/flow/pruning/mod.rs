@@ -34,7 +34,6 @@ use widening::{
 /// fall-through at L19103-L19109.
 /// ZOVIA_DUMP_SLOTS3: per-byte kinds + base-spill (type, prec, bounds) for
 /// spi25/26/27 (bases -208/-216/-224) on cur and the compared candidate.
-/// 2af5badd seed chase 2026-07-16 — diff vs kernel probe #132.
 fn dump_slots3(pc: usize, verdict: &str, state: &State, prev: &State) {
     for base in [-208i16, -216, -224] {
         let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
@@ -68,9 +67,8 @@ fn is_inf_loop_skip_pc(prog: &Program, pc: usize) -> bool {
     matches!(prog.instrs.get(pc), Some(Instr::Call { .. }))
 }
 
-/// DIAGNOSTIC (ZOVIA_ZHIT): print every prune HIT in insn window 380-910
-/// with a global sequence number, for diffing against the kernel's
-/// [ZK phit] sequence (same window, same fields).
+/// DIAGNOSTIC (ZOVIA_ZHIT): print every prune HIT with a global sequence
+/// number, for diffing against the kernel's equivalent hit stream.
 fn zhit_seq(pc: usize, state: &State, prev: &State) {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::OnceLock;
@@ -104,8 +102,7 @@ fn zhit_seq(pc: usize, state: &State, prev: &State) {
 }
 
 /// DIAGNOSTIC (ZOVIA_DBG_SKIP_PC): tally children_unsafe prune-skips per pc;
-/// dump the top offenders every 50k skips. Finds the cached state(s) whose
-/// children_unsafe marking is collapsing convergence and exploding routes.
+/// dump the top offenders periodically.
 fn dbg_skip_pc(pc: usize) {
     use std::sync::{Mutex, OnceLock};
     static ON: OnceLock<bool> = OnceLock::new();
@@ -210,8 +207,7 @@ fn handle_loop_pruning(
     // Defer only at an actual back-edge TARGET (kernel-style:
     // `init_explored_state`'d loop head), not at every in-loop body
     // pc — otherwise the body's paths can't prune and the worklist
-    // explodes (clean_live_states / iter_nested_deeply_iters with 7
-    // nested levels saw 10k+ widening events without convergence).
+    // explodes.
     if !pc_is_force_checkpoint
         && arrived_via_back_edge(env, state, pc, prog)
         && loop_body_has_force_checkpoint(env, state, pc)
@@ -222,14 +218,10 @@ fn handle_loop_pruning(
 
     // Pure-subsumption loop pruning: walk prev_states, prune on first
     // hit (kernel `is_state_visited` analog at the loop head). The
-    // kernel-absent general-loop widening (per-shape detectors,
-    // counter-widening, force_widen_for_may_goto, tnum-only widening,
-    // check_loop_convergence) is DELETED — the kernel converges loops
-    // via imprecise-scalar-as-wildcard in regsafe + iter-next widening
-    // (kfunc.rs::iter_next_fork). For non-iter loops without a
-    // wildcard fixpoint, complexity-limit terminates them — matching
-    // the kernel's actual behavior (e.g. test_verif_scale_loop3
-    // is `should_fail`).
+    // kernel converges loops via imprecise-scalar-as-wildcard in
+    // regsafe + iter-next widening (kfunc.rs::iter_next_fork); for
+    // non-iter loops without a wildcard fixpoint, the complexity limit
+    // terminates them — matching the kernel's actual behavior.
     // cur's ancestor cache_id lineage (walk of the parent_cache_id
     // chain), used to distinguish a true loop-ANCESTOR (cur descends
     // from prev) from a co-active SIBLING at the dfs_paths>0 prune-skip
@@ -258,13 +250,7 @@ fn handle_loop_pruning(
             // (verifier.c:2099-2105) + same_callsites (:2107): a callee
             // state cached from a DIFFERENT call site lives in a different
             // hash bucket and is INVISIBLE to this arrival's scan — no
-            // dampener, no miss counting, no eviction interplay. Measured
-            // on bcc ksnoop c20-Os (output_trace kept as a subprogram):
-            // add streams bit-identical for 63 adds, then at ip=1102 the
-            // kernel adds at pc 560 (its scan sees no active candidate —
-            // the active 560-state came from another call site) while
-            // zovia's pc-keyed bucket surfaced that state → loop_dampener
-            // → NOCACHE → the deep-iteration goal bases never exist.
+            // dampener, no miss counting, no eviction interplay.
             if !same_callsites(prev, state) {
                 dbg_skip_pc(pc);
                 continue;
@@ -277,79 +263,31 @@ fn handle_loop_pruning(
                 dbg_skip_pc(pc);
                 continue;
             }
-            // SCC force_exact: prev is on the current DFS path iff its
-            // branches > 0 (cached but DFS through it not yet finished).
             // Kernel-faithful force_exact: the kernel gates RANGE_WITHIN
             // strictness on `incomplete_read_marks(old)` alone
             // (verifier.c v6.15 L20574: `loop = incomplete_read_marks();
             // states_equal(..., loop ? RANGE_WITHIN : NOT_EXACT)`).
-            // Earlier zovia ORed in two extra triggers — `prev.branches
-            // > 0` and a loop_entry walk — because the SCC machinery
-            // was broken (compute_scc misclassified most loop vertices
-            // as singletons → callchain=None → backedges never
-            // accumulated → incomplete_read_marks always false). With
-            // the Tarjan back-prop fix (6f35e7b), incomplete_read_marks
-            // is now accurate; the over-broad triggers were forcing
-            // RANGE_WITHIN on every non-iter loop iteration whose
-            // cached subtree was still open, which prevented imprecise
-            // regs (loop counters / accumulators) from short-circuiting
-            // in regsafe and caused convergence failure (loop4 → 1M
-            // insns / 0 prunes; ksnoop AND mode → 970k bundle entries
-            // at one PC).
             let force_exact = crate::analysis::flow::scc::incomplete_read_marks(env, prev);
-            // Active-state prune-skip, refined to ANCESTORS ONLY
-            // (kernel-faithful; replaces the former base-mode `!env.bcf_enabled`
-            // gate and the BCF-only "prune against active ancestors" hack).
-            //
-            // The kernel's is_state_visited (verifier.c v6.15 L19024) never
-            // takes a NOT_EXACT/RANGE_WITHIN prune against an active ancestor
-            // (`sl->state.branches>0`) at a plain back-edge — those go
-            // `goto miss`. That keeps the EXACT inf-loop trap as the only
-            // thing terminating an unbounded loop (conditional_loop / movsx /
-            // short_loop1 FA-safety).
-            //
-            // But "active" in the kernel's strict DFS means specifically an
-            // ANCESTOR on the current path (the loop's own prior iterations).
-            // A SIBLING that forked earlier in the same iteration (e.g. the
-            // two arms of an `if r0==0` inside the loop body) is fully
-            // EXPLORED by the kernel before the next arrival collides with it,
-            // so the kernel DOES prune against it. zovia's interleaved
-            // worklist keeps such siblings co-active (dfs_paths>0) when cur
-            // arrives, so a blanket dfs_paths>0 skip wrongly protects them:
-            // they accumulate ~one extra state per body-fork per iteration and
-            // bounded loops blow up exponentially (measured on from_hep
-            // calico_tc_skb_accepted pc293, sparse caching: 108,884
-            // cap-evictions → thorough-mode timeout when the skip was
-            // unconditional).
-            //
-            // Refinement: skip ONLY when prev is a true ancestor of cur (its
-            // cache_id lies on cur's parent_cache_id lineage). For a co-active
-            // sibling, fall through to state_subsumed_by — the prune the
-            // kernel's strict DFS would have taken. Ancestors (and any prev
-            // with no cache_id, treated conservatively) still skip, so
-            // inf-loop FA-safety is preserved by direction. Validated: FA=0
-            // and 0 selftest regressions; calico-19 BCF bundles byte-identical
-            // to the prior gated HEAD.
-            // Kernel blanket branches>0 gate — see the matching comment in
-            // handle_standard_pruning. (Ancestors-only was a carve-out for
-            // the broken branches accounting, repaired in ee5221c.)
+            // Kernel blanket active-state gate (`if (sl->state.branches)
+            // ... goto miss`, verifier.c v6.15 L19024): a cached state
+            // whose subtree is still in flight never subsumes an arrival,
+            // keeping the EXACT inf-loop trap as the only thing
+            // terminating an unbounded loop. See the matching comment in
+            // handle_standard_pruning.
             let skip_active = prev.branches > 0;
             if skip_active {
                 saw_active_loop = true;
                 // Kernel skip_inf_loop_check: flip the running
                 // add_new_state (unless force/thresholds); the active sl
                 // itself is never miss-counted (flip precedes its goto
-                // miss). Earlier code pushed it into `m` unconditionally
-                // — that over-counted actives toward eviction.
+                // miss).
                 if dampener_would_suppress(env, state, pc) {
                     add_now = false;
                 }
                 // Kernel: the active sl's own `goto miss` IS counted when
-                // the dampener didn't suppress (dj>=20 cadence-crossing
-                // arrivals) — this is what accumulates miss_cnt on active
-                // cadence states and n=3-evicts them out of the bucket
-                // (measured: kernel f10b00 alive br=4 yet absent from
-                // late consults).
+                // the dampener didn't suppress — this is what accumulates
+                // miss_cnt on active states and can evict them from the
+                // bucket.
                 if add_now {
                     cm.push(i);
                 }
@@ -426,18 +364,9 @@ fn handle_loop_pruning(
             // Kernel-faithful add_scc_backedge gate (verifier.c v6.15
             // L20671-20686): backedges are only added when `loop` was
             // already true at this hit — i.e. visit.backedges was
-            // already non-empty. Earlier zovia gated on `prev.branches
-            // > 0` (a strict superset of the kernel's gate), claiming
-            // "overcollecting is sound." It is not — overcollecting
-            // inflates incomplete_read_marks for non-iter loops, which
-            // forces every subsequent pruning attempt into RANGE_WITHIN
-            // mode and defeats the regsafe SCALAR imprecise short-
-            // circuit. Result: loop4-class loops never converge past
-            // their first hit. The kernel's stricter gate means
-            // backedges never accumulate from this site on a fresh
-            // SCC visit, so non-iter loops stay in NOT_EXACT mode and
-            // converge naturally; iter loops handle their own
-            // convergence via widen_imprecise_scalars at iter_next
+            // already non-empty. The strict gate keeps non-iter loops in
+            // NOT_EXACT mode so they converge naturally; iter loops
+            // converge via widen_imprecise_scalars at iter_next
             // (kfunc.rs::iter_next_fork — independent of backedges).
             if crate::analysis::flow::scc::incomplete_read_marks(env, &prev)
                 && let Some(prev_cid) = prev.cache_id
@@ -448,8 +377,7 @@ fn handle_loop_pruning(
         env.pruning_stats.loop_walks_pruned_via_convergence += 1;
         // Kernel `miss:` runs per candidate DURING the scan — pre-hit
         // counted misses keep their miss_cnt++/eviction (see the
-        // matching block in handle_standard_pruning; probe #134
-        // measured drift, 2af5badd chase 2026-07-16). After hit
+        // matching block in handle_standard_pruning). After hit
         // bookkeeping — evictions shift indices.
         record_pruning_misses(env, pc, &counted_miss_idxs);
         return true;
@@ -494,22 +422,15 @@ fn handle_standard_pruning(
     // is populated at every iter_next site by iter_next_fork.
     let iter_next_pc = env.iter_pc_slot.contains_key(&pc);
     let mut ancestor_ids: Option<HashSet<u32>> = None;
-    // Kernel scan shape (identity-ledger probe, 2026-07-05): the bucket is
-    // a list_add-PREPENDED list scanned NEWEST-FIRST, and the `miss:` label
-    // counts a miss only while the RUNNING add_new_state is still true
-    // (`if (!add_new_state) continue;`), where the in-loop dampener flips
-    // it false at the first active sl encountered. Consequences measured
-    // on to_wep: drained late states (newest) take counted misses BEFORE
-    // the scan reaches the old active cadence states, so the kernel
-    // n=3-evicts even its ACTIVE cadence checkpoints out of the bucket
-    // (f10b00: alive br=4, absent from late consults) — which is what
-    // opens its late re-entry adds. Whole-arrival gating (the previous
-    // approximation) protected everything and locked the bucket.
+    // Kernel scan shape: the bucket is a list_add-PREPENDED list scanned
+    // NEWEST-FIRST, and the `miss:` label counts a miss only while the
+    // RUNNING add_new_state is still true (`if (!add_new_state)
+    // continue;`), where the in-loop dampener flips it false at the
+    // first active sl encountered.
     let mut add_now = would_add_new_state_base(env, state, pc);
     let mut counted_miss_idxs: Vec<usize> = Vec::new();
-    // Event-stream probe (trace-range-gated): kernel [ZK sv<pc>] ARRIVE
-    // analog — every arrival at a traced pc with its lineage (parent cid)
-    // and the running add decision.
+    // Trace-range probe: log every arrival at a traced pc with its
+    // lineage (parent cid) and the running add decision.
     if crate::analysis::trace_pc_in_range(pc) {
         eprintln!(
             "[SUBSUM_ARRIVE] pc={} parent_cid={:?} add_now={} n_cands={}",
@@ -518,8 +439,8 @@ fn handle_standard_pruning(
             add_now,
             env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0)
         );
-        // Bucket identity map (1482 link): idx→cid so per-idx verdicts
-        // can be tied to [cache-slots3] add-time snapshots.
+        // Bucket identity map: idx→cid so per-idx verdicts can be tied
+        // to add-time snapshots.
         if std::env::var("ZOVIA_DUMP_BUCKET").ok().as_deref() == Some("1")
             && let Some(v) = env.explored_states.get(&pc)
         {
@@ -562,29 +483,7 @@ fn handle_standard_pruning(
             // Kernel `is_state_visited`: a cached state with branches>0
             // NEVER subsumes a normal arrival (`if (sl->state.branches)
             // ... goto miss`, verifier.c v6.15 L19024) — at EVERY prune
-            // point, not just loop heads. Same ancestors-only refinement
-            // as handle_loop_pruning's skip_active (see the long comment
-            // there): a co-active SIBLING under zovia's interleaved
-            // worklist is a state the kernel's strict DFS would have
-            // fully explored, so it may subsume; a true ANCESTOR on
-            // cur's own lineage must not (the kernel's rule — exposed at
-            // the pc18/619 outer-loop heads once slot cleaning became
-            // read-mark-driven: a descendant merged into its own
-            // still-active ancestor 365x where the kernel prunes 6x).
-            // Kernel blanket gate: `if (sl->state.branches) ... goto miss`
-            // — a cached state whose subtree is still in flight NEVER
-            // subsumes a normal arrival, sibling or ancestor. The former
-            // ancestors-only carve-out was tuned under the broken
-            // dense-caching branches accounting (everything looked
-            // permanently active, so a blanket skip skipped everything);
-            // with kernel-shape branches (ee5221c) the blanket gate is
-            // the faithful rule. Divergence this closes (kernel #37/38):
-            // the 584<-521 R1=0 state is added ~100 insns before the
-            // TCP-arm wide-R2 arrival compares at 584; the kernel
-            // silently misses on branches>0 (zero [ZK sv584] compares
-            // against it), zovia's sibling carve-out let the compare run
-            // -> imprecise-R2 free-pass -> the sponge-subtree's R2 died
-            // at 584 instead of reaching 748.
+            // point, not just loop heads, sibling or ancestor alike.
             if prev.branches > 0 {
                 saw_active = true;
                 // Kernel skip_inf_loop_check: flips the RUNNING
@@ -609,19 +508,16 @@ fn handle_standard_pruning(
                 }
                 continue;
             }
-            // Kernel-faithful force_exact (see matching block above for
-            // full rationale and history). At iter_next sites the kernel
-            // pins RANGE_WITHIN regardless of read-mark completeness.
+            // Kernel-faithful force_exact (see matching block above).
+            // At iter_next sites the kernel pins RANGE_WITHIN
+            // regardless of read-mark completeness.
             let force_exact =
                 iter_next_pc || crate::analysis::flow::scc::incomplete_read_marks(env, prev);
             match state_subsumed_by(state, prev, live_regs, frame_live_slots, frame_live_regs, config, force_exact) {
                 Ok(()) => {
                     zhit_seq(pc, state, prev);
-                    // e33c chase: does this HIT prune a VALUE-NULL lineage
-                    // (history crossed 498->515, the loaded-value-null skip)?
-                    // The kernel does no subsumption at the Os Loop A (all
-                    // candidates active); if zovia prunes value-null states
-                    // here, that's why e33c's null-window never reaches 580.
+                    // ZOVIA_DBG_VNHIT: report HITs that prune a lineage
+                    // whose history crossed the 498->515 value-null edge.
                     if std::env::var("ZOVIA_DBG_VNHIT").ok().as_deref() == Some("1")
                         && matches!(pc, 494 | 515 | 516)
                     {
@@ -656,8 +552,8 @@ fn handle_standard_pruning(
                         if std::env::var("ZOVIA_DUMP_SLOTS3").ok().as_deref() == Some("1") {
                             dump_slots3(pc, "HIT", state, prev);
                         }
-                        // Precision-seam probe (route-B 140 hit): dump the
-                        // compared live dims of cur vs the matched cache.
+                        // ZOVIA_DUMP_HIT_DIMS: dump the compared live
+                        // dims of cur vs the matched cache.
                         if std::env::var("ZOVIA_DUMP_HIT_DIMS").ok().as_deref() == Some("1") {
                             for &r in live_regs.iter() {
                                 eprintln!(
@@ -701,16 +597,15 @@ fn handle_standard_pruning(
                             "[SUBSUM_MISS] pc={} prev_idx={} reason={:?} prev.dfs_paths={} force_exact={} (non-loop site)",
                             pc, i, reason, prev.dfs_paths, force_exact,
                         );
-                        // ZOVIA_DUMP_SLOTS3 (2af5badd seed chase 2026-07-16):
-                        // per-byte kinds + base spill (type,prec,bounds) for
-                        // spi25/26/27 on BOTH cur and the candidate — diffed
-                        // against kernel probe #132's same dump per arrival.
+                        // ZOVIA_DUMP_SLOTS3: per-byte kinds + base spill
+                        // (type,prec,bounds) for spi25/26/27 on BOTH cur
+                        // and the candidate.
                         if std::env::var("ZOVIA_DUMP_SLOTS3").ok().as_deref() == Some("1") {
                             dump_slots3(pc, "MISS", state, prev);
                         }
-                        // Miss-dim probe (124 re-entry seam): same dims as
-                        // [hit_dim] but on the miss path, cur vs the missed
-                        // cache. Env-gated, trace-range-gated.
+                        // ZOVIA_DUMP_MISS_DIMS: same dims as [hit_dim]
+                        // but on the miss path, cur vs the missed cache.
+                        // Env-gated, trace-range-gated.
                         if std::env::var("ZOVIA_DUMP_MISS_DIMS").ok().as_deref() == Some("1") {
                             use crate::analysis::machine::reg::Reg;
                             for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4,
@@ -748,16 +643,8 @@ fn handle_standard_pruning(
         }
         // Kernel miss-label semantics run PER CANDIDATE DURING the scan
         // (verifier.c `miss:` inside list_for_each): candidates that
-        // EQFAILed/skipped BEFORE the eventual hit keep their miss_cnt++
-        // and can be evicted on this same arrival. zovia dropped these
-        // pre-hit counted misses, permanently under-counting whichever
-        // candidates sit after the hot state in scan order — measured on
-        // from_tnl c15 pc1770 (probe #134 [ZK ev] vs [ev]): identical
-        // per-arrival verdict streams, first drift exactly at the first
-        // hit-ending arrival, cascading into COMPLEMENTARY eviction sets
-        // (kernel kept r1={0x205,0x2205,0x405,0x2405}, zovia kept
-        // {...,0x605,0x2605,0x5}) → the post-80c1b7e first walk
-        // divergence at ip9771 (0x2af5baddb8c6c1fb chase). Do the hit
+        // missed/skipped BEFORE the eventual hit keep their miss_cnt++
+        // and can be evicted on this same arrival. Do the hit
         // bookkeeping first (idx is invalidated by evictions below).
         record_pruning_misses(env, pc, &counted_miss_idxs);
         true
@@ -776,21 +663,16 @@ fn handle_standard_pruning(
 /// heuristic. The in-loop dampener then flips it false DURING the scan
 /// (see dampener_would_suppress). Keep in sync with run_worklist A.c.
 fn would_add_new_state_base(env: &VerifierEnv, state: &State, pc: usize) -> bool {
-    // ZOVIA_DBG_FORCE_ADD=1 — DIAGNOSIS ONLY (schedule-class ceiling
-    // measurement, 2026-07-11): checkpoint at EVERY prune-point visit
-    // (a superset of the kernel's add set — every kernel base pc gets an
-    // instance) while keeping subsumption-hit pruning intact. Answers
-    // "would the walk anchor at the kernel's base and emit the demanded
-    // hash if the add-cadence phase were gone" for the parked
-    // counter-schedule family (b9bc/003e/to_wep). NOT a fix — forced
-    // adds change exploration; never default this on.
+    // ZOVIA_DBG_FORCE_ADD=1 — DIAGNOSIS ONLY: checkpoint at EVERY
+    // prune-point visit (a superset of the kernel's add set) while
+    // keeping subsumption-hit pruning intact. NOT a fix — forced adds
+    // change exploration; never default this on.
     if std::env::var("ZOVIA_DBG_FORCE_ADD").ok().as_deref() == Some("1") {
         return true;
     }
     // Range-scoped variant (ZOVIA_DBG_FORCE_ADD_RANGE=LO:HI): forced adds
     // ONLY inside the window — surgical base-placement tests without the
-    // global state blowup (the unscoped knob timed out at 1800s on
-    // fibdsr16 before reaching its rejects).
+    // global state blowup.
     if force_add_in_range(pc) {
         return true;
     }
@@ -889,8 +771,7 @@ pub fn should_prune(
         return false;
     }
 
-    // [ARR] per-arrival probe (kernel [ZK arr] mirror) for the
-    // parity-seam event-stream diff: r6 = loop counter, r8 = map cursor.
+    // [ARR] per-arrival trace probe.
     if crate::analysis::trace_pc_in_range(pc) {
         use crate::analysis::machine::reg::Reg;
         let r6 = state.get_tnum(Reg::R6);
@@ -904,8 +785,7 @@ pub fn should_prune(
     // earlier (e.g. its SCC still had pending backedges at eager-clean
     // time). Without the retry, states inside a long-running loop SCC
     // are never cleaned and every later compare runs against the fat
-    // state (from_nat_fib pc2200: 1913 Stack misses vs kernel 76/78
-    // prune rate — the tail-call epilogue explosion).
+    // state.
     {
         let to_clean: Vec<u32> = env
             .explored_states
@@ -963,10 +843,8 @@ pub fn should_prune(
             Some(Instr::Call { .. }) | Some(Instr::MayGoto { .. })
         );
 
-    // DIAG (pc521 d53): when this pc is traced and prev cached states
-    // already exist, log the early-decision inputs so we can see WHY a
-    // second arm's subsumption is skipped (the kernel compares here and
-    // keeps ONE state; zovia forms two).
+    // DIAG: when this pc is traced and prev cached states already
+    // exist, log the early-decision inputs.
     if crate::analysis::trace_pc_in_range(pc) {
         let nprev = env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0);
         if nprev > 0 {
@@ -979,16 +857,11 @@ pub fn should_prune(
         }
     }
 
-    // REMOVED (dampener port, 2026-07-05): the historical on-path shortcut
-    // (`is_on_path && !in_loop && !pc_is_force_checkpoint -> return false`)
-    // skipped the scan entirely at non-loop-head on-path pcs. The kernel's
-    // is_state_visited has NO such shortcut — on-path arrivals are exactly
-    // what its branches>0 block + skip_inf_loop_check dampener handle, and
-    // the blanket branches>0 gate makes the scan safe here (active states
-    // skip-miss, never wrongly subsume). With the shortcut, the dampener
-    // could never see the active ancestor on loop descents (from_tnl pc125:
-    // [SP_GATE] would_skip_onpath=true every iteration -> every-2 cadence
-    // vs kernel every-5). Keep the stat for observability.
+    // The kernel's is_state_visited has NO on-path shortcut — on-path
+    // arrivals are exactly what its branches>0 block +
+    // skip_inf_loop_check dampener handle, and the blanket branches>0
+    // gate makes the scan safe here (active states skip-miss, never
+    // wrongly subsume). Keep the stat for observability.
     if is_on_path && !in_loop && !pc_is_force_checkpoint {
         env.pruning_stats.on_path_skip += 1;
     }
@@ -1017,27 +890,11 @@ pub fn should_prune(
         v.sort();
         eprintln!("[live_regs] pc={} {:?}", pc, v);
     }
-    // clean_verifier_state analog: the kernel zeroes dead stack slots
-    // (clean_func_state → STACK_INVALID) so stacksafe never compares
-    // them. zovia's static `live_slots` (sound over-approx MAY-liveness)
-    // is the equivalent; threaded into `stack_subsumed_by` so a dead
-    // scratch slot can't block a prune (mirrors the existing
-    // `live_regs` filtering in types/domain subsumption).
-    // Per-frame clean_verifier_state: the kernel cleans EVERY frame at
-    // its own ip (clean_func_state via frame_insn_idx, verifier.c:19463),
-    // not just the innermost. The innermost frame's ip is `pc`; a caller
-    // frame i is paused at its call and resumes at frame[i+1].return_pc,
-    // so its slots are dead iff unread from there. `None` = liveness
-    // unknown for that frame ⇒ DON'T skip (full compare — the sound
-    // direction). Built once (cur's frame shape is fixed; old zips 1:1
-    // by callsite).
     // Kernel `stacksafe` has NO in-compare liveness skip: dead slots are
-    // removed from CACHED states by `clean_verifier_state` (now driven by
+    // removed from CACHED states by `clean_verifier_state` (driven by
     // the dynamic live-stack marks, see flow::live_stack); an uncleaned
     // state (branches>0 / pending SCC backedges) is compared in FULL.
-    // The former static-live_slots skip here was an extra merge-enabler
-    // the kernel doesn't have (it hid per-byte slot-kind mismatches the
-    // kernel blocks on — from_nat_fib pc1375 fp-24 ZERO-vs-MISC).
+    // So every frame passes `None` = no slot skip.
     let nframes = state.frames.depth();
     let frame_live_slots: Vec<Option<HashSet<i16>>> = vec![None; nframes];
     // Kernel per-frame reg-live mask for the caller-frame compare

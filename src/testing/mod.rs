@@ -1,3 +1,4 @@
+pub mod attach_rules;
 pub mod jsonl;
 pub mod legacy_selftest;
 pub mod logging;

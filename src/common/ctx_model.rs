@@ -81,7 +81,7 @@ pub enum CtxFieldKind {
         /// BTF TYPE_TAG flags from the attach-target arg (USER /
         /// PERCPU). Default empty for static ctx-field tables; the
         /// fentry/LSM/tp_btf lax fallback populates this from
-        /// `runner::tracing_attach_arg_tag_flags(attach_subtype, arg_idx)`.
+        /// `attach_rules::tracing_attach_arg_tag_flags(attach_subtype, arg_idx)`.
         /// Propagated to `RegType::PtrToBtfId.flags` by transfer/types.rs;
         /// rejected at deref by access.rs.
         tag_flags: crate::analysis::machine::reg_types::PtrFlags,
@@ -2317,7 +2317,7 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
             // table in runner.rs mirrors the small set of attach targets
             // the test corpus exercises. arg_idx is kernel-side
             // (0 = first user-declared arg), matching `off / 8`.
-            let tag_flags = crate::testing::runner::tracing_attach_arg_tag_flags(
+            let tag_flags = crate::testing::attach_rules::tracing_attach_arg_tag_flags(
                 env.ctx.attach_subtype.as_deref(),
                 (off / 8) as u8,
             );
@@ -2329,11 +2329,11 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
             // to CtxFieldKind::Scalar; unmapped slots keep the lax
             // pointer fallback.
             if matches!(
-                crate::testing::runner::tracing_attach_arg_kind(
+                crate::testing::attach_rules::tracing_attach_arg_kind(
                     env.ctx.attach_subtype.as_deref(),
                     (off / 8) as u8,
                 ),
-                Some(crate::testing::runner::TracingArgKind::Scalar)
+                Some(crate::testing::attach_rules::TracingArgKind::Scalar)
             ) {
                 return Some(CtxAccessInfo {
                     kind: CtxFieldKind::Scalar,

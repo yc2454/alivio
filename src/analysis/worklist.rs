@@ -17,7 +17,7 @@ use crate::pcc::{apply_verified_refinements, check_proof};
 use crate::analysis::flow::{self, merging, pruning};
 use crate::analysis::transfer;
 use crate::analysis::machine::error::VerificationError;
-use super::{jmpcnt_in_range, pushdump, pushdump_pc, trace_pc_in_range};
+use super::{jmpcnt_in_range, pushdump, trace_pc_in_range};
 
 /// Worklist abstract-interpretation loop. Shared between the main-program
 /// analysis (`analyze_program_full`) and the exception-cb body pass
@@ -40,82 +40,15 @@ pub(super) fn run_worklist(
     let diag_pcs = crate::analysis::flow::diag::diag_pcs();
     let mut diag_arrivals: HashMap<usize, usize> = HashMap::new();
 
-    // One-shot dump of AST instr at trace PCs (WT diagnostic).
-    if std::env::var("ZOVIA_DUMP_AST").is_ok() {
-        for pc in 0..prog.instrs.len() {
-            if trace_pc_in_range(pc) {
-                eprintln!("[AST] pc={} instr={:?}", pc, prog.instrs[pc]);
-            }
-        }
-    }
-    // Dump jmp_point + prune_point flags + predecessor instr kind (to
-    // identify which mark site fired). WT diagnostic.
-    if std::env::var("ZOVIA_DUMP_JMP_POINTS").ok().as_deref() == Some("1") {
-        for pc in 0..prog.instrs.len() {
-            if !trace_pc_in_range(pc) { continue; }
-            let aux = &env.insn_aux_data[pc];
-            if !aux.jmp_point { continue; }
-            // Identify likely mark source: look at pc-1 for Call/Jmp/CallRel
-            // (post-call fallthrough / unconditional jmp target) or scan for
-            // an If/Jmp/CallRel/MayGoto with target=pc earlier.
-            let pred_kind: String = if pc > 0 {
-                match &prog.instrs[pc - 1] {
-                    Instr::Call { .. } => "post-Call".into(),
-                    Instr::CallRel { .. } => "post-CallRel".into(),
-                    Instr::Jmp { .. } => "post-Jmp(unreachable)".into(),
-                    Instr::MayGoto { .. } => "post-MayGoto-FT".into(),
-                    Instr::If { .. } => "post-If-FT".into(),
-                    _ => "other".into(),
-                }
-            } else { "PC0".into() };
-            // Check if any earlier insn targets this PC
-            let mut tgt_kinds: Vec<&str> = Vec::new();
-            for (sp, si) in prog.instrs.iter().enumerate() {
-                match si {
-                    Instr::If { target, .. } if *target == pc => tgt_kinds.push("If-target"),
-                    Instr::Jmp { target } if *target == pc => tgt_kinds.push("Jmp-target"),
-                    Instr::MayGoto { target } if *target == pc => tgt_kinds.push("MayGoto-target"),
-                    Instr::CallRel { target } if *target == pc => tgt_kinds.push("CallRel-target"),
-                    _ => {}
-                }
-                let _ = sp;
-            }
-            eprintln!(
-                "[JMP_PT] pc={} pred={} target_of={:?} (prune={} force_cp={})",
-                pc, pred_kind, tgt_kinds, aux.prune_point, aux.force_checkpoint
-            );
-        }
-    }
+    dump_ast(prog);
+    dump_jmp_points(env, prog);
 
-    // [zpop] (kernel [ZK pop] mirror): a zovia pop is kernel-comparable
-    // iff the PREVIOUS iteration died (prune-hit / zero successors /
-    // fetch-fail) — otherwise it's the continuation pop the kernel never
-    // makes. First pop = the initial state (no kernel analog).
-    let zpop_on = std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1");
     let mut prev_died = false;
     while let Some(mut state) = worklist.pop_back() {
-        if zpop_on && prev_died {
-            eprintln!(
-                "[zpop] resume={} ip={} jp={}",
-                state.pc, env.insn_processed, env.jmps_processed
-            );
-        }
+        zpop_trace(prev_died, &state, env);
         prev_died = true;
-        if trace_pc_in_range(state.pc) {
-            use crate::analysis::machine::reg::Reg;
-            let (r2lo, r2hi) = state.domain.get_interval(Reg::R2);
-            // R9's type at pop (pairs with the [WL_PUSH] R9 print; a type
-            // flip between them = the pushed snapshot mutated or the pop
-            // pairing is wrong).
-            eprintln!(
-                "[WL_POP] pc={} parent_cache_id={:?} R2=[{}..{}] R9={:?}",
-                state.pc, state.parent_cache_id, r2lo, r2hi,
-                state.types.get(Reg::R9),
-            );
-        }
-        if pushdump_pc() == Some(state.pc) {
-            pushdump("POP", &state);
-        }
+        wl_pop_trace(&state);
+        pushdump("POP", &state);
         // Per-path counter bump for the kernel-engine sparse-cache
         // heuristic (`ZOVIA_KERNEL_ENGINE=1`). Counts THIS path's
         // progress (not env-wide), so worklist interleaving doesn't
@@ -191,45 +124,8 @@ pub(super) fn run_worklist(
             && env.insn_aux_data[state.pc].jmp_point
         {
             state.jmp_history_cnt = state.jmp_history_cnt.saturating_add(1);
-            if std::env::var("ZOVIA_TRACE_JMP_HIST_BUMP").ok().as_deref() == Some("1")
-                && trace_pc_in_range(state.pc)
-            {
-                eprintln!(
-                    "[JH_BUMP] pc={} new_cnt={} parent_cache={:?}",
-                    state.pc, state.jmp_history_cnt, state.parent_cache_id
-                );
-            }
-            // One-shot lineage dump: when this state first hits the
-            // target (pc, new_cnt) combo, walk history backward and
-            // print every jmp_point PC the lineage visited. WT
-            // diagnostic.
-            if let (Ok(target_pc), Ok(target_cnt)) = (
-                std::env::var("ZOVIA_DUMP_LINEAGE_PC").and_then(|s| s.parse::<usize>().map_err(|_| std::env::VarError::NotPresent)),
-                std::env::var("ZOVIA_DUMP_LINEAGE_CNT").and_then(|s| s.parse::<u64>().map_err(|_| std::env::VarError::NotPresent)),
-            ) {
-                static DUMPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                if state.pc == target_pc && state.jmp_history_cnt as u64 == target_cnt
-                    && !DUMPED.swap(true, std::sync::atomic::Ordering::SeqCst)
-                {
-                    eprintln!("[LINEAGE] state at pc={} cnt={} parent_cache_id={:?}", state.pc, state.jmp_history_cnt, state.parent_cache_id);
-                    let mut hidx = state.history_idx;
-                    let mut depth = 0;
-                    let mut bumps = 0;
-                    while let Some(i) = hidx {
-                        let step = match env.history.get(i) { Some(s) => s, None => break };
-                        let pc = step.pc;
-                        let is_jp = env.insn_aux_data.get(pc).map(|a| a.jmp_point).unwrap_or(false);
-                        if is_jp {
-                            bumps += 1;
-                            eprintln!("[LINEAGE] depth={} pc={} JMP_POINT (bump #{})", depth, pc, bumps);
-                        }
-                        depth += 1;
-                        hidx = step.parent_idx;
-                        if depth > 5000 { break; }
-                    }
-                    eprintln!("[LINEAGE] total_jmp_point_bumps_in_history={} (counter value={})", bumps, state.jmp_history_cnt);
-                }
-            }
+            jh_bump_trace(&state);
+            lineage_dump(env, &state);
         }
         // Per-instruction scope for the BCF `detect_conflict_eq`
         // path-unreachable flag: only the instruction that set it (its
@@ -248,18 +144,7 @@ pub(super) fn run_worklist(
         } else {
             (None, None)
         };
-        if diag_hit {
-            let n = diag_arrivals.entry(state.pc).or_insert(0);
-            *n += 1;
-            eprintln!(
-                "[DIAG ENTER] pc={} arrival#{} frames={} parent_cache={:?}\n  R4={} R6={}\n  Ranges: {}\n  Tnums:  {}",
-                state.pc, n, state.num_frames(), state.parent_cache_id,
-                diag_r4_pre.as_deref().unwrap_or("?"),
-                diag_r6_pre.as_deref().unwrap_or("?"),
-                state.reg_ranges_str(),
-                state.reg_tnums_compact_str(),
-            );
-        }
+        diag_enter_trace(diag_hit, &mut diag_arrivals, &state, &diag_r4_pre, &diag_r6_pre);
         if env.failed() {
             error!(target: "app", "[Analysis] Aborted due to previous errors.");
             break;
@@ -284,127 +169,20 @@ pub(super) fn run_worklist(
             merging::resolve_type_conflicts(&env, &mut state);
         }
 
-        if diag_hit {
-            let r4_post = format!("{:?}", state.types.get(Reg::R4));
-            let r6_post = format!("{:?}", state.types.get(Reg::R6));
-            if Some(&r4_post) != diag_r4_pre.as_ref()
-                || Some(&r6_post) != diag_r6_pre.as_ref()
-            {
-                eprintln!(
-                    "[DIAG DEMOTE] pc={} R4: {} -> {}  R6: {} -> {}",
-                    state.pc,
-                    diag_r4_pre.as_deref().unwrap_or("?"), r4_post,
-                    diag_r6_pre.as_deref().unwrap_or("?"), r6_post,
-                );
-            }
-        }
+        diag_demote_trace(diag_hit, &state, &diag_r4_pre, &diag_r6_pre);
 
-        // Audit probe: dump compact state at the requested PC(s). Gated on
-        // `ZOVIA_DUMP_STATES_AT_PC=N[,M,...]`. Used to inspect why many
-        // "equivalent" states accumulate at a single pc (path-explosion
-        // diagnostic). Comma-separated list, e.g.
-        // `ZOVIA_DUMP_STATES_AT_PC=1587,1856`. Each line includes R0..R9 +
-        // their precision marks + a few key stack slot scalars so we can
-        // compare what changes across visits to a loop head.
-        if let Ok(s) = std::env::var("ZOVIA_DUMP_STATES_AT_PC") {
-            let targets: Vec<usize> = s
-                .split(',')
-                .filter_map(|t| t.trim().parse::<usize>().ok())
-                .collect();
-            if targets.iter().any(|&t| t == state.pc) {
-                use crate::analysis::machine::reg_types::RegType;
-                let mut row = format!("pc={} ", state.pc);
-                for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5,
-                          Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
-                    let ty = state.types.get(r);
-                    let (ilo, ihi) = state.domain.get_interval(r);
-                    let sid = state.scalar_ids.get(&r).copied().unwrap_or(0);
-                    let p = if state.precise_regs.contains(&r) { "P" } else { "_" };
-                    // Compact-print: SV[lo..hi]sid=N {P|_}  for scalars,
-                    // or ptr-type tag for pointers.
-                    let tag = match ty {
-                        RegType::ScalarValue => format!("SV[{}..{}]", ilo, ihi),
-                        RegType::PtrToMapValue { offset, map_idx, .. } => {
-                            format!("MV(m{},off={:?})", map_idx, offset)
-                        }
-                        RegType::PtrToCtx => "Ctx".into(),
-                        RegType::PtrToStack { .. } => format!("Stk[{}..{}]", ilo, ihi),
-                        RegType::PtrToPacket => "Pkt".into(),
-                        RegType::PtrToPacketEnd => "PktEnd".into(),
-                        RegType::NotInit => "NI".into(),
-                        _ => format!("{:?}", ty),
-                    };
-                    let r_index = (r as u8).saturating_sub(1);
-                    row.push_str(&format!(
-                        "r{}={}{}sid={} ",
-                        r_index, tag, p, sid,
-                    ));
-                }
-                // Append the top frame's spilled scalar slots (off, bounds,
-                // precise) up to ~10 most-recent for sanity.
-                let frame = state.frames.current();
-                let mut slot_keys: Vec<i16> = frame.stack.slot_offsets().into_iter().collect();
-                slot_keys.sort();
-                let mut sn = 0;
-                for off in slot_keys.iter().rev() {
-                    let Some(slot) = frame.stack.get_slot(*off) else { continue; };
-                    if !matches!(slot.reg_type, RegType::ScalarValue) {
-                        continue;
-                    }
-                    row.push_str(&format!(
-                        "fp{}=SV[{}..{}]sid={}{} ",
-                        off, slot.bounds.min, slot.bounds.max,
-                        slot.scalar_id.unwrap_or(0),
-                        if slot.precise { "P" } else { "_" },
-                    ));
-                    sn += 1;
-                    if sn >= 8 { break; }
-                }
-                eprintln!("[STATE@PC] {}", row);
-            }
-        }
+        dump_states_at_pc(&state);
 
         // Kernel do_check: `++env->insn_processed` (verifier.c:21172)
         // runs BEFORE is_state_visited (21189) — EVERY arrival counts,
         // including ones that then prune.
         env.insn_processed += 1;
-        // [INSN] corridor execution-order probe (kernel [ZK insn]
-        // mirror at the same pre-check position, verifier.c:21181).
-        if state.pc >= 185 && state.pc <= 200 && trace_pc_in_range(state.pc) {
-            eprintln!("[INSN] ip={} pc={}", env.insn_processed, state.pc);
-        }
-        // ZOVIA_DBG_REGVAL=RN:pc1,pc2,... — dump a register's tracked
-        // value pre-execution at the listed pcs.
-        {
-            static REGVAL: std::sync::OnceLock<Option<(Reg, Vec<usize>)>> =
-                std::sync::OnceLock::new();
-            let rv = REGVAL.get_or_init(|| {
-                let v = std::env::var("ZOVIA_DBG_REGVAL").ok()?;
-                let (rs, pcs) = v.split_once(':')?;
-                let idx: usize = rs.trim_start_matches(['R', 'r']).parse().ok()?;
-                let reg = Reg::ALL[idx + 1];
-                let pcs = pcs.split(',').filter_map(|p| p.parse().ok()).collect();
-                Some((reg, pcs))
-            });
-            if let Some((reg, pcs)) = rv
-                && pcs.contains(&state.pc)
-            {
-                let (lo, hi) = state.domain.get_interval(*reg);
-                let (ulo, uhi) = state.domain.get_u64_bounds(*reg);
-                eprintln!(
-                    "[regval] pc={} ip={} {:?} ivl=[{},{}] u=[{:#x},{:#x}] tn={:?} ty={:?} prec={}",
-                    state.pc, env.insn_processed, reg, lo, hi, ulo, uhi,
-                    state.get_tnum(*reg), state.types.get(*reg),
-                    state.is_reg_precise(*reg)
-                );
-            }
-        }
+        insn_trace(env.insn_processed, state.pc);
+        regval_trace(&state, env.insn_processed);
 
         // A.b PRUNING CHECK
         if pruning::should_prune(env, &mut state, config, prog) {
-            if diag_hit {
-                eprintln!("[DIAG PRUNE] pc={} pruned=true", state.pc);
-            }
+            diag_prune_trace(diag_hit, state.pc, true);
             info!("Pruned state at pc {}", state.pc);
             prune_count += 1;
             // Kernel process_bpf_exit: `bpf_update_live_stack` at every
@@ -415,15 +193,11 @@ pub(super) fn run_worklist(
             // SCC: this DFS path is done (subsumed by a cached state).
             // Decrement parent.branches up the chain; if a parent's
             // branches hits 0 propagate its loop_entry to its parent.
-            if std::env::var("ZOVIA_DBG_CDB").ok().as_deref() == Some("1") {
-                eprintln!("[dbg-cdb] PRUNE-death pc={} parent={:?}", state.pc, state.parent_cache_id);
-            }
+            cdb_prune_death_trace(state.pc, state.parent_cache_id);
             crate::analysis::flow::scc::complete_dfs_branch(env, state.parent_cache_id);
             continue;
         }
-        if diag_hit {
-            eprintln!("[DIAG PRUNE] pc={} pruned=false (recorded)", state.pc);
-        }
+        diag_prune_trace(diag_hit, state.pc, false);
 
         // A.c RECORD STATE — kernel-faithful `is_state_visited` shape.
         // Gated by `config.kernel_engine` (formerly env `ZOVIA_KERNEL_ENGINE=1`,
@@ -519,47 +293,9 @@ pub(super) fn run_worklist(
                     env_heuristic,
                     outer_gate,
                 );
-                // ZOVIA_DUMP_SLOTS3: slot kinds+base value AT ADD TIME.
-                // "1" = default bases -208/-216/-224; or a comma
-                // list of bases (e.g. "-296,-320").
-                if let Ok(v) = std::env::var("ZOVIA_DUMP_SLOTS3") {
-                    let bases: Vec<i16> = if v == "1" {
-                        vec![-208, -216, -224]
-                    } else {
-                        v.split(',').filter_map(|s| s.trim().parse().ok()).collect()
-                    };
-                    for base in bases {
-                        let k: String = (base..base + 8)
-                            .map(|b| match state.frames.current().stack.get_slot_kind(b) {
-                                Some(k) => format!("{:?}", k).chars().next().unwrap(),
-                                None => '-',
-                            })
-                            .collect();
-                        let bv = state
-                            .frames
-                            .current()
-                            .stack
-                            .get_slot(base)
-                            .map(|s| format!("{:?}/p{}[{},{}]", s.reg_type, s.precise, s.bounds.min, s.bounds.max))
-                            .unwrap_or_else(|| "-".into());
-                        eprintln!(
-                            "[cache-slots3] pc={} cid={} base={} kinds={} val={}",
-                            state.pc, cache_id, base, k, bv
-                        );
-                    }
-                }
+                cache_slots3_dump(&state, cache_id);
             }
-            // ZOVIA_DUMP_STATE_RANGE: the cached state's faithful
-            // (insn_idx, first, last) — comparable to kernel [ZK refine]
-            // base_insn/base_first/base_last. state.first_insn_idx here is
-            // still the CACHED (pre-reset) value; the reset below is for
-            // the successor.
-            if std::env::var("ZOVIA_DUMP_STATE_RANGE").ok().as_deref() == Some("1") {
-                eprintln!(
-                    "[srange] cid={} insn_idx={} first={} last={}",
-                    cache_id, state.pc, state.first_insn_idx, state.last_insn_idx
-                );
-            }
+            srange_trace(cache_id, &state);
             state.parent_cache_id = Some(cache_id);
             // Kernel `cur->first_insn_idx = insn_idx` (verifier.c:20529): the
             // continuing state begins a NEW segment at this checkpoint pc. The
@@ -567,12 +303,7 @@ pub(super) fn run_worklist(
             // :2073). last_insn_idx is unchanged (it's the arrival pc, set on
             // this state at successor-creation).
             state.first_insn_idx = state.pc;
-            if jmpcnt_in_range(env.insn_processed) {
-                eprintln!(
-                    "[jmpcnt] ADD ip={} jp={} pc={}",
-                    env.insn_processed, env.jmps_processed, state.pc
-                );
-            }
+            jmpcnt_add_trace(env, state.pc);
             env.prev_jmps_processed = env.jmps_processed;
             env.prev_insn_processed = env.insn_processed;
             state.prev_jmp_at_cache = state.path_jmp_count;
@@ -598,13 +329,7 @@ pub(super) fn run_worklist(
 
         // B. Global Complexity Limit (increment moved above the pruning
         // check — kernel order; see comment there.)
-        // Per-PC visit counter (audit hook, ZOVIA_DUMP_VISITS=1). Bumped
-        // ONLY on non-pruned expansions so the count reflects state
-        // expansions per pc, comparable to the kernel verifier's
-        // per-insn visit count in the log_level-2 trace.
-        if std::env::var("ZOVIA_DUMP_VISITS").ok().as_deref() == Some("1") {
-            *env.pc_visit_count.entry(state.pc).or_insert(0) += 1;
-        }
+        dump_visits_bump(env, state.pc);
         // BCF mode is an offline bundle generator that explores past
         // rejects (discharge, not fail-fast), so it uses a higher budget
         // than the kernel's 1M runtime cap. Base mode keeps 1M — hitting it
@@ -632,32 +357,7 @@ pub(super) fn run_worklist(
         }
 
         // C'. Subsumption-miss dump (diagnostic, env-gated, verbosity-independent).
-        // Shows WHICH pcs accumulate subsumption misses and WHY — pinpoints
-        // a non-converging loop header and the reason its states won't merge.
-        if std::env::var("ZOVIA_DUMP_PRUNE_MISSES").is_ok()
-            && env.insn_processed.is_multiple_of(config.log_interval)
-        {
-            use crate::analysis::machine::env::SubsumptionMissReason;
-            let mut rows: Vec<(usize, [u64; 9], u64)> = env
-                .subsumption_misses
-                .iter()
-                .map(|(&pc, &counts)| (pc, counts, counts.iter().sum()))
-                .collect();
-            rows.sort_by(|a, b| b.2.cmp(&a.2));
-            eprintln!(
-                "[PRUNE-MISS] insn={} worklist={} top miss pcs:",
-                env.insn_processed,
-                worklist.len()
-            );
-            for (pc, counts, total) in rows.iter().take(8) {
-                let breakdown: Vec<String> = SubsumptionMissReason::ALL
-                    .iter()
-                    .filter(|r| counts[r.idx()] > 0)
-                    .map(|r| format!("{}={}", r.label(), counts[r.idx()]))
-                    .collect();
-                eprintln!("    pc={} misses={} [{}]", pc, total, breakdown.join(" "));
-            }
-        }
+        prune_miss_dump(env, worklist.len(), config.log_interval);
 
         // D. Instruction Fetch
         if state.pc >= prog.instrs.len() {
@@ -739,15 +439,7 @@ pub(super) fn run_worklist(
         if is_jmp_class {
             env.jmps_processed += 1;
             state.path_jmp_count = state.path_jmp_count.saturating_add(1);
-            // ZOVIA_DBG_JMPCNT=LO:HI: name every jmp-class increment in an
-            // absolute insn_processed window, to diff the jump STREAM
-            // against the kernel's dj on the same window.
-            if jmpcnt_in_range(env.insn_processed) {
-                eprintln!(
-                    "[jmpcnt] JMP ip={} jp={} pc={}",
-                    env.insn_processed, env.jmps_processed, state.pc
-                );
-            }
+            jmpcnt_jmp_trace(env, state.pc);
         }
         // Kernel do_check: `bpf_reset_stack_write_marks(env, insn_idx)`
         // before do_check_insn, `bpf_commit_stack_write_marks` after.
@@ -757,24 +449,7 @@ pub(super) fn run_worklist(
         flow::live_stack::reset_stack_write_marks(env, &state, state.pc);
         let mut successors = transfer::transfer(env, state, instr);
         flow::live_stack::commit_stack_write_marks(env);
-        if diag_hit {
-            let succ_dump: Vec<String> = successors
-                .iter()
-                .map(|s| {
-                    format!(
-                        "pc{}[R4={:?} R6={:?}]",
-                        s.pc,
-                        s.types.get(Reg::R4),
-                        s.types.get(Reg::R6)
-                    )
-                })
-                .collect();
-            eprintln!(
-                "[DIAG SUCC] pc={} -> [{}]",
-                diag_cur_pc,
-                succ_dump.join(", ")
-            );
-        }
+        diag_succ_trace(diag_hit, diag_cur_pc, &successors);
         // F.1 Certificate-Aided Refinement (optional)
         // Replay-verify proof chains for each successor PC using explored_states.
         if let Some(ref cert) = env.certificate {
@@ -879,10 +554,7 @@ pub(super) fn run_worklist(
             if succ_count > 1 {
                 p.branches = p.branches.saturating_add((succ_count - 1) as u32);
                 p.dfs_paths = p.dfs_paths.saturating_add((succ_count - 1) as u32);
-                if trace_pc_in_range(p.pc) {
-                    eprintln!("[BR] inc pc={} cid={} now={} (fork@{} n={})",
-                        p.pc, pcid, p.branches, cur_insn_pc, succ_count);
-                }
+                br_inc_trace(p, pcid, cur_insn_pc, succ_count);
             }
         }
         if succ_count == 0 {
@@ -890,55 +562,514 @@ pub(super) fn run_worklist(
             // Kernel process_bpf_exit: propagate live-stack marks first.
             flow::live_stack::update_live_stack(env, &ls_key);
             // Decrement parent chain analogously to the prune-hit path.
-            if std::env::var("ZOVIA_DBG_CDB").ok().as_deref() == Some("1") {
-                eprintln!("[dbg-cdb] EXIT-death pc={} parent={:?}", cur_insn_pc, cur_parent_cache_id);
-            }
+            cdb_exit_death_trace(cur_insn_pc, cur_parent_cache_id);
             crate::analysis::flow::scc::complete_dfs_branch(env, cur_parent_cache_id);
         }
-        // ZOVIA_DBG_PUSHLOG=1: kernel-comparable push stream. The kernel's
-        // push_stack fires once per NON-continued arm; zovia pushes every
-        // successor (the LAST-pushed is the continuation, popped right
-        // back). Print all but the final push of this fork ([ZK push]
-        // analog: at=branch pc, resume=arm pc).
-        let pushlog = std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1");
         let n_push = loop_back.len() + other.len();
         // A continuation gets pushed iff n_push>0 — the next pop is then
         // NOT kernel-comparable.
         prev_died = n_push == 0;
         let mut push_i = 0usize;
-        let plog = |pc: usize, at: usize, i: usize| {
-            if pushlog && i + 1 < n_push {
-                eprintln!(
-                    "[zpush] at={} resume={} ip={} jp={}",
-                    at, pc, env.insn_processed, env.jmps_processed
-                );
-            }
-        };
         for succ in loop_back {
-            if pushdump_pc() == Some(succ.pc) {
-                pushdump("PUSH-lb", &succ);
-            }
-            plog(succ.pc, cur_insn_pc, push_i);
+            pushdump("PUSH-lb", &succ);
+            zpush_trace(succ.pc, cur_insn_pc, push_i, n_push, env);
             push_i += 1;
             worklist.push_back(succ);
         }
         for succ in other.into_iter().rev() {
-            if trace_pc_in_range(succ.pc) {
-                use crate::analysis::machine::reg::Reg;
-                eprintln!(
-                    "[WL_PUSH] pc={} parent_cache_id={:?} (worklist_len_before={}) ip={} R9={:?}",
-                    succ.pc, succ.parent_cache_id, worklist.len(),
-                    env.insn_processed, succ.types.get(Reg::R9),
-                );
-            }
-            if pushdump_pc() == Some(succ.pc) {
-                pushdump("PUSH", &succ);
-            }
-            plog(succ.pc, cur_insn_pc, push_i);
+            wl_push_trace(&succ, worklist.len(), env.insn_processed);
+            pushdump("PUSH", &succ);
+            zpush_trace(succ.pc, cur_insn_pc, push_i, n_push, env);
             push_i += 1;
             worklist.push_back(succ);
         }
     }
 
     prune_count
+}
+
+// ---- debug instruments ----
+//
+// Env-gated eprintln! probes hoisted out of the worklist loop body. Each
+// helper does its own gating (env var and/or trace-pc range) so the call
+// site is a single line; none affect analysis results.
+
+/// ZOVIA_DUMP_AST: one-shot dump of AST instr at trace PCs (WT diagnostic).
+fn dump_ast(prog: &Program) {
+    if std::env::var("ZOVIA_DUMP_AST").is_ok() {
+        for pc in 0..prog.instrs.len() {
+            if trace_pc_in_range(pc) {
+                eprintln!("[AST] pc={} instr={:?}", pc, prog.instrs[pc]);
+            }
+        }
+    }
+}
+
+/// ZOVIA_DUMP_JMP_POINTS=1: dump jmp_point + prune_point flags +
+/// predecessor instr kind (to identify which mark site fired). WT
+/// diagnostic.
+fn dump_jmp_points(env: &VerifierEnv, prog: &Program) {
+    if std::env::var("ZOVIA_DUMP_JMP_POINTS").ok().as_deref() == Some("1") {
+        for pc in 0..prog.instrs.len() {
+            if !trace_pc_in_range(pc) { continue; }
+            let aux = &env.insn_aux_data[pc];
+            if !aux.jmp_point { continue; }
+            // Identify likely mark source: look at pc-1 for Call/Jmp/CallRel
+            // (post-call fallthrough / unconditional jmp target) or scan for
+            // an If/Jmp/CallRel/MayGoto with target=pc earlier.
+            let pred_kind: String = if pc > 0 {
+                match &prog.instrs[pc - 1] {
+                    Instr::Call { .. } => "post-Call".into(),
+                    Instr::CallRel { .. } => "post-CallRel".into(),
+                    Instr::Jmp { .. } => "post-Jmp(unreachable)".into(),
+                    Instr::MayGoto { .. } => "post-MayGoto-FT".into(),
+                    Instr::If { .. } => "post-If-FT".into(),
+                    _ => "other".into(),
+                }
+            } else { "PC0".into() };
+            // Check if any earlier insn targets this PC
+            let mut tgt_kinds: Vec<&str> = Vec::new();
+            for (sp, si) in prog.instrs.iter().enumerate() {
+                match si {
+                    Instr::If { target, .. } if *target == pc => tgt_kinds.push("If-target"),
+                    Instr::Jmp { target } if *target == pc => tgt_kinds.push("Jmp-target"),
+                    Instr::MayGoto { target } if *target == pc => tgt_kinds.push("MayGoto-target"),
+                    Instr::CallRel { target } if *target == pc => tgt_kinds.push("CallRel-target"),
+                    _ => {}
+                }
+                let _ = sp;
+            }
+            eprintln!(
+                "[JMP_PT] pc={} pred={} target_of={:?} (prune={} force_cp={})",
+                pc, pred_kind, tgt_kinds, aux.prune_point, aux.force_checkpoint
+            );
+        }
+    }
+}
+
+/// [zpop] (ZOVIA_DBG_PUSHLOG=1; kernel [ZK pop] mirror): a zovia pop is
+/// kernel-comparable iff the PREVIOUS iteration died (prune-hit / zero
+/// successors / fetch-fail) — otherwise it's the continuation pop the
+/// kernel never makes. First pop = the initial state (no kernel analog).
+fn zpop_trace(prev_died: bool, state: &State, env: &VerifierEnv) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let zpop_on = *ON.get_or_init(|| {
+        std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1")
+    });
+    if zpop_on && prev_died {
+        eprintln!(
+            "[zpop] resume={} ip={} jp={}",
+            state.pc, env.insn_processed, env.jmps_processed
+        );
+    }
+}
+
+/// [zpush] (ZOVIA_DBG_PUSHLOG=1): kernel-comparable push stream. The
+/// kernel's push_stack fires once per NON-continued arm; zovia pushes
+/// every successor (the LAST-pushed is the continuation, popped right
+/// back). Print all but the final push of this fork ([ZK push] analog:
+/// at=branch pc, resume=arm pc).
+fn zpush_trace(pc: usize, at: usize, i: usize, n_push: usize, env: &VerifierEnv) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let pushlog = *ON.get_or_init(|| {
+        std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1")
+    });
+    if pushlog && i + 1 < n_push {
+        eprintln!(
+            "[zpush] at={} resume={} ip={} jp={}",
+            at, pc, env.insn_processed, env.jmps_processed
+        );
+    }
+}
+
+/// [WL_POP] trace-range pop probe. R9's type at pop (pairs with the
+/// [WL_PUSH] R9 print; a type flip between them = the pushed snapshot
+/// mutated or the pop pairing is wrong).
+fn wl_pop_trace(state: &State) {
+    if trace_pc_in_range(state.pc) {
+        let (r2lo, r2hi) = state.domain.get_interval(Reg::R2);
+        eprintln!(
+            "[WL_POP] pc={} parent_cache_id={:?} R2=[{}..{}] R9={:?}",
+            state.pc, state.parent_cache_id, r2lo, r2hi,
+            state.types.get(Reg::R9),
+        );
+    }
+}
+
+/// [WL_PUSH] trace-range push probe (pairs with [WL_POP]).
+fn wl_push_trace(succ: &State, worklist_len: usize, ip: usize) {
+    if trace_pc_in_range(succ.pc) {
+        eprintln!(
+            "[WL_PUSH] pc={} parent_cache_id={:?} (worklist_len_before={}) ip={} R9={:?}",
+            succ.pc, succ.parent_cache_id, worklist_len,
+            ip, succ.types.get(Reg::R9),
+        );
+    }
+}
+
+/// [JH_BUMP] (ZOVIA_TRACE_JMP_HIST_BUMP=1, trace-range): per-bump
+/// jmp_history_cnt probe at jmp_point pcs.
+fn jh_bump_trace(state: &State) {
+    if std::env::var("ZOVIA_TRACE_JMP_HIST_BUMP").ok().as_deref() == Some("1")
+        && trace_pc_in_range(state.pc)
+    {
+        eprintln!(
+            "[JH_BUMP] pc={} new_cnt={} parent_cache={:?}",
+            state.pc, state.jmp_history_cnt, state.parent_cache_id
+        );
+    }
+}
+
+/// [LINEAGE] (ZOVIA_DUMP_LINEAGE_PC + ZOVIA_DUMP_LINEAGE_CNT): one-shot
+/// lineage dump — when a state first hits the target (pc, new_cnt) combo,
+/// walk history backward and print every jmp_point PC the lineage
+/// visited. WT diagnostic.
+fn lineage_dump(env: &VerifierEnv, state: &State) {
+    if let (Ok(target_pc), Ok(target_cnt)) = (
+        std::env::var("ZOVIA_DUMP_LINEAGE_PC").and_then(|s| s.parse::<usize>().map_err(|_| std::env::VarError::NotPresent)),
+        std::env::var("ZOVIA_DUMP_LINEAGE_CNT").and_then(|s| s.parse::<u64>().map_err(|_| std::env::VarError::NotPresent)),
+    ) {
+        static DUMPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if state.pc == target_pc && state.jmp_history_cnt as u64 == target_cnt
+            && !DUMPED.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            eprintln!("[LINEAGE] state at pc={} cnt={} parent_cache_id={:?}", state.pc, state.jmp_history_cnt, state.parent_cache_id);
+            let mut hidx = state.history_idx;
+            let mut depth = 0;
+            let mut bumps = 0;
+            while let Some(i) = hidx {
+                let step = match env.history.get(i) { Some(s) => s, None => break };
+                let pc = step.pc;
+                let is_jp = env.insn_aux_data.get(pc).map(|a| a.jmp_point).unwrap_or(false);
+                if is_jp {
+                    bumps += 1;
+                    eprintln!("[LINEAGE] depth={} pc={} JMP_POINT (bump #{})", depth, pc, bumps);
+                }
+                depth += 1;
+                hidx = step.parent_idx;
+                if depth > 5000 { break; }
+            }
+            eprintln!("[LINEAGE] total_jmp_point_bumps_in_history={} (counter value={})", bumps, state.jmp_history_cnt);
+        }
+    }
+}
+
+/// [DIAG ENTER] per-arrival probe at ZOVIA_DIAG_PCS pcs; bumps the
+/// per-pc arrival counter.
+fn diag_enter_trace(
+    diag_hit: bool,
+    diag_arrivals: &mut HashMap<usize, usize>,
+    state: &State,
+    diag_r4_pre: &Option<String>,
+    diag_r6_pre: &Option<String>,
+) {
+    if !diag_hit {
+        return;
+    }
+    let n = diag_arrivals.entry(state.pc).or_insert(0);
+    *n += 1;
+    eprintln!(
+        "[DIAG ENTER] pc={} arrival#{} frames={} parent_cache={:?}\n  R4={} R6={}\n  Ranges: {}\n  Tnums:  {}",
+        state.pc, n, state.num_frames(), state.parent_cache_id,
+        diag_r4_pre.as_deref().unwrap_or("?"),
+        diag_r6_pre.as_deref().unwrap_or("?"),
+        state.reg_ranges_str(),
+        state.reg_tnums_compact_str(),
+    );
+}
+
+/// [DIAG DEMOTE] (ZOVIA_DIAG_PCS): fires when type-conflict resolution
+/// changed R4/R6's type at a diag pc.
+fn diag_demote_trace(
+    diag_hit: bool,
+    state: &State,
+    diag_r4_pre: &Option<String>,
+    diag_r6_pre: &Option<String>,
+) {
+    if !diag_hit {
+        return;
+    }
+    let r4_post = format!("{:?}", state.types.get(Reg::R4));
+    let r6_post = format!("{:?}", state.types.get(Reg::R6));
+    if Some(&r4_post) != diag_r4_pre.as_ref()
+        || Some(&r6_post) != diag_r6_pre.as_ref()
+    {
+        eprintln!(
+            "[DIAG DEMOTE] pc={} R4: {} -> {}  R6: {} -> {}",
+            state.pc,
+            diag_r4_pre.as_deref().unwrap_or("?"), r4_post,
+            diag_r6_pre.as_deref().unwrap_or("?"), r6_post,
+        );
+    }
+}
+
+/// [DIAG PRUNE] (ZOVIA_DIAG_PCS): the prune verdict at a diag pc.
+fn diag_prune_trace(diag_hit: bool, pc: usize, pruned: bool) {
+    if !diag_hit {
+        return;
+    }
+    if pruned {
+        eprintln!("[DIAG PRUNE] pc={} pruned=true", pc);
+    } else {
+        eprintln!("[DIAG PRUNE] pc={} pruned=false (recorded)", pc);
+    }
+}
+
+/// [DIAG SUCC] (ZOVIA_DIAG_PCS): successor pcs + R4/R6 types after the
+/// transfer at a diag pc.
+fn diag_succ_trace(diag_hit: bool, pc: usize, successors: &[State]) {
+    if !diag_hit {
+        return;
+    }
+    let succ_dump: Vec<String> = successors
+        .iter()
+        .map(|s| {
+            format!(
+                "pc{}[R4={:?} R6={:?}]",
+                s.pc,
+                s.types.get(Reg::R4),
+                s.types.get(Reg::R6)
+            )
+        })
+        .collect();
+    eprintln!(
+        "[DIAG SUCC] pc={} -> [{}]",
+        pc,
+        succ_dump.join(", ")
+    );
+}
+
+/// [STATE@PC] audit probe: dump compact state at the requested PC(s).
+/// Gated on `ZOVIA_DUMP_STATES_AT_PC=N[,M,...]`. Used to inspect why many
+/// "equivalent" states accumulate at a single pc (path-explosion
+/// diagnostic). Comma-separated list, e.g.
+/// `ZOVIA_DUMP_STATES_AT_PC=1587,1856`. Each line includes R0..R9 +
+/// their precision marks + a few key stack slot scalars so we can
+/// compare what changes across visits to a loop head.
+fn dump_states_at_pc(state: &State) {
+    if let Ok(s) = std::env::var("ZOVIA_DUMP_STATES_AT_PC") {
+        let targets: Vec<usize> = s
+            .split(',')
+            .filter_map(|t| t.trim().parse::<usize>().ok())
+            .collect();
+        if targets.iter().any(|&t| t == state.pc) {
+            use crate::analysis::machine::reg_types::RegType;
+            let mut row = format!("pc={} ", state.pc);
+            for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5,
+                      Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
+                let ty = state.types.get(r);
+                let (ilo, ihi) = state.domain.get_interval(r);
+                let sid = state.scalar_ids.get(&r).copied().unwrap_or(0);
+                let p = if state.precise_regs.contains(&r) { "P" } else { "_" };
+                // Compact-print: SV[lo..hi]sid=N {P|_}  for scalars,
+                // or ptr-type tag for pointers.
+                let tag = match ty {
+                    RegType::ScalarValue => format!("SV[{}..{}]", ilo, ihi),
+                    RegType::PtrToMapValue { offset, map_idx, .. } => {
+                        format!("MV(m{},off={:?})", map_idx, offset)
+                    }
+                    RegType::PtrToCtx => "Ctx".into(),
+                    RegType::PtrToStack { .. } => format!("Stk[{}..{}]", ilo, ihi),
+                    RegType::PtrToPacket => "Pkt".into(),
+                    RegType::PtrToPacketEnd => "PktEnd".into(),
+                    RegType::NotInit => "NI".into(),
+                    _ => format!("{:?}", ty),
+                };
+                let r_index = (r as u8).saturating_sub(1);
+                row.push_str(&format!(
+                    "r{}={}{}sid={} ",
+                    r_index, tag, p, sid,
+                ));
+            }
+            // Append the top frame's spilled scalar slots (off, bounds,
+            // precise) up to ~10 most-recent for sanity.
+            let frame = state.frames.current();
+            let mut slot_keys: Vec<i16> = frame.stack.slot_offsets().into_iter().collect();
+            slot_keys.sort();
+            let mut sn = 0;
+            for off in slot_keys.iter().rev() {
+                let Some(slot) = frame.stack.get_slot(*off) else { continue; };
+                if !matches!(slot.reg_type, RegType::ScalarValue) {
+                    continue;
+                }
+                row.push_str(&format!(
+                    "fp{}=SV[{}..{}]sid={}{} ",
+                    off, slot.bounds.min, slot.bounds.max,
+                    slot.scalar_id.unwrap_or(0),
+                    if slot.precise { "P" } else { "_" },
+                ));
+                sn += 1;
+                if sn >= 8 { break; }
+            }
+            eprintln!("[STATE@PC] {}", row);
+        }
+    }
+}
+
+/// [INSN] corridor execution-order probe (kernel [ZK insn] mirror at the
+/// same pre-check position, verifier.c:21181). Trace-range gated within
+/// the fixed pc corridor 185..=200.
+fn insn_trace(ip: usize, pc: usize) {
+    if pc >= 185 && pc <= 200 && trace_pc_in_range(pc) {
+        eprintln!("[INSN] ip={} pc={}", ip, pc);
+    }
+}
+
+/// [regval] ZOVIA_DBG_REGVAL=RN:pc1,pc2,... — dump a register's tracked
+/// value pre-execution at the listed pcs.
+fn regval_trace(state: &State, ip: usize) {
+    static REGVAL: std::sync::OnceLock<Option<(Reg, Vec<usize>)>> =
+        std::sync::OnceLock::new();
+    let rv = REGVAL.get_or_init(|| {
+        let v = std::env::var("ZOVIA_DBG_REGVAL").ok()?;
+        let (rs, pcs) = v.split_once(':')?;
+        let idx: usize = rs.trim_start_matches(['R', 'r']).parse().ok()?;
+        let reg = Reg::ALL[idx + 1];
+        let pcs = pcs.split(',').filter_map(|p| p.parse().ok()).collect();
+        Some((reg, pcs))
+    });
+    if let Some((reg, pcs)) = rv
+        && pcs.contains(&state.pc)
+    {
+        let (lo, hi) = state.domain.get_interval(*reg);
+        let (ulo, uhi) = state.domain.get_u64_bounds(*reg);
+        eprintln!(
+            "[regval] pc={} ip={} {:?} ivl=[{},{}] u=[{:#x},{:#x}] tn={:?} ty={:?} prec={}",
+            state.pc, ip, reg, lo, hi, ulo, uhi,
+            state.get_tnum(*reg), state.types.get(*reg),
+            state.is_reg_precise(*reg)
+        );
+    }
+}
+
+/// [dbg-cdb] (ZOVIA_DBG_CDB=1): path death via prune-hit, just before
+/// complete_dfs_branch walks the parent chain.
+fn cdb_prune_death_trace(pc: usize, parent: Option<u32>) {
+    if std::env::var("ZOVIA_DBG_CDB").ok().as_deref() == Some("1") {
+        eprintln!("[dbg-cdb] PRUNE-death pc={} parent={:?}", pc, parent);
+    }
+}
+
+/// [dbg-cdb] (ZOVIA_DBG_CDB=1): path death via zero successors (Exit).
+fn cdb_exit_death_trace(pc: usize, parent: Option<u32>) {
+    if std::env::var("ZOVIA_DBG_CDB").ok().as_deref() == Some("1") {
+        eprintln!("[dbg-cdb] EXIT-death pc={} parent={:?}", pc, parent);
+    }
+}
+
+/// [cache-slots3] ZOVIA_DUMP_SLOTS3: slot kinds+base value AT ADD TIME.
+/// "1" = default bases -208/-216/-224; or a comma list of bases (e.g.
+/// "-296,-320"). Caller gates on trace_pc_in_range.
+fn cache_slots3_dump(state: &State, cache_id: u32) {
+    if let Ok(v) = std::env::var("ZOVIA_DUMP_SLOTS3") {
+        let bases: Vec<i16> = if v == "1" {
+            vec![-208, -216, -224]
+        } else {
+            v.split(',').filter_map(|s| s.trim().parse().ok()).collect()
+        };
+        for base in bases {
+            let k: String = (base..base + 8)
+                .map(|b| match state.frames.current().stack.get_slot_kind(b) {
+                    Some(k) => format!("{:?}", k).chars().next().unwrap(),
+                    None => '-',
+                })
+                .collect();
+            let bv = state
+                .frames
+                .current()
+                .stack
+                .get_slot(base)
+                .map(|s| format!("{:?}/p{}[{},{}]", s.reg_type, s.precise, s.bounds.min, s.bounds.max))
+                .unwrap_or_else(|| "-".into());
+            eprintln!(
+                "[cache-slots3] pc={} cid={} base={} kinds={} val={}",
+                state.pc, cache_id, base, k, bv
+            );
+        }
+    }
+}
+
+/// [srange] ZOVIA_DUMP_STATE_RANGE=1: the cached state's faithful
+/// (insn_idx, first, last) — comparable to kernel [ZK refine]
+/// base_insn/base_first/base_last. state.first_insn_idx here is still
+/// the CACHED (pre-reset) value; the caller's reset is for the
+/// successor.
+fn srange_trace(cache_id: u32, state: &State) {
+    if std::env::var("ZOVIA_DUMP_STATE_RANGE").ok().as_deref() == Some("1") {
+        eprintln!(
+            "[srange] cid={} insn_idx={} first={} last={}",
+            cache_id, state.pc, state.first_insn_idx, state.last_insn_idx
+        );
+    }
+}
+
+/// [jmpcnt] ADD (ZOVIA_DBG_JMPCNT=LO:HI): cache-add event within the
+/// absolute insn_processed window.
+fn jmpcnt_add_trace(env: &VerifierEnv, pc: usize) {
+    if jmpcnt_in_range(env.insn_processed) {
+        eprintln!(
+            "[jmpcnt] ADD ip={} jp={} pc={}",
+            env.insn_processed, env.jmps_processed, pc
+        );
+    }
+}
+
+/// [jmpcnt] JMP (ZOVIA_DBG_JMPCNT=LO:HI): name every jmp-class increment
+/// in an absolute insn_processed window, to diff the jump STREAM against
+/// the kernel's dj on the same window.
+fn jmpcnt_jmp_trace(env: &VerifierEnv, pc: usize) {
+    if jmpcnt_in_range(env.insn_processed) {
+        eprintln!(
+            "[jmpcnt] JMP ip={} jp={} pc={}",
+            env.insn_processed, env.jmps_processed, pc
+        );
+    }
+}
+
+/// Per-PC visit counter (audit hook, ZOVIA_DUMP_VISITS=1). Bumped ONLY
+/// on non-pruned expansions so the count reflects state expansions per
+/// pc, comparable to the kernel verifier's per-insn visit count in the
+/// log_level-2 trace.
+fn dump_visits_bump(env: &mut VerifierEnv, pc: usize) {
+    if std::env::var("ZOVIA_DUMP_VISITS").ok().as_deref() == Some("1") {
+        *env.pc_visit_count.entry(pc).or_insert(0) += 1;
+    }
+}
+
+/// [PRUNE-MISS] (ZOVIA_DUMP_PRUNE_MISSES, every log_interval insns):
+/// shows WHICH pcs accumulate subsumption misses and WHY — pinpoints a
+/// non-converging loop header and the reason its states won't merge.
+fn prune_miss_dump(env: &VerifierEnv, worklist_len: usize, log_interval: usize) {
+    if std::env::var("ZOVIA_DUMP_PRUNE_MISSES").is_ok()
+        && env.insn_processed.is_multiple_of(log_interval)
+    {
+        use crate::analysis::machine::env::SubsumptionMissReason;
+        let mut rows: Vec<(usize, [u64; 9], u64)> = env
+            .subsumption_misses
+            .iter()
+            .map(|(&pc, &counts)| (pc, counts, counts.iter().sum()))
+            .collect();
+        rows.sort_by(|a, b| b.2.cmp(&a.2));
+        eprintln!(
+            "[PRUNE-MISS] insn={} worklist={} top miss pcs:",
+            env.insn_processed,
+            worklist_len
+        );
+        for (pc, counts, total) in rows.iter().take(8) {
+            let breakdown: Vec<String> = SubsumptionMissReason::ALL
+                .iter()
+                .filter(|r| counts[r.idx()] > 0)
+                .map(|r| format!("{}={}", r.label(), counts[r.idx()]))
+                .collect();
+            eprintln!("    pc={} misses={} [{}]", pc, total, breakdown.join(" "));
+        }
+    }
+}
+
+/// [BR] (trace-range): parent checkpoint's branches bump at a fork.
+fn br_inc_trace(p: &State, pcid: u32, at: usize, n: usize) {
+    if trace_pc_in_range(p.pc) {
+        eprintln!("[BR] inc pc={} cid={} now={} (fork@{} n={})",
+            p.pc, pcid, p.branches, at, n);
+    }
 }

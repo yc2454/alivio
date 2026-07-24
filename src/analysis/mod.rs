@@ -594,7 +594,12 @@ pub(crate) fn pushdump_pc() -> Option<usize> {
     })
 }
 
+/// Emit one `[pushdump]` line for `state` when its pc matches
+/// `ZOVIA_DBG_PUSHDUMP` (see `pushdump_pc` above); no-op otherwise.
 fn pushdump(side: &str, state: &crate::analysis::machine::state::State) {
+    if pushdump_pc() != Some(state.pc) {
+        return;
+    }
     use crate::analysis::machine::reg::Reg;
     let mut slots = String::new();
     for off in -216i16..=-209 {

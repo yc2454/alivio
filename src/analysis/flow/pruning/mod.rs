@@ -11,7 +11,7 @@ pub(crate) mod widening;
 
 use std::collections::HashSet;
 
-use crate::analysis::machine::env::{SubsumptionMissReason, VerifierEnv};
+use crate::analysis::machine::env::{StateMetrics, SubsumptionMissReason, VerifierEnv};
 use crate::analysis::machine::reg::Reg;
 use crate::analysis::machine::state::State;
 use crate::ast::{Instr, Program};
@@ -32,94 +32,8 @@ use widening::{
 /// gate on the insn kind plus the flag so MayGoto pcs (also
 /// force-checkpoint) still run the inf-loop check, matching the kernel's
 /// fall-through at L19103-L19109.
-/// ZOVIA_DUMP_SLOTS3: per-byte kinds + base-spill (type, prec, bounds) for
-/// spi25/26/27 (bases -208/-216/-224) on cur and the compared candidate.
-fn dump_slots3(pc: usize, verdict: &str, state: &State, prev: &State) {
-    for base in [-208i16, -216, -224] {
-        let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
-            (base..base + 8)
-                .map(|b| match fr.stack.get_slot_kind(b) {
-                    Some(k) => format!("{:?}", k).chars().next().unwrap(),
-                    None => '-',
-                })
-                .collect::<String>()
-        };
-        let basereg = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
-            fr.stack
-                .get_slot(base)
-                .map(|s| format!("{:?}/p{}[{},{}]", s.reg_type, s.precise, s.bounds.min, s.bounds.max))
-                .unwrap_or_else(|| "-".into())
-        };
-        eprintln!(
-            "[slots3] pc={} {} base={} cur={} old={} cur_base={} old_base={}",
-            pc,
-            verdict,
-            base,
-            kinds(state.frames.current()),
-            kinds(prev.frames.current()),
-            basereg(state.frames.current()),
-            basereg(prev.frames.current()),
-        );
-    }
-}
-
 fn is_inf_loop_skip_pc(prog: &Program, pc: usize) -> bool {
     matches!(prog.instrs.get(pc), Some(Instr::Call { .. }))
-}
-
-/// DIAGNOSTIC (ZOVIA_ZHIT): print every prune HIT with a global sequence
-/// number, for diffing against the kernel's equivalent hit stream.
-fn zhit_seq(pc: usize, state: &State, prev: &State) {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::OnceLock;
-    static ON: OnceLock<bool> = OnceLock::new();
-    if !*ON.get_or_init(|| std::env::var("ZOVIA_ZHIT").is_ok()) {
-        return;
-    }
-
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    use crate::analysis::machine::reg::Reg;
-    let r2t = state.types.get(Reg::R2);
-    let r2i = state.domain.get_interval(Reg::R2);
-    let mut diffs = String::new();
-    for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5, Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
-        let ci = state.domain.get_interval(r);
-        let pi = prev.domain.get_interval(r);
-        if ci != pi || state.types.get(r) != prev.types.get(r) {
-            diffs.push_str(&format!(
-                " {:?}:cur={:?}[{}..{}]vs prev={:?}[{}..{}]p={}",
-                r, state.types.get(r), ci.0, ci.1,
-                prev.types.get(r), pi.0, pi.1,
-                prev.precise_regs.contains(&r)
-            ));
-        }
-    }
-    eprintln!(
-        "[zhit] seq={} pc={} curR2={:?}[{}..{}] DIFFS:{}",
-        seq, pc, r2t, r2i.0, r2i.1, diffs
-    );
-}
-
-/// DIAGNOSTIC (ZOVIA_DBG_SKIP_PC): tally children_unsafe prune-skips per pc;
-/// dump the top offenders periodically.
-fn dbg_skip_pc(pc: usize) {
-    use std::sync::{Mutex, OnceLock};
-    static ON: OnceLock<bool> = OnceLock::new();
-    if !*ON.get_or_init(|| std::env::var("ZOVIA_DBG_SKIP_PC").is_ok()) {
-        return;
-    }
-    static T: OnceLock<Mutex<(std::collections::HashMap<usize, u64>, u64)>> = OnceLock::new();
-    let m = T.get_or_init(|| Mutex::new((std::collections::HashMap::new(), 0)));
-    let mut g = m.lock().unwrap();
-    *g.0.entry(pc).or_insert(0) += 1;
-    g.1 += 1;
-    if g.1 % 3_000 == 0 {
-        let mut v: Vec<_> = g.0.iter().map(|(&p, &c)| (c, p)).collect();
-        v.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-        let top: Vec<String> = v.iter().take(8).map(|(c, p)| format!("pc{}={}", p, c)).collect();
-        eprintln!("[skip_pc] total={} top: {}", g.1, top.join(" "));
-    }
 }
 
 /// Handle pruning decision at a loop point.
@@ -269,39 +183,19 @@ fn handle_loop_pruning(
                 if add_now {
                     cm.push(i);
                 }
-                if crate::analysis::trace_pc_in_range(pc) {
-                    eprintln!(
-                        "[SUBSUM_SKIP_ACTIVE] pc={} prev_idx={} prev.dfs_paths={} cache_id={:?}",
-                        pc, i, prev.dfs_paths, prev.cache_id,
-                    );
-                }
+                subsum_skip_active_loop_trace(pc, i, prev);
                 m.push(i);
                 continue;
             }
             match state_subsumed_by(state, prev, live_regs, frame_live_slots, frame_live_regs, config, force_exact) {
                 Ok(()) => {
                     zhit_seq(pc, state, prev);
-                    if crate::analysis::trace_pc_in_range(pc) {
-                        use crate::analysis::machine::reg::Reg;
-                        let cu = state.domain.get_u64_bounds(Reg::R8);
-                        let pu = prev.domain.get_u64_bounds(Reg::R8);
-                        eprintln!(
-                            "[SUBSUM_HIT] pc={} prev_idx={} prev.dfs_paths={} force_exact={} curR8=u[{:#x}..{:#x}]prec={} prevR8=u[{:#x}..{:#x}]prec={}",
-                            pc, i, prev.dfs_paths, force_exact,
-                            cu.0, cu.1, state.precise_regs.contains(&Reg::R8),
-                            pu.0, pu.1, prev.precise_regs.contains(&Reg::R8),
-                        );
-                    }
+                    subsum_hit_loop_trace(pc, i, force_exact, state, prev);
                     h = Some(i);
                     break;
                 }
                 Err(reason) => {
-                    if crate::analysis::trace_pc_in_range(pc) {
-                        eprintln!(
-                            "[SUBSUM_MISS] pc={} prev_idx={} reason={:?} prev.dfs_paths={} force_exact={}",
-                            pc, i, reason, prev.dfs_paths, force_exact,
-                        );
-                    }
+                    subsum_miss_loop_trace(pc, i, reason, prev, force_exact);
                     if add_now {
                         cm.push(i);
                     }
@@ -406,29 +300,7 @@ fn handle_standard_pruning(
     // first active sl encountered.
     let mut add_now = would_add_new_state_base(env, state, pc);
     let mut counted_miss_idxs: Vec<usize> = Vec::new();
-    // Trace-range probe: log every arrival at a traced pc with its
-    // lineage (parent cid) and the running add decision.
-    if crate::analysis::trace_pc_in_range(pc) {
-        eprintln!(
-            "[SUBSUM_ARRIVE] pc={} parent_cid={:?} add_now={} n_cands={}",
-            pc,
-            state.parent_cache_id,
-            add_now,
-            env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0)
-        );
-        // Bucket identity map: idx→cid so per-idx verdicts can be tied
-        // to add-time snapshots.
-        if std::env::var("ZOVIA_DUMP_BUCKET").ok().as_deref() == Some("1")
-            && let Some(v) = env.explored_states.get(&pc)
-        {
-            let ids: Vec<String> = v
-                .iter()
-                .enumerate()
-                .map(|(i, s)| format!("{}:{:?}", i, s.cache_id.unwrap_or(0)))
-                .collect();
-            eprintln!("[bucket] pc={} [{}]", pc, ids.join(" "));
-        }
-    }
+    subsum_arrive_trace(env, pc, state.parent_cache_id, add_now);
     if let Some(prev_states) = env.explored_states.get(&pc) {
         for (i, prev) in prev_states.iter().enumerate().rev() {
             // Kernel `insn_idx ^ callsite` bucketing (verifier.c:2099) —
@@ -448,12 +320,7 @@ fn handle_standard_pruning(
                 if add_now {
                     counted_miss_idxs.push(i);
                 }
-                if crate::analysis::trace_pc_in_range(pc) {
-                    eprintln!(
-                        "[SUBSUM_CHILDUNSAFE] pc={} prev_idx={} cache_id={:?}",
-                        pc, i, prev.cache_id,
-                    );
-                }
+                subsum_childunsafe_trace(pc, i, prev);
                 dbg_skip_pc(pc);
                 continue;
             }
@@ -477,12 +344,7 @@ fn handle_standard_pruning(
                 if add_now {
                     counted_miss_idxs.push(i);
                 }
-                if crate::analysis::trace_pc_in_range(pc) {
-                    eprintln!(
-                        "[SUBSUM_SKIP_ACTIVE] pc={} prev_idx={} prev.branches={} cache_id={:?} (standard)",
-                        pc, i, prev.branches, prev.cache_id,
-                    );
-                }
+                subsum_skip_active_std_trace(pc, i, prev);
                 continue;
             }
             // Kernel-faithful force_exact (see matching block above).
@@ -493,84 +355,24 @@ fn handle_standard_pruning(
             match state_subsumed_by(state, prev, live_regs, frame_live_slots, frame_live_regs, config, force_exact) {
                 Ok(()) => {
                     zhit_seq(pc, state, prev);
-                    if crate::analysis::trace_pc_in_range(pc) {
-                        eprintln!(
-                            "[SUBSUM_HIT] pc={} prev_idx={} cache_id={:?} (standard)",
-                            pc, i, prev.cache_id,
-                        );
-                        if std::env::var("ZOVIA_DUMP_SLOTS3").ok().as_deref() == Some("1") {
-                            dump_slots3(pc, "HIT", state, prev);
-                        }
-                        // ZOVIA_DUMP_HIT_DIMS: dump the compared live
-                        // dims of cur vs the matched cache.
-                        if std::env::var("ZOVIA_DUMP_HIT_DIMS").ok().as_deref() == Some("1") {
-                            for &r in live_regs.iter() {
-                                eprintln!(
-                                    "[hit_dim] pc={} reg={:?} cur(t={:?} tn={:?} prec={}) old(t={:?} tn={:?} prec={})",
-                                    pc, r,
-                                    state.types.get(r), state.get_tnum(r),
-                                    state.precise_regs.contains(&r),
-                                    prev.types.get(r), prev.get_tnum(r),
-                                    prev.precise_regs.contains(&r),
-                                );
-                            }
-                            for off in [-64i16, -60, -57, -56, -232, -216, -296, -248] {
-                                let cs = state.frames.current().stack.get_slot(off);
-                                let ps = prev.frames.current().stack.get_slot(off);
-                                eprintln!(
-                                    "[hit_dim] pc={} slot={} cur={:?} old={:?}",
-                                    pc, off,
-                                    cs.map(|s| (s.bounds.min, s.bounds.max, s.precise)),
-                                    ps.map(|s| (s.bounds.min, s.bounds.max, s.precise)),
-                                );
-                            }
-                            let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
-                                (-64i16..-56).map(|b| fr.stack.get_slot_kind(b)).collect::<Vec<_>>()
-                            };
-                            eprintln!(
-                                "[hit_dim] pc={} fp64_kinds cur={:?} old={:?} cur_ty={:?} old_ty={:?}",
-                                pc,
-                                kinds(state.frames.current()),
-                                kinds(prev.frames.current()),
-                                state.frames.current().stack.get_slot(-64).map(|s| s.reg_type.clone()),
-                                prev.frames.current().stack.get_slot(-64).map(|s| s.reg_type.clone()),
-                            );
-                        }
-                    }
+                    subsum_hit_std_trace(pc, i, state, prev, live_regs);
                     hit_idx = Some(i);
                     break;
                 }
                 Err(reason) => {
+                    // Full hoist would need 6 locals (pc, i, reason,
+                    // force_exact, state, prev) — over the helper budget;
+                    // the headline line stays inline, the bulky dims dump
+                    // is hoisted.
                     if crate::analysis::trace_pc_in_range(pc) {
                         eprintln!(
                             "[SUBSUM_MISS] pc={} prev_idx={} reason={:?} prev.dfs_paths={} force_exact={} (non-loop site)",
                             pc, i, reason, prev.dfs_paths, force_exact,
                         );
-                        // ZOVIA_DUMP_SLOTS3: per-byte kinds + base spill
-                        // (type,prec,bounds) for spi25/26/27 on BOTH cur
-                        // and the candidate.
                         if std::env::var("ZOVIA_DUMP_SLOTS3").ok().as_deref() == Some("1") {
                             dump_slots3(pc, "MISS", state, prev);
                         }
-                        // ZOVIA_DUMP_MISS_DIMS: same dims as [hit_dim]
-                        // but on the miss path, cur vs the missed cache.
-                        // Env-gated, trace-range-gated.
-                        if std::env::var("ZOVIA_DUMP_MISS_DIMS").ok().as_deref() == Some("1") {
-                            use crate::analysis::machine::reg::Reg;
-                            for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4,
-                                      Reg::R5, Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
-                                let (clo, chi) = state.domain.get_interval(r);
-                                let (plo, phi) = prev.domain.get_interval(r);
-                                eprintln!(
-                                    "[miss_dim] pc={} idx={} reg={:?} cur(t={:?} ivl=[{},{}] tn={:?} prec={}) old(t={:?} ivl=[{},{}] tn={:?} prec={})",
-                                    pc, i, r,
-                                    state.types.get(r), clo, chi, state.get_tnum(r),
-                                    state.precise_regs.contains(&r),
-                                    prev.types.get(r), plo, phi, prev.get_tnum(r),
-                                    prev.precise_regs.contains(&r),
-                                );
-                            }
-                        }
+                        miss_dims_dump(pc, i, state, prev);
                     }
                     if add_now {
                         counted_miss_idxs.push(i);
@@ -677,26 +479,14 @@ pub fn should_prune(
     // state is encountered at this pc.
     env.saw_active_state_at_check = false;
 
-    if crate::analysis::trace_pc_in_range(pc) {
-        let nprev = env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0);
-        eprintln!(
-            "[SP_ENTRY] pc={} nprev={} is_prune_point={}",
-            pc, nprev, is_prune_point(env, pc)
-        );
-    }
+    sp_entry_trace(env, pc);
 
     if !is_prune_point(env, pc) {
         env.pruning_stats.not_prune_point += 1;
         return false;
     }
 
-    // [ARR] per-arrival trace probe.
-    if crate::analysis::trace_pc_in_range(pc) {
-        use crate::analysis::machine::reg::Reg;
-        let r6 = state.get_tnum(Reg::R6);
-        let r8 = state.types.get(Reg::R8);
-        eprintln!("[ARR] pc={} r6tn={:?} r8={:?}", pc, r6, r8);
-    }
+    arr_trace(pc, state);
 
     // Kernel `clean_live_states(env, insn_idx)` — called at the top of
     // every `is_state_visited`: LAZILY clean any cached state at this pc
@@ -762,19 +552,7 @@ pub fn should_prune(
             Some(Instr::Call { .. }) | Some(Instr::MayGoto { .. })
         );
 
-    // DIAG: when this pc is traced and prev cached states already
-    // exist, log the early-decision inputs.
-    if crate::analysis::trace_pc_in_range(pc) {
-        let nprev = env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0);
-        if nprev > 0 {
-            eprintln!(
-                "[SP_GATE] pc={} nprev={} is_on_path={} in_loop={} force_ckpt={} prune_point={} -> would_skip_onpath={}",
-                pc, nprev, is_on_path, in_loop, pc_is_force_checkpoint,
-                is_prune_point(env, pc),
-                is_on_path && !in_loop && !pc_is_force_checkpoint,
-            );
-        }
-    }
+    sp_gate_trace(env, pc, is_on_path, in_loop, pc_is_force_checkpoint);
 
     // The kernel's is_state_visited has NO on-path shortcut — on-path
     // arrivals are exactly what its branches>0 block +
@@ -802,13 +580,7 @@ pub fn should_prune(
     }
 
     let live_regs = env.insn_aux_data[pc].live_regs.clone();
-    if crate::analysis::trace_pc_in_range(pc)
-        && std::env::var("ZOVIA_DUMP_LIVE_REGS").ok().as_deref() == Some("1")
-    {
-        let mut v: Vec<String> = live_regs.iter().map(|r| format!("{:?}", r)).collect();
-        v.sort();
-        eprintln!("[live_regs] pc={} {:?}", pc, v);
-    }
+    live_regs_dump(pc, &live_regs);
     // Kernel `stacksafe` has NO in-compare liveness skip: dead slots are
     // removed from CACHED states by `clean_verifier_state` (driven by
     // the dynamic live-stack marks, see flow::live_stack); an uncleaned
@@ -961,89 +733,7 @@ pub fn should_prune(
                 continue;
             }
             if state_exact_equal(prev, state) {
-                // ZOVIA_TRAP_DEBUG=1 — dump prev vs cur side-by-side when the
-                // inf-loop trap fires, so we can see which fields kernel
-                // treats as distinct that zovia treats as identical.
-                if std::env::var("ZOVIA_TRAP_DEBUG").ok().as_deref() == Some("1") {
-                    use crate::analysis::machine::reg::Reg;
-                    eprintln!("[TRAP] === inf-loop fire at pc={} ===", pc);
-                    eprintln!("[TRAP] prev.dfs_paths={} cur.dfs_paths={}", prev.dfs_paths, state.dfs_paths);
-                    eprintln!("[TRAP] prev.may_goto_depth={} cur.may_goto_depth={}", prev.may_goto_depth, state.may_goto_depth);
-                    eprintln!("[TRAP] depth prev={} cur={}", prev.frames.depth(), state.frames.depth());
-                    // Walk full history, count visits to PC, and find any non-linear jumps
-                    let mut hist_pcs: Vec<usize> = Vec::new();
-                    let mut idx = state.history_idx;
-                    let mut visits_to_trap_pc = 0;
-                    while let Some(i) = idx {
-                        match env.history.get(i) {
-                            Some(step) => {
-                                if step.pc == pc { visits_to_trap_pc += 1; }
-                                hist_pcs.push(step.pc);
-                                idx = step.parent_idx;
-                                if hist_pcs.len() > 5000 { break; }
-                            }
-                            None => break,
-                        }
-                    }
-                    eprintln!("[TRAP] cur history len={}  visits_to_pc{}={}", hist_pcs.len(), pc, visits_to_trap_pc);
-                    eprintln!("[TRAP] last 15 PCs (most-recent first): {:?}", &hist_pcs[..hist_pcs.len().min(15)]);
-                    // find non-linear transitions: prev PC where next != prev+1
-                    let mut jumps: Vec<(usize, usize)> = Vec::new();
-                    for w in hist_pcs.windows(2) {
-                        let (newer, older) = (w[0], w[1]);
-                        if newer != older + 1 && newer != older + 2 { // skip LD_IMM64 stride
-                            jumps.push((older, newer));
-                            if jumps.len() > 20 { break; }
-                        }
-                    }
-                    eprintln!("[TRAP] non-linear jumps in history (older->newer): {:?}", jumps);
-                    eprintln!("[TRAP] cur parent_cache_id={:?} prev.cache_id={:?}", state.parent_cache_id, prev.cache_id);
-                    for r in Reg::ALL {
-                        let pty = prev.types.get(r);
-                        let cty = state.types.get(r);
-                        let (plo, phi) = prev.domain.get_interval(r);
-                        let (clo, chi) = state.domain.get_interval(r);
-                        let psid = prev.scalar_ids.get(&r).copied().unwrap_or(0);
-                        let csid = state.scalar_ids.get(&r).copied().unwrap_or(0);
-                        let same_ty = pty == cty;
-                        let same_iv = (plo, phi) == (clo, chi);
-                        let same_u32 = prev.domain.get_u32_bounds(r) == state.domain.get_u32_bounds(r);
-                        let same_tn = prev.tnums.get(&r) == state.tnums.get(&r);
-                        let same_sid = psid == csid;
-                        eprintln!(
-                            "[TRAP] {:?}: ty={} iv={} u32={} tn={} sid={} | prev_ty={:?} iv=[{}..{}] sid={} | cur_ty={:?} iv=[{}..{}] sid={}",
-                            r, if same_ty {"="} else {"≠"}, if same_iv {"="} else {"≠"},
-                            if same_u32 {"="} else {"≠"}, if same_tn {"="} else {"≠"},
-                            if same_sid {"="} else {"≠"},
-                            pty, plo, phi, psid, cty, clo, chi, csid,
-                        );
-                    }
-                    // Top-frame stack slot diffs
-                    use crate::analysis::machine::frame_stack::FrameLevel;
-                    let top = FrameLevel::from_index(prev.frames.depth().saturating_sub(1));
-                    let pf = prev.frames.get(top);
-                    let cf = state.frames.get(top);
-                    // explicit: dump the fp-0x128 (-296) slot specifically
-                    let pslot = pf.stack.get_slot(-296);
-                    let cslot = cf.stack.get_slot(-296);
-                    eprintln!("[TRAP] fp-296 (= fp-0x128): prev={:?}", pslot);
-                    eprintln!("[TRAP] fp-296 (= fp-0x128): cur ={:?}", cslot);
-                    let mut all_offs: std::collections::BTreeSet<i16> = pf.stack.slot_offsets().into_iter().collect();
-                    all_offs.extend(cf.stack.slot_offsets());
-                    for off in all_offs {
-                        let ps = pf.stack.get_slot(off);
-                        let cs = cf.stack.get_slot(off);
-                        let same = match (ps, cs) {
-                            (Some(a), Some(b)) => a == b,
-                            (None, None) => true,
-                            _ => false,
-                        };
-                        if !same {
-                            eprintln!("[TRAP] fp{}: DIFF prev={:?} cur={:?}", off, ps, cs);
-                        }
-                    }
-                    eprintln!("[TRAP] === end ===");
-                }
+                trap_debug_dump(env, pc, prev, state);
                 env.fail(crate::analysis::machine::error::VerificationError::InfiniteLoopDetected {
                     pc,
                 });
@@ -1119,27 +809,7 @@ fn record_pruning_misses(env: &mut VerifierEnv, pc: usize, miss_idxs: &[usize]) 
         std::collections::HashMap::new()
     };
 
-    // [ev] eviction event log: candidate identity = cid + R1 smin,
-    // for diffing against the kernel's eviction trace.
-    let id_by_idx: std::collections::HashMap<usize, (Option<u32>, i64)> =
-        if crate::analysis::trace_pc_in_range(pc) {
-            env.explored_states
-                .get(&pc)
-                .map(|states| {
-                    miss_idxs
-                        .iter()
-                        .filter_map(|&i| {
-                            states.get(i).map(|s| {
-                                use crate::analysis::machine::reg::Reg;
-                                (i, (s.cache_id, s.domain.get_interval(Reg::R1).0))
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Default::default()
-        };
+    let id_by_idx = ev_id_map(env, pc, miss_idxs);
     let mut to_evict: Vec<usize> = Vec::new();
     if let Some(metrics) = env.state_metrics.get_mut(&pc) {
         for &i in miss_idxs {
@@ -1148,21 +818,9 @@ fn record_pruning_misses(env: &mut VerifierEnv, pc: usize, miss_idxs: &[usize]) 
                 // Kernel L20444 exactly: n = force_checkpoint && branches>0 ? 64 : 3
                 let branches = branches_by_idx.get(&i).copied().unwrap_or(0);
                 let n: u32 = if force && branches > 0 { 64 } else { 3 };
-                if crate::analysis::trace_pc_in_range(pc) {
-                    let (cid, r1) = id_by_idx.get(&i).copied().unwrap_or((None, i64::MIN));
-                    eprintln!(
-                        "[ev] pc={} MISS cid={:?} r1={} cnt={}/{}",
-                        pc, cid, r1, m.miss_cnt, m.hit_cnt
-                    );
-                }
+                ev_miss_trace(pc, &id_by_idx, i, m);
                 if m.miss_cnt > m.hit_cnt.saturating_mul(n).saturating_add(n) {
-                    if crate::analysis::trace_pc_in_range(pc) {
-                        let (cid, r1) = id_by_idx.get(&i).copied().unwrap_or((None, i64::MIN));
-                        eprintln!(
-                            "[ev] pc={} EVICT cid={:?} r1={} cnt={}/{} n={}",
-                            pc, cid, r1, m.miss_cnt, m.hit_cnt, n
-                        );
-                    }
+                    ev_evict_trace(pc, &id_by_idx, i, m, n);
                     to_evict.push(i);
                 }
             }
@@ -1217,24 +875,12 @@ fn record_pruning_misses(env: &mut VerifierEnv, pc: usize, miss_idxs: &[usize]) 
 /// bump hit_cnt for the cached state at `prev_idx`.
 fn record_pruning_hit(env: &mut VerifierEnv, pc: usize, prev_idx: usize) {
     env.pruning_stats.lifetime_hits += 1;
-    let id = if crate::analysis::trace_pc_in_range(pc) {
-        env.explored_states.get(&pc).and_then(|v| v.get(prev_idx)).map(|s| {
-            use crate::analysis::machine::reg::Reg;
-            (s.cache_id, s.domain.get_interval(Reg::R1).0)
-        })
-    } else {
-        None
-    };
+    let id = ev_hit_id(env, pc, prev_idx);
     if let Some(metrics) = env.state_metrics.get_mut(&pc)
         && let Some(m) = metrics.get_mut(prev_idx)
     {
         m.hit_cnt = m.hit_cnt.saturating_add(1);
-        if let Some((cid, r1)) = id {
-            eprintln!(
-                "[ev] pc={} HIT cid={:?} r1={} cnt={}/{}",
-                pc, cid, r1, m.miss_cnt, m.hit_cnt
-            );
-        }
+        ev_hit_trace(pc, id, m);
     }
 }
 
@@ -1289,4 +935,483 @@ fn may_goto_range_within_prune(
         }
     }
     false
+}
+
+// ---- debug instruments ----
+//
+// Env-gated eprintln! probes hoisted out of the pruning hot paths. Each
+// helper does its own gating (env var and/or trace-pc range) so the call
+// site is a single line; none affect analysis results.
+
+/// ZOVIA_DUMP_SLOTS3: per-byte kinds + base-spill (type, prec, bounds) for
+/// spi25/26/27 (bases -208/-216/-224) on cur and the compared candidate.
+fn dump_slots3(pc: usize, verdict: &str, state: &State, prev: &State) {
+    for base in [-208i16, -216, -224] {
+        let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
+            (base..base + 8)
+                .map(|b| match fr.stack.get_slot_kind(b) {
+                    Some(k) => format!("{:?}", k).chars().next().unwrap(),
+                    None => '-',
+                })
+                .collect::<String>()
+        };
+        let basereg = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
+            fr.stack
+                .get_slot(base)
+                .map(|s| format!("{:?}/p{}[{},{}]", s.reg_type, s.precise, s.bounds.min, s.bounds.max))
+                .unwrap_or_else(|| "-".into())
+        };
+        eprintln!(
+            "[slots3] pc={} {} base={} cur={} old={} cur_base={} old_base={}",
+            pc,
+            verdict,
+            base,
+            kinds(state.frames.current()),
+            kinds(prev.frames.current()),
+            basereg(state.frames.current()),
+            basereg(prev.frames.current()),
+        );
+    }
+}
+
+/// DIAGNOSTIC (ZOVIA_ZHIT): print every prune HIT with a global sequence
+/// number, for diffing against the kernel's equivalent hit stream.
+fn zhit_seq(pc: usize, state: &State, prev: &State) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var("ZOVIA_ZHIT").is_ok()) {
+        return;
+    }
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    use crate::analysis::machine::reg::Reg;
+    let r2t = state.types.get(Reg::R2);
+    let r2i = state.domain.get_interval(Reg::R2);
+    let mut diffs = String::new();
+    for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5, Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
+        let ci = state.domain.get_interval(r);
+        let pi = prev.domain.get_interval(r);
+        if ci != pi || state.types.get(r) != prev.types.get(r) {
+            diffs.push_str(&format!(
+                " {:?}:cur={:?}[{}..{}]vs prev={:?}[{}..{}]p={}",
+                r, state.types.get(r), ci.0, ci.1,
+                prev.types.get(r), pi.0, pi.1,
+                prev.precise_regs.contains(&r)
+            ));
+        }
+    }
+    eprintln!(
+        "[zhit] seq={} pc={} curR2={:?}[{}..{}] DIFFS:{}",
+        seq, pc, r2t, r2i.0, r2i.1, diffs
+    );
+}
+
+/// DIAGNOSTIC (ZOVIA_DBG_SKIP_PC): tally children_unsafe prune-skips per pc;
+/// dump the top offenders periodically.
+fn dbg_skip_pc(pc: usize) {
+    use std::sync::{Mutex, OnceLock};
+    static ON: OnceLock<bool> = OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var("ZOVIA_DBG_SKIP_PC").is_ok()) {
+        return;
+    }
+    static T: OnceLock<Mutex<(std::collections::HashMap<usize, u64>, u64)>> = OnceLock::new();
+    let m = T.get_or_init(|| Mutex::new((std::collections::HashMap::new(), 0)));
+    let mut g = m.lock().unwrap();
+    *g.0.entry(pc).or_insert(0) += 1;
+    g.1 += 1;
+    if g.1 % 3_000 == 0 {
+        let mut v: Vec<_> = g.0.iter().map(|(&p, &c)| (c, p)).collect();
+        v.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        let top: Vec<String> = v.iter().take(8).map(|(c, p)| format!("pc{}={}", p, c)).collect();
+        eprintln!("[skip_pc] total={} top: {}", g.1, top.join(" "));
+    }
+}
+
+/// [SP_ENTRY] (trace-range): should_prune entry probe.
+fn sp_entry_trace(env: &VerifierEnv, pc: usize) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        let nprev = env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0);
+        eprintln!(
+            "[SP_ENTRY] pc={} nprev={} is_prune_point={}",
+            pc, nprev, is_prune_point(env, pc)
+        );
+    }
+}
+
+/// [ARR] (trace-range): per-arrival trace probe.
+fn arr_trace(pc: usize, state: &State) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        let r6 = state.get_tnum(Reg::R6);
+        let r8 = state.types.get(Reg::R8);
+        eprintln!("[ARR] pc={} r6tn={:?} r8={:?}", pc, r6, r8);
+    }
+}
+
+/// [SP_GATE] (trace-range): when this pc is traced and prev cached
+/// states already exist, log the early-decision inputs.
+fn sp_gate_trace(
+    env: &VerifierEnv,
+    pc: usize,
+    is_on_path: bool,
+    in_loop: bool,
+    pc_is_force_checkpoint: bool,
+) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        let nprev = env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0);
+        if nprev > 0 {
+            eprintln!(
+                "[SP_GATE] pc={} nprev={} is_on_path={} in_loop={} force_ckpt={} prune_point={} -> would_skip_onpath={}",
+                pc, nprev, is_on_path, in_loop, pc_is_force_checkpoint,
+                is_prune_point(env, pc),
+                is_on_path && !in_loop && !pc_is_force_checkpoint,
+            );
+        }
+    }
+}
+
+/// [live_regs] (trace-range + ZOVIA_DUMP_LIVE_REGS=1): the liveness mask
+/// the subsumption compare will use at this pc.
+fn live_regs_dump(pc: usize, live_regs: &HashSet<Reg>) {
+    if crate::analysis::trace_pc_in_range(pc)
+        && std::env::var("ZOVIA_DUMP_LIVE_REGS").ok().as_deref() == Some("1")
+    {
+        let mut v: Vec<String> = live_regs.iter().map(|r| format!("{:?}", r)).collect();
+        v.sort();
+        eprintln!("[live_regs] pc={} {:?}", pc, v);
+    }
+}
+
+/// [SUBSUM_ARRIVE] + [bucket] (trace-range): log every arrival at a
+/// traced pc with its lineage (parent cid) and the running add decision.
+/// The ZOVIA_DUMP_BUCKET=1 sub-dump prints the bucket identity map
+/// (idx→cid) so per-idx verdicts can be tied to add-time snapshots.
+fn subsum_arrive_trace(env: &VerifierEnv, pc: usize, parent_cid: Option<u32>, add_now: bool) {
+    if !crate::analysis::trace_pc_in_range(pc) {
+        return;
+    }
+    eprintln!(
+        "[SUBSUM_ARRIVE] pc={} parent_cid={:?} add_now={} n_cands={}",
+        pc,
+        parent_cid,
+        add_now,
+        env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0)
+    );
+    if std::env::var("ZOVIA_DUMP_BUCKET").ok().as_deref() == Some("1")
+        && let Some(v) = env.explored_states.get(&pc)
+    {
+        let ids: Vec<String> = v
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("{}:{:?}", i, s.cache_id.unwrap_or(0)))
+            .collect();
+        eprintln!("[bucket] pc={} [{}]", pc, ids.join(" "));
+    }
+}
+
+/// [SUBSUM_SKIP_ACTIVE] (trace-range), loop-scan variant.
+fn subsum_skip_active_loop_trace(pc: usize, i: usize, prev: &State) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        eprintln!(
+            "[SUBSUM_SKIP_ACTIVE] pc={} prev_idx={} prev.dfs_paths={} cache_id={:?}",
+            pc, i, prev.dfs_paths, prev.cache_id,
+        );
+    }
+}
+
+/// [SUBSUM_SKIP_ACTIVE] (trace-range), standard-scan variant.
+fn subsum_skip_active_std_trace(pc: usize, i: usize, prev: &State) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        eprintln!(
+            "[SUBSUM_SKIP_ACTIVE] pc={} prev_idx={} prev.branches={} cache_id={:?} (standard)",
+            pc, i, prev.branches, prev.cache_id,
+        );
+    }
+}
+
+/// [SUBSUM_CHILDUNSAFE] (trace-range): a children_unsafe candidate was
+/// walked past in the standard scan.
+fn subsum_childunsafe_trace(pc: usize, i: usize, prev: &State) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        eprintln!(
+            "[SUBSUM_CHILDUNSAFE] pc={} prev_idx={} cache_id={:?}",
+            pc, i, prev.cache_id,
+        );
+    }
+}
+
+/// [SUBSUM_HIT] (trace-range), loop-scan variant with the R8 dims dump.
+fn subsum_hit_loop_trace(pc: usize, i: usize, force_exact: bool, state: &State, prev: &State) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        let cu = state.domain.get_u64_bounds(Reg::R8);
+        let pu = prev.domain.get_u64_bounds(Reg::R8);
+        eprintln!(
+            "[SUBSUM_HIT] pc={} prev_idx={} prev.dfs_paths={} force_exact={} curR8=u[{:#x}..{:#x}]prec={} prevR8=u[{:#x}..{:#x}]prec={}",
+            pc, i, prev.dfs_paths, force_exact,
+            cu.0, cu.1, state.precise_regs.contains(&Reg::R8),
+            pu.0, pu.1, prev.precise_regs.contains(&Reg::R8),
+        );
+    }
+}
+
+/// [SUBSUM_MISS] (trace-range), loop-scan variant.
+fn subsum_miss_loop_trace(
+    pc: usize,
+    i: usize,
+    reason: SubsumptionMissReason,
+    prev: &State,
+    force_exact: bool,
+) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        eprintln!(
+            "[SUBSUM_MISS] pc={} prev_idx={} reason={:?} prev.dfs_paths={} force_exact={}",
+            pc, i, reason, prev.dfs_paths, force_exact,
+        );
+    }
+}
+
+/// [SUBSUM_HIT] (trace-range), standard-scan variant, with the
+/// ZOVIA_DUMP_SLOTS3 and ZOVIA_DUMP_HIT_DIMS sub-dumps (compared live
+/// dims of cur vs the matched cache).
+fn subsum_hit_std_trace(
+    pc: usize,
+    i: usize,
+    state: &State,
+    prev: &State,
+    live_regs: &HashSet<Reg>,
+) {
+    if !crate::analysis::trace_pc_in_range(pc) {
+        return;
+    }
+    eprintln!(
+        "[SUBSUM_HIT] pc={} prev_idx={} cache_id={:?} (standard)",
+        pc, i, prev.cache_id,
+    );
+    if std::env::var("ZOVIA_DUMP_SLOTS3").ok().as_deref() == Some("1") {
+        dump_slots3(pc, "HIT", state, prev);
+    }
+    if std::env::var("ZOVIA_DUMP_HIT_DIMS").ok().as_deref() == Some("1") {
+        for &r in live_regs.iter() {
+            eprintln!(
+                "[hit_dim] pc={} reg={:?} cur(t={:?} tn={:?} prec={}) old(t={:?} tn={:?} prec={})",
+                pc, r,
+                state.types.get(r), state.get_tnum(r),
+                state.precise_regs.contains(&r),
+                prev.types.get(r), prev.get_tnum(r),
+                prev.precise_regs.contains(&r),
+            );
+        }
+        for off in [-64i16, -60, -57, -56, -232, -216, -296, -248] {
+            let cs = state.frames.current().stack.get_slot(off);
+            let ps = prev.frames.current().stack.get_slot(off);
+            eprintln!(
+                "[hit_dim] pc={} slot={} cur={:?} old={:?}",
+                pc, off,
+                cs.map(|s| (s.bounds.min, s.bounds.max, s.precise)),
+                ps.map(|s| (s.bounds.min, s.bounds.max, s.precise)),
+            );
+        }
+        let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
+            (-64i16..-56).map(|b| fr.stack.get_slot_kind(b)).collect::<Vec<_>>()
+        };
+        eprintln!(
+            "[hit_dim] pc={} fp64_kinds cur={:?} old={:?} cur_ty={:?} old_ty={:?}",
+            pc,
+            kinds(state.frames.current()),
+            kinds(prev.frames.current()),
+            state.frames.current().stack.get_slot(-64).map(|s| s.reg_type.clone()),
+            prev.frames.current().stack.get_slot(-64).map(|s| s.reg_type.clone()),
+        );
+    }
+}
+
+/// [miss_dim] ZOVIA_DUMP_MISS_DIMS=1: same dims as [hit_dim] but on the
+/// miss path, cur vs the missed cache. Caller gates on
+/// trace_pc_in_range.
+fn miss_dims_dump(pc: usize, i: usize, state: &State, prev: &State) {
+    if std::env::var("ZOVIA_DUMP_MISS_DIMS").ok().as_deref() == Some("1") {
+        for r in [Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4,
+                  Reg::R5, Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
+            let (clo, chi) = state.domain.get_interval(r);
+            let (plo, phi) = prev.domain.get_interval(r);
+            eprintln!(
+                "[miss_dim] pc={} idx={} reg={:?} cur(t={:?} ivl=[{},{}] tn={:?} prec={}) old(t={:?} ivl=[{},{}] tn={:?} prec={})",
+                pc, i, r,
+                state.types.get(r), clo, chi, state.get_tnum(r),
+                state.precise_regs.contains(&r),
+                prev.types.get(r), plo, phi, prev.get_tnum(r),
+                prev.precise_regs.contains(&r),
+            );
+        }
+    }
+}
+
+/// [TRAP] ZOVIA_TRAP_DEBUG=1 — dump prev vs cur side-by-side when the
+/// inf-loop trap fires, so we can see which fields kernel treats as
+/// distinct that zovia treats as identical.
+fn trap_debug_dump(env: &VerifierEnv, pc: usize, prev: &State, state: &State) {
+    if std::env::var("ZOVIA_TRAP_DEBUG").ok().as_deref() != Some("1") {
+        return;
+    }
+    eprintln!("[TRAP] === inf-loop fire at pc={} ===", pc);
+    eprintln!("[TRAP] prev.dfs_paths={} cur.dfs_paths={}", prev.dfs_paths, state.dfs_paths);
+    eprintln!("[TRAP] prev.may_goto_depth={} cur.may_goto_depth={}", prev.may_goto_depth, state.may_goto_depth);
+    eprintln!("[TRAP] depth prev={} cur={}", prev.frames.depth(), state.frames.depth());
+    // Walk full history, count visits to PC, and find any non-linear jumps
+    let mut hist_pcs: Vec<usize> = Vec::new();
+    let mut idx = state.history_idx;
+    let mut visits_to_trap_pc = 0;
+    while let Some(i) = idx {
+        match env.history.get(i) {
+            Some(step) => {
+                if step.pc == pc { visits_to_trap_pc += 1; }
+                hist_pcs.push(step.pc);
+                idx = step.parent_idx;
+                if hist_pcs.len() > 5000 { break; }
+            }
+            None => break,
+        }
+    }
+    eprintln!("[TRAP] cur history len={}  visits_to_pc{}={}", hist_pcs.len(), pc, visits_to_trap_pc);
+    eprintln!("[TRAP] last 15 PCs (most-recent first): {:?}", &hist_pcs[..hist_pcs.len().min(15)]);
+    // find non-linear transitions: prev PC where next != prev+1
+    let mut jumps: Vec<(usize, usize)> = Vec::new();
+    for w in hist_pcs.windows(2) {
+        let (newer, older) = (w[0], w[1]);
+        if newer != older + 1 && newer != older + 2 { // skip LD_IMM64 stride
+            jumps.push((older, newer));
+            if jumps.len() > 20 { break; }
+        }
+    }
+    eprintln!("[TRAP] non-linear jumps in history (older->newer): {:?}", jumps);
+    eprintln!("[TRAP] cur parent_cache_id={:?} prev.cache_id={:?}", state.parent_cache_id, prev.cache_id);
+    for r in Reg::ALL {
+        let pty = prev.types.get(r);
+        let cty = state.types.get(r);
+        let (plo, phi) = prev.domain.get_interval(r);
+        let (clo, chi) = state.domain.get_interval(r);
+        let psid = prev.scalar_ids.get(&r).copied().unwrap_or(0);
+        let csid = state.scalar_ids.get(&r).copied().unwrap_or(0);
+        let same_ty = pty == cty;
+        let same_iv = (plo, phi) == (clo, chi);
+        let same_u32 = prev.domain.get_u32_bounds(r) == state.domain.get_u32_bounds(r);
+        let same_tn = prev.tnums.get(&r) == state.tnums.get(&r);
+        let same_sid = psid == csid;
+        eprintln!(
+            "[TRAP] {:?}: ty={} iv={} u32={} tn={} sid={} | prev_ty={:?} iv=[{}..{}] sid={} | cur_ty={:?} iv=[{}..{}] sid={}",
+            r, if same_ty {"="} else {"≠"}, if same_iv {"="} else {"≠"},
+            if same_u32 {"="} else {"≠"}, if same_tn {"="} else {"≠"},
+            if same_sid {"="} else {"≠"},
+            pty, plo, phi, psid, cty, clo, chi, csid,
+        );
+    }
+    // Top-frame stack slot diffs
+    use crate::analysis::machine::frame_stack::FrameLevel;
+    let top = FrameLevel::from_index(prev.frames.depth().saturating_sub(1));
+    let pf = prev.frames.get(top);
+    let cf = state.frames.get(top);
+    // explicit: dump the fp-0x128 (-296) slot specifically
+    let pslot = pf.stack.get_slot(-296);
+    let cslot = cf.stack.get_slot(-296);
+    eprintln!("[TRAP] fp-296 (= fp-0x128): prev={:?}", pslot);
+    eprintln!("[TRAP] fp-296 (= fp-0x128): cur ={:?}", cslot);
+    let mut all_offs: std::collections::BTreeSet<i16> = pf.stack.slot_offsets().into_iter().collect();
+    all_offs.extend(cf.stack.slot_offsets());
+    for off in all_offs {
+        let ps = pf.stack.get_slot(off);
+        let cs = cf.stack.get_slot(off);
+        let same = match (ps, cs) {
+            (Some(a), Some(b)) => a == b,
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            eprintln!("[TRAP] fp{}: DIFF prev={:?} cur={:?}", off, ps, cs);
+        }
+    }
+    eprintln!("[TRAP] === end ===");
+}
+
+/// [ev] eviction event log (trace-range): candidate identity = cid + R1
+/// smin, for diffing against the kernel's eviction trace. Returns the
+/// idx→identity map consumed by ev_miss_trace / ev_evict_trace; empty
+/// when the pc isn't traced.
+fn ev_id_map(
+    env: &VerifierEnv,
+    pc: usize,
+    miss_idxs: &[usize],
+) -> std::collections::HashMap<usize, (Option<u32>, i64)> {
+    if crate::analysis::trace_pc_in_range(pc) {
+        env.explored_states
+            .get(&pc)
+            .map(|states| {
+                miss_idxs
+                    .iter()
+                    .filter_map(|&i| {
+                        states.get(i).map(|s| {
+                            (i, (s.cache_id, s.domain.get_interval(Reg::R1).0))
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Default::default()
+    }
+}
+
+/// [ev] MISS event (trace-range): after the miss_cnt bump.
+fn ev_miss_trace(
+    pc: usize,
+    id_by_idx: &std::collections::HashMap<usize, (Option<u32>, i64)>,
+    i: usize,
+    m: &StateMetrics,
+) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        let (cid, r1) = id_by_idx.get(&i).copied().unwrap_or((None, i64::MIN));
+        eprintln!(
+            "[ev] pc={} MISS cid={:?} r1={} cnt={}/{}",
+            pc, cid, r1, m.miss_cnt, m.hit_cnt
+        );
+    }
+}
+
+/// [ev] EVICT event (trace-range): the miss_cnt threshold was crossed.
+fn ev_evict_trace(
+    pc: usize,
+    id_by_idx: &std::collections::HashMap<usize, (Option<u32>, i64)>,
+    i: usize,
+    m: &StateMetrics,
+    n: u32,
+) {
+    if crate::analysis::trace_pc_in_range(pc) {
+        let (cid, r1) = id_by_idx.get(&i).copied().unwrap_or((None, i64::MIN));
+        eprintln!(
+            "[ev] pc={} EVICT cid={:?} r1={} cnt={}/{} n={}",
+            pc, cid, r1, m.miss_cnt, m.hit_cnt, n
+        );
+    }
+}
+
+/// [ev] HIT identity (trace-range): fetched BEFORE the metrics borrow;
+/// `None` when the pc isn't traced (suppresses the print).
+fn ev_hit_id(env: &VerifierEnv, pc: usize, prev_idx: usize) -> Option<(Option<u32>, i64)> {
+    if crate::analysis::trace_pc_in_range(pc) {
+        env.explored_states.get(&pc).and_then(|v| v.get(prev_idx)).map(|s| {
+            (s.cache_id, s.domain.get_interval(Reg::R1).0)
+        })
+    } else {
+        None
+    }
+}
+
+/// [ev] HIT event: after the hit_cnt bump (id is Some only on traced pcs).
+fn ev_hit_trace(pc: usize, id: Option<(Option<u32>, i64)>, m: &StateMetrics) {
+    if let Some((cid, r1)) = id {
+        eprintln!(
+            "[ev] pc={} HIT cid={:?} r1={} cnt={}/{}",
+            pc, cid, r1, m.miss_cnt, m.hit_cnt
+        );
+    }
 }

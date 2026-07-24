@@ -1568,7 +1568,7 @@ fn run_worklist(
         // NOT kernel-comparable.
         prev_died = n_push == 0;
         let mut push_i = 0usize;
-        let mut plog = |pc: usize, at: usize, i: usize| {
+        let plog = |pc: usize, at: usize, i: usize| {
             if pushlog && i + 1 < n_push {
                 eprintln!(
                     "[zpush] at={} resume={} ip={} jp={}",

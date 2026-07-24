@@ -554,7 +554,7 @@ pub(crate) fn transfer_if(
 /// walks use an IDENTICAL mask — a drift empties the walks at different
 /// insns and loses the base.
 fn unreachable_target_regs(
-    env: &VerifierEnv,
+    _env: &VerifierEnv,
     state: &State,
     hidx: Option<usize>,
 ) -> Vec<Reg> {
@@ -612,35 +612,6 @@ fn unreachable_base_pc(env: &VerifierEnv, state: &State) -> Option<usize> {
             state.pc, mask, targets, base);
     }
     base
-}
-
-/// `reg_masks` tightening: drop a reject `reg_masks` target iff it is a
-/// fully-unknown `ScalarValue` (tnum carries no constraint) AND dead at the
-/// reject PC (absent from `live_regs`). Liveness is applied ONLY to
-/// unconstrained scalars, so a constrained-but-dead reg and live unknowns
-/// are untouched. ⚠️ zovia's `live_regs` is per-PC, not per-path, so the
-/// same drop applies to every arm of a multi-arm program.
-fn filter_live_unknown_targets(
-    env: &VerifierEnv,
-    state: &State,
-    hidx: Option<usize>,
-    targets: Vec<Reg>,
-) -> Vec<Reg> {
-    use crate::analysis::machine::reg_types::RegType;
-    let live = hidx
-        .and_then(|h| env.history.get(h))
-        .map(|h| h.pc)
-        .and_then(|pc| env.insn_aux_data.get(pc));
-    let Some(live) = live else { return targets };
-    targets
-        .into_iter()
-        .filter(|&r| {
-            let unk = state.get_tnum(r).mask == u64::MAX
-                && matches!(state.types.get(r), RegType::ScalarValue);
-            let dead = !live.live_regs.contains(&r);
-            !(unk && dead)
-        })
-        .collect()
 }
 
 /// Attempt path-unreachable speculation on a zovia-infeasible state and

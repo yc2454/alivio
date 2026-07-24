@@ -665,39 +665,6 @@ impl State {
     // forward through arithmetic; the field is consumed to block
     // pruning that would generalise the marked register.
 
-    /// Mark `r` as precision-critical. Also marks any other register
-    /// currently sharing `r`'s scalar id, so spills and copies keep the
-    /// mark. Safe to call on registers of any type; no-op for `Zero`.
-    pub fn mark_reg_precise(&mut self, r: Reg) {
-        if r == Reg::Zero {
-            return;
-        }
-        self.precise_regs.insert(r);
-        if let Some(id) = self.scalar_ids.get(&r).copied() {
-            let linked: Vec<Reg> = self
-                .scalar_ids
-                .iter()
-                .filter_map(|(&other, &oid)| if oid == id { Some(other) } else { None })
-                .collect();
-            for other in linked {
-                // ZOVIA_DBG_PREG2=<RegDebug>:<cid> — trace scalar-id
-                // fan-out precision marks for a given reg/cache-id pair
-                // (kernel apply marks exactly the bt regs).
-                if let Ok(v) = std::env::var("ZOVIA_DBG_PREG2")
-                    && let Some((rs, cs)) = v.split_once(':')
-                    && format!("{:?}", other) == rs
-                    && self.cache_id.map(|c| c.to_string()).as_deref() == Some(cs)
-                    && !self.precise_regs.contains(&other)
-                {
-                    eprintln!(
-                        "[prec-fanout] {:?} marked via id-class of {:?} (id={}) cid={:?} pc={}",
-                        other, r, id, self.cache_id, self.pc
-                    );
-                }
-                self.precise_regs.insert(other);
-            }
-        }
-    }
 
     /// Whether `r` has been marked precise on the current path.
     pub fn is_reg_precise(&self, r: Reg) -> bool {

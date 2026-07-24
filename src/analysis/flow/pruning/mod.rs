@@ -144,22 +144,6 @@ fn same_callsites(a: &State, b: &State) -> bool {
             .all(|(x, y)| x.return_pc == y.return_pc)
 }
 
-fn collect_ancestor_ids(env: &VerifierEnv, state: &State) -> HashSet<u32> {
-    let mut set = HashSet::new();
-    let mut next = state.parent_cache_id;
-    let mut budget = 16_384u32;
-    while let Some(cid) = next {
-        if budget == 0 || !set.insert(cid) {
-            break;
-        }
-        budget -= 1;
-        match env.state_by_cache_id(cid) {
-            Some((_, st)) => next = st.parent_cache_id,
-            None => break,
-        }
-    }
-    set
-}
 
 fn handle_loop_pruning(
     env: &mut VerifierEnv,
@@ -222,16 +206,10 @@ fn handle_loop_pruning(
     // regsafe + iter-next widening (kfunc.rs::iter_next_fork); for
     // non-iter loops without a wildcard fixpoint, the complexity limit
     // terminates them — matching the kernel's actual behavior.
-    // cur's ancestor cache_id lineage (walk of the parent_cache_id
-    // chain), used to distinguish a true loop-ANCESTOR (cur descends
-    // from prev) from a co-active SIBLING at the dfs_paths>0 prune-skip
-    // below. Computed lazily — only when an active prev is actually
-    // encountered — so converged loops (no active prev) pay nothing.
-    let mut ancestor_ids: Option<HashSet<u32>> = None;
     // Kernel in-loop dampener input (see handle_standard_pruning).
     let mut saw_active_loop = false;
 
-    let (hit_idx, miss_idxs, miss_reasons, counted_miss_idxs): (
+    let (hit_idx, _miss_idxs, miss_reasons, counted_miss_idxs): (
         Option<usize>,
         Vec<usize>,
         Vec<SubsumptionMissReason>,
@@ -421,7 +399,6 @@ fn handle_standard_pruning(
     // widened (unbounded) r7 reaches the access and is rejected. `iter_pc_slot`
     // is populated at every iter_next site by iter_next_fork.
     let iter_next_pc = env.iter_pc_slot.contains_key(&pc);
-    let mut ancestor_ids: Option<HashSet<u32>> = None;
     // Kernel scan shape: the bucket is a list_add-PREPENDED list scanned
     // NEWEST-FIRST, and the `miss:` label counts a miss only while the
     // RUNNING add_new_state is still true (`if (!add_new_state)

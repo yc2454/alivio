@@ -68,21 +68,6 @@ pub fn analyze_program_full(
     entry_dbm: Dbm,
     config: &VerifierConfig,
 ) -> AnalysisResult {
-    // ── Kernel retry-round mirror (ZOVIA_BCF_ROUNDS=1) ──
-    // bpf_check semantics: each loader retry re-verifies FROM SCRATCH with
-    // the grown bundle; children_unsafe marks and all exploration state
-    // reset — only the bundle persists. Mirror: re-run the whole analysis,
-    // carrying bcf_proofs (the bundle) + the covered natural-hash set.
-    // Each round discharges covered rejects from the bundle and stops at
-    // the first uncovered one (try_emit_path_unreachable_entry). Rounds
-    // are finite: each adds ≥1 covered hash or completes. The 4096 cap is
-    // a runaway backstop, far above any real object's entry count.
-    let rounds_mode = config.bcf_enabled
-        && std::env::var("ZOVIA_BCF_ROUNDS").ok().as_deref() == Some("1");
-    let mut round: usize = 1;
-    let mut covered: std::collections::HashSet<u64> = Default::default();
-    let mut carried: Vec<crate::refinement::bundle::RefineEntry> = Vec::new();
-    let (mut env, prune_count) = loop {
     // 1. Initialize Verifier Environment and control flow checks
     let mut env = VerifierEnv::new(
         ctx,
@@ -91,9 +76,6 @@ pub fn analyze_program_full(
         matches!(config.domain_mode, crate::common::config::DomainMode::Interval),
         config.bcf_enabled,
     );
-    env.bcf_rounds_mode = rounds_mode;
-    env.bcf_round_covered = covered.clone();
-    env.bcf_proofs = std::mem::take(&mut carried);
     if let Some(ref cert) = env.certificate {
         let computed_hash = program_hash(prog);
         if cert.program_hash != computed_hash {
@@ -356,43 +338,6 @@ pub fn analyze_program_full(
 
     // 3. & 4. Run worklist analysis
     let prune_count = run_worklist(&mut env, prog, config, initial_state);
-
-    // Retry-round driver: an uncovered reject ended this round — bank its
-    // hash + the grown bundle, restart from scratch (kernel loader retry).
-    if rounds_mode && env.bcf_round_stop && round < 4096 {
-        // No-progress guard: the round-ending hash must be NEW. A repeat
-        // means the covered check and the stop site disagree on this
-        // reject's hash (a bug) — surface it and stop looping rather
-        // than spinning to the backstop.
-        if let Some(h) = env.bcf_round_new {
-            if !covered.insert(h) {
-                eprintln!(
-                    "[bcf-rounds] LIVELOCK: round {} re-emitted covered hash 0x{:016x} — stopping rounds ({} entries)",
-                    round, h, env.bcf_proofs.len()
-                );
-                break (env, prune_count);
-            }
-        }
-        carried = std::mem::take(&mut env.bcf_proofs);
-        eprintln!(
-            "[bcf-rounds] round {} ended: uncovered 0x{:016x} at insn_processed={}; bundle {} entries — restarting",
-            round,
-            env.bcf_round_new.unwrap_or(0),
-            env.insn_processed,
-            carried.len()
-        );
-        round += 1;
-        continue;
-    }
-    if rounds_mode {
-        eprintln!(
-            "[bcf-rounds] converged after {} round(s): {} entries",
-            round,
-            env.bcf_proofs.len()
-        );
-    }
-    break (env, prune_count);
-    }; // end retry-round loop
 
     // Audit hook: dump per-PC subsumption-miss histogram.
     // Gated on `ZOVIA_DUMP_PRUNING=1` so it stays out of the sweep
@@ -811,12 +756,6 @@ fn run_worklist(
     let zpop_on = std::env::var("ZOVIA_DBG_PUSHLOG").ok().as_deref() == Some("1");
     let mut prev_died = false;
     while let Some(mut state) = worklist.pop_back() {
-        // Retry-round mirror: the first uncovered reject ended this round
-        // (kernel: the load fails at mark_bcf_requested; nothing after it
-        // runs). Drain and return; the driver restarts from scratch.
-        if env.bcf_round_stop {
-            break;
-        }
         if zpop_on && prev_died {
             eprintln!(
                 "[zpop] resume={} ip={} jp={}",

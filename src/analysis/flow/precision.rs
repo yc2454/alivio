@@ -263,24 +263,7 @@ pub fn mark_chain_precision_backward_seeded(
             // so the spilled scalar (and its source) never get marked
             // precise. That would let two paths spilling distinct constants
             // to the same slot wrongly subsume.
-            //
-            // The faithful rule is the default in BOTH base and BCF modes.
-            // Kill-switch ZOVIA_BCF_PRECISION_FAITHFUL=0 restores the
-            // legacy reg-frontier-only emission profile for A/B studies
-            // (soundness unaffected: base mode always uses the faithful
-            // rule, and BCF bundles are fail-closed — the kernel re-checks
-            // every entry by canonical hash; this is an EMISSION-PROFILE
-            // choice, not a soundness gate).
-            let bcf_faithful_precision = crate::common::config::bcf_mirror_knob(
-                "ZOVIA_BCF_PRECISION_FAITHFUL",
-                env.bcf_enabled,
-            );
-            let terminate = if env.bcf_enabled && !bcf_faithful_precision {
-                frontier.is_empty()
-            } else {
-                frontier.is_empty() && stack_frontier.is_empty()
-            };
-            if terminate {
+            if frontier.is_empty() && stack_frontier.is_empty() {
                 break 'outer;
             }
         }

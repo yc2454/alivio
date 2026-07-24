@@ -523,25 +523,6 @@ impl SymbolicState {
     /// Without this, MISS-side emissions drop the upstream conds the
     /// kernel re-pushes at replay-start, so the canonical hash misses
     /// the kernel's expected entry.
-    /// Keep exactly the path-cond entries at the given (sorted) indices.
-    /// The POSITIONAL analog of `filter_path_conds_from_pc` — the kernel's
-    /// `bcf_track` emits br_conds only along the walk suffix from the base
-    /// state to cur, which is a recording-order slice, not a pc window
-    /// (they differ when the path wraps a loop).
-    pub fn retain_path_conds_by_index(&mut self, kept: &[usize]) {
-        debug_assert_eq!(self.path_conds.len(), self.path_cond_pcs.len());
-        debug_assert_eq!(self.path_conds.len(), self.path_cond_is_branch.len());
-        fn take<T: Clone>(v: &mut Vec<T>, kept: &[usize]) {
-            let old = std::mem::take(v);
-            *v = kept.iter().filter_map(|&i| old.get(i).cloned()).collect();
-        }
-        take(&mut self.path_conds, kept);
-        take(&mut self.path_cond_pcs, kept);
-        take(&mut self.path_cond_is_branch, kept);
-        take(&mut self.path_cond_narrowed_const, kept);
-        take(&mut self.path_cond_lhs_meta, kept);
-    }
-
     pub fn filter_path_conds_from_pc(
         &mut self,
         base_pc: usize,
@@ -1155,15 +1136,8 @@ impl SymbolicState {
         // DOUBLE the bound conjuncts (over-emit vs the kernel goal).
         // ZOVIA_BCF_REPLAY_FIRSTREF: kernel-faithful FIRST-REF bound emission —
         // bcf_reg_expr→bcf_bound_reg emits a reg's bounds at its FIRST
-        // materialization (read OR branch), wherever it is. The deferred
-        // (branch-only) REPLAY arm LOSES bounds for regs first-materialized at a
-        // non-branch read (bcf_materialize_src) — they become cached bare vars
-        // and the arm skips them. With this flag, materialize_reg emits at
-        // first-ref and the deferred arm is disabled (see
-        // record_path_cond_for_side).
-        let replay_firstref =
-            crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY_FIRSTREF", true);
-        let emit_first_ref_bounds = !self.replay_emit_bounds || replay_firstref;
+        // materialization (read OR branch), wherever it is.
+        let emit_first_ref_bounds = true;
         if bounds.fit_u32() {
             let v32 = self.add_var_bits(true);
             self.var_origin.insert(v32, reg);

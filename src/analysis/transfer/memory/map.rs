@@ -466,43 +466,13 @@ fn try_bcf_refine_map(
         .history_idx
         .and_then(|hidx| crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(env, hidx, state.parent_cache_id, &target_regs));
     let base_pc = landed.map(|(pc, _)| pc);
-    // Positional cond-cut input (kernel bcf_track suffix semantics): the
-    // base state's own recorded path_conds length — its snapshot is a
-    // prefix of cur's stream (same lineage), so `len` = the exact index
-    // where the base→cur suffix begins. See try_refine_map_access.
-    let base_conds_len = landed.and_then(|(_, cid)| {
-        env.state_by_cache_id(cid).and_then(|(_, s)| {
-            // Cached states strip bcf at caching (merging.rs); the length
-            // survives in cached_path_conds_len.
-            s.cached_path_conds_len
-                .or_else(|| s.bcf.as_ref().map(|b| b.path_conds.len()))
-        })
-    });
     if bcf_debug {
         eprintln!("[REFINE] pc={} base={:?} insn_off={} size={} limit={} size_reg={:?} base_pc={:?} parent_cid={:?} history_idx={:?}",
                   state.pc, base, insn_off, size, map_limit, size_reg, base_pc,
                   state.parent_cache_id, state.history_idx);
     }
-    if std::env::var("ZOVIA_DBG_NULLSCAN").ok().as_deref() == Some("1") {
-        let mut cur = state.history_idx;
-        let mut steps = 0;
-        let mut valnull = 0usize; // 498 -> 515 taken (loaded value == 0, continue loop)
-        let mut prev_pc: Option<usize> = None;
-        while let Some(idx) = cur {
-            if steps > 600 { break; }
-            if let Some(bc) = env.history.get(idx) {
-                // walking BACKWARD: child (prev_pc) is 515 and current is 498 => taken edge
-                if bc.pc == 498 && prev_pc == Some(515) { valnull += 1; }
-                prev_pc = Some(bc.pc);
-                cur = bc.parent_idx;
-            } else { break; }
-            steps += 1;
-        }
-        eprintln!("[nullscan] pc={} hidx={:?} valnull_498_515={} steps={}",
-                  state.pc, state.history_idx, valnull, steps);
-    }
     let legacy_ok = crate::refinement::refine_map::try_refine_map_access(
-        state, base, insn_off, size, map_limit, size_reg, base_pc, base_conds_len, None,
+        state, base, insn_off, size, map_limit, size_reg, base_pc, None,
     );
     // Kernel bcf_track replay-rebuild variant (ADDITIVE): re-execute
     // base→reject with a fresh bcf so the path conds AND the refine
@@ -617,7 +587,7 @@ fn try_bcf_refine_map(
                         env, *rcid, anchor_at_parent, share_slot_vars, crossing, None,
                     ) {
                         if let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
-                            &rst, base, insn_off, size, map_limit, size_reg, None, None,
+                            &rst, base, insn_off, size, map_limit, size_reg, None,
                             Some(&known),
                         ) {
                             if bcf_debug {
@@ -655,7 +625,7 @@ fn try_bcf_refine_map(
                             env, deep_cid, false, true, Some(k), Some(cut_pc),
                         ) {
                             if let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
-                                &rst, base, insn_off, size, map_limit, size_reg, None, None,
+                                &rst, base, insn_off, size, map_limit, size_reg, None,
                                 Some(&known),
                             ) {
                                 if bcf_debug {

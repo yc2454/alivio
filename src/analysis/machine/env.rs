@@ -348,22 +348,6 @@ pub struct VerifierEnv<'a> {
     /// bundle discharge → `PROCESS_BPF_EXIT`.
     pub bcf_path_unreachable: bool,
 
-    /// Kernel retry-round mirror (ZOVIA_BCF_ROUNDS=1). bpf_check
-    /// semantics: each loader retry re-verifies from scratch with the
-    /// grown bundle; only the bundle persists across rounds
-    /// (children_unsafe marks and all exploration state reset).
-    /// `bcf_rounds_mode` gates the covered-check + first-uncovered stop
-    /// in `try_emit_path_unreachable_entry`; `bcf_round_covered` = the
-    /// natural-goal hashes emitted by PRIOR rounds (the loaded-bundle
-    /// analog, frozen for the round); `bcf_round_stop` = this round hit
-    /// its first uncovered reject (kernel `mark_bcf_requested` → the
-    /// load fails); `bcf_round_new` = that reject's natural hash, for
-    /// the round driver in `analyze_program_full` to add to the set.
-    pub bcf_rounds_mode: bool,
-    pub bcf_round_covered: std::collections::HashSet<u64>,
-    pub bcf_round_stop: bool,
-    pub bcf_round_new: Option<u64>,
-
     /// Breadcrumb index of the instruction currently being transferred
     /// (the just-recorded step in `history`). Set by `run_worklist`
     /// immediately after `history.record`, before the transfer. The
@@ -457,10 +441,6 @@ impl<'a> VerifierEnv<'a> {
             bcf_proofs: Vec::new(),
             bcf_size_reg: None,
             bcf_path_unreachable: false,
-            bcf_rounds_mode: false,
-            bcf_round_covered: Default::default(),
-            bcf_round_stop: false,
-            bcf_round_new: None,
             current_step_idx: None,
             replay_mode: false,
             live_stack: Default::default(),

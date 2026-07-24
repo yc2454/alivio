@@ -516,34 +516,6 @@ fn handle_standard_pruning(
             match state_subsumed_by(state, prev, live_regs, frame_live_slots, frame_live_regs, config, force_exact) {
                 Ok(()) => {
                     zhit_seq(pc, state, prev);
-                    // ZOVIA_DBG_VNHIT: report HITs that prune a lineage
-                    // whose history crossed the 498->515 value-null edge.
-                    if std::env::var("ZOVIA_DBG_VNHIT").ok().as_deref() == Some("1")
-                        && matches!(pc, 494 | 515 | 516)
-                    {
-                        let mut cur = state.history_idx;
-                        let mut prev_pc: Option<usize> = None;
-                        let mut vn = 0usize;
-                        let mut steps = 0;
-                        while let Some(idx) = cur {
-                            if steps > 600 { break; }
-                            if let Some(bc) = env.history.get(idx) {
-                                if bc.pc == 498 && prev_pc == Some(515) { vn += 1; }
-                                prev_pc = Some(bc.pc);
-                                cur = bc.parent_idx;
-                            } else { break; }
-                            steps += 1;
-                        }
-                        if vn > 0 {
-                            eprintln!("[vnhit] pc={} prev_idx={} prev.branches={} prev.cache_id={:?} prev.first_insn_idx={} prev.hidx={:?} cur.hidx={:?} cur_valnull={} prev_r6={:?} cur_r6={:?} prev_r7={:?} cur_r7={:?}",
-                                pc, i, prev.branches, prev.cache_id, prev.first_insn_idx,
-                                prev.history_idx, state.history_idx, vn,
-                                prev.domain.get_interval(crate::analysis::machine::reg::Reg::R6),
-                                state.domain.get_interval(crate::analysis::machine::reg::Reg::R6),
-                                prev.domain.get_interval(crate::analysis::machine::reg::Reg::R7),
-                                state.domain.get_interval(crate::analysis::machine::reg::Reg::R7));
-                        }
-                    }
                     if crate::analysis::trace_pc_in_range(pc) {
                         eprintln!(
                             "[SUBSUM_HIT] pc={} prev_idx={} cache_id={:?} (standard)",
@@ -663,19 +635,6 @@ fn handle_standard_pruning(
 /// heuristic. The in-loop dampener then flips it false DURING the scan
 /// (see dampener_would_suppress). Keep in sync with run_worklist A.c.
 fn would_add_new_state_base(env: &VerifierEnv, state: &State, pc: usize) -> bool {
-    // ZOVIA_DBG_FORCE_ADD=1 — DIAGNOSIS ONLY: checkpoint at EVERY
-    // prune-point visit (a superset of the kernel's add set) while
-    // keeping subsumption-hit pruning intact. NOT a fix — forced adds
-    // change exploration; never default this on.
-    if std::env::var("ZOVIA_DBG_FORCE_ADD").ok().as_deref() == Some("1") {
-        return true;
-    }
-    // Range-scoped variant (ZOVIA_DBG_FORCE_ADD_RANGE=LO:HI): forced adds
-    // ONLY inside the window — surgical base-placement tests without the
-    // global state blowup.
-    if force_add_in_range(pc) {
-        return true;
-    }
     let force_new_state = env
         .insn_aux_data
         .get(pc)
@@ -688,27 +647,10 @@ fn would_add_new_state_base(env: &VerifierEnv, state: &State, pc: usize) -> bool
 }
 
 /// ZOVIA_DBG_FORCE_ADD_RANGE=LO:HI (diagnosis-only).
-fn force_add_in_range(pc: usize) -> bool {
-    std::env::var("ZOVIA_DBG_FORCE_ADD_RANGE")
-        .ok()
-        .and_then(|s| {
-            let (lo, hi) = s.split_once(':')?;
-            Some((lo.parse::<usize>().ok()?, hi.parse::<usize>().ok()?))
-        })
-        .is_some_and(|(lo, hi)| pc >= lo && pc <= hi)
-}
-
 /// Kernel skip_inf_loop_check condition (verifier.c ~20320): on
 /// encountering an active (branches>0) cached state, suppress the add
 /// unless force or the loop thresholds are reached.
 fn dampener_would_suppress(env: &VerifierEnv, state: &State, pc: usize) -> bool {
-    // See would_add_new_state_base: the ceiling diagnostic must also
-    // bypass the in-loop dampener or it re-suppresses the forced adds.
-    if std::env::var("ZOVIA_DBG_FORCE_ADD").ok().as_deref() == Some("1")
-        || force_add_in_range(pc)
-    {
-        return false;
-    }
     let force_new_state = env
         .insn_aux_data
         .get(pc)

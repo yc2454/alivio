@@ -150,33 +150,8 @@ fn record_path_cond_for_side(
             pre_lhs_bounds.const_val, narrow_for_side.is_some(), cmp_l_kind,
         );
     }
-    // PATH B (ZOVIA_BCF_REPLAY): mirror the kernel's `bcf_bound_reg`, which
-    // emits an operand's bound conjuncts INSIDE `record_path_cond` — BEFORE the
-    // branch cond is pushed, in umin/umax/smin/smax order, and ONLY when the reg
-    // was freshly materialized this branch (`bcf_pre == -1`). Emitting the block
-    // here (before `add_cond_at_narrowed`) reproduces the kernel's
-    // [u>=K, u<=M, …] block-then-branch ORDER and per-reg first-ref dedup.
-    // Const-materialized operands carry no VAR → no bound block (their value is
-    // emitted directly via the K==K rewrite).
-    // ZOVIA_BCF_REPLAY_FIRSTREF (default-ON) disables this deferred (branch-only)
-    // arm — bounds are emitted at first materialization in materialize_reg
-    // instead (kernel bcf_reg_expr→bcf_bound_reg, read OR branch).
-    let replay_firstref = crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY_FIRSTREF", true);
-    if bcf.replay_emit_bounds && !replay_firstref {
-        if lhs_was_uncached && lhs_bounds.const_val.is_none() {
-            for bp in bcf.bound_reg_emit_preds(cmp_l, &lhs_bounds, jmp32) {
-                bcf.add_cond(bp);
-            }
-        }
-        if rhs_was_uncached
-            && let Some(rb) = rhs_bounds.as_ref()
-            && rb.const_val.is_none()
-        {
-            for bp in bcf.bound_reg_emit_preds(cmp_r, rb, jmp32) {
-                bcf.add_cond(bp);
-            }
-        }
-    }
+    // Operand bound conjuncts are emitted at first materialization in
+    // materialize_reg (kernel bcf_reg_expr→bcf_bound_reg, read OR branch).
     let pred = if op != CmpOp::Test {
         bcf.add_pred(op_byte_for_side, cmp_l, cmp_r)
     } else {
@@ -740,9 +715,8 @@ fn try_prove_unreachable_via_replay(
     //      replay's fresh bcf sees the If itself, so the cond records with
     //      PRE-branch materialization (VAR + current bounds, no const fold).
     //    Emitted ADDITIVELY (caller dedups by cond_hash).
-    let narrowbase = crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY_NARROWBASE", true);
     let mut reset_points: Vec<(Option<usize>, bool)> = vec![(None, false)];
-    if narrowbase {
+    {
         for i in 0..n_exec {
             if matches!(path[i].1, Instr::If { .. }) {
                 reset_points.push((Some(i), false));
@@ -1112,27 +1086,6 @@ pub(crate) fn replay_to_reject(
         let succ = crate::analysis::transfer::transfer(env, st, &instr);
         let next_pc = path[i + 1].0;
         holder = succ.into_iter().find(|s| s.pc == next_pc);
-        if std::env::var("ZOVIA_DBG_REPLAY_R6").ok().as_deref() == Some("1")
-            && (539..=546).contains(&pc)
-            && let Some(h) = holder.as_ref()
-        {
-            let (lo, hi) = h.domain.get_interval(crate::analysis::machine::reg::Reg::R6);
-            eprintln!(
-                "[replay-r6] base_cid={} anchor_parent={} i={} pc={} r6=[{},{}] frames={}",
-                base_cid, anchor_at_parent, i, pc, lo, hi, h.frames.current_level()
-            );
-        }
-        if dbg
-            && std::env::var("ZOVIA_DBG_REPLAY_S32").ok().as_deref() == Some("1")
-            && let Some(h) = holder.as_ref()
-        {
-            let (s32lo, s32hi) = h.domain.get_s32_bounds(crate::analysis::machine::reg::Reg::R1);
-            let (lo, hi) = h.domain.get_interval(crate::analysis::machine::reg::Reg::R1);
-            eprintln!(
-                "[replay-s32] i={} pc={} r1 ivl=[{},{}] s32=[{},{}]",
-                i, pc, lo, hi, s32lo, s32hi
-            );
-        }
         if holder.is_none() && dbg {
             eprintln!(
                 "[replay-refine] DIED i={} pc={} instr={:?} want_next={} env_err={:?}",
@@ -1222,24 +1175,6 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         eprintln!("[disc] reject@pc={} base_pc={:?} prev_insn_pc={:?} parent_cid={:?} base_cid={:?}",
                   state.pc, base_pc, prev_insn_pc, state.parent_cache_id, base_cid_dbg);
     }
-    // Kernel retry-round mirror (ZOVIA_BCF_ROUNDS=1): a reject whose
-    // natural goal is covered by a PRIOR round's emission discharges
-    // straight from the accumulated bundle — no cvc5, no new pushes — and
-    // the parents still get marked (kernel bcf_refine marks
-    // children_unsafe UNCONDITIONALLY after a FOUND
-    // bcf_bundle_try_discharge, verifier.c:24697). The first UNCOVERED
-    // reject ends the round at the success returns below (kernel
-    // mark_bcf_requested → the load fails → the loader retries from
-    // scratch with the grown bundle).
-    if env.bcf_rounds_mode
-        && let Some(h) = crate::refinement::refine_unreachable::natural_goal_hash(
-            state, base_pc, prev_insn_pc,
-        )
-        && env.bcf_round_covered.contains(&h)
-    {
-        crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
-        return true;
-    }
     // LEAN EMISSION — THE DEFAULT: emit the replay family (replay_base all
     // rungs + ancestor replays depth 0-1) and fall through to the full
     // reconstruction fan-out ONLY for rejects where the replay family
@@ -1248,17 +1183,12 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // mark_path_children_unsafe are IDENTICAL to the fat path; only bundle
     // pushes differ. The skipped classes' code below is kept: it IS the
     // base-less fallback path.
-    // DIAGNOSIS-ONLY escape hatch: ZOVIA_BCF_LEAN=0 re-enables the full
-    // fat fan-out so a census can ask "would ANY anchor/class produce the
-    // missed hash". Not a tuning knob.
-    let lean = std::env::var("ZOVIA_BCF_LEAN").ok().as_deref() != Some("0");
-    // REPLAY = faithful base→reject re-execution (kernel bcf_track mirror).
-    // DEFAULT-ON (kill-switch ZOVIA_BCF_REPLAY=0); ADDITIVE alongside the
-    // reconstruction discharge (merge dedups by cond_hash). Pairs with
-    // ZOVIA_BCF_REPLAY_FIRSTREF (also default-ON) for kernel-faithful first-ref
-    // bound emission.
+    let lean = true;
+    // REPLAY = faithful base→reject re-execution (kernel bcf_track mirror);
+    // ADDITIVE alongside the reconstruction discharge (merge dedups by
+    // cond_hash).
     let mut replay_goals_produced: usize = 0;
-    if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY", true) {
+    {
         if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
             eprintln!("[replay] CALL reject@pc={} base_cid={:?}", state.pc, base_cid_dbg);
         }
@@ -1304,18 +1234,6 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         ok.proof_bytes,
         BCF_BUNDLE_KIND_UNREACHABLE,
     );
-    // The retry-round covered-set key for this reject. MUST equal what the
-    // covered check (`natural_goal_hash`) computes next round — NOT
-    // `entry.cond_hash`: when cvc5 declines the K==K rewrite,
-    // try_prove_unreachable returns the un-rewritten FALLBACK goal whose
-    // hash differs from the hash-only build → the check never hits →
-    // round livelock.
-    let natural_cond_hash = if env.bcf_rounds_mode {
-        crate::refinement::refine_unreachable::natural_goal_hash(state, base_pc, prev_insn_pc)
-            .unwrap_or(entry.cond_hash)
-    } else {
-        entry.cond_hash
-    };
     info!(
         target: "app",
         "[bcf] path-unreachable speculation: cvc5 proof {} bytes (hash {:016x})",
@@ -1398,12 +1316,6 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                 }
             }
             crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
-            // Retry-round mirror: first uncovered reject ends the round
-            // (kernel mark_bcf_requested — the load fails here).
-            if env.bcf_rounds_mode {
-                env.bcf_round_stop = true;
-                env.bcf_round_new = Some(natural_cond_hash);
-            }
             return true;
         }
     }
@@ -1450,11 +1362,10 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         }
     }
 
-    // Both-folds (ZOVIA_BCF_BOTH_FOLDS=1): when FAITHFUL_FOLD is on, ALSO
-    // emit the legacy-fold form of the same obligation — the kernel folds
-    // per-site based on ITS state, so either form may hash-match.
-    // ADDITIVE + deduped.
-    if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_BOTH_FOLDS", true) {
+    // Both-folds: ALSO emit the legacy-fold form of the same obligation —
+    // the kernel folds per-site based on ITS state, so either form may
+    // hash-match. ADDITIVE + deduped.
+    {
         if let Some(ok_lf) = crate::refinement::refine_unreachable::try_prove_unreachable_fold_legacy(
             state, base_pc, prev_insn_pc,
         ) {
@@ -1479,7 +1390,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // gated by BOTH_FOLDS like the legacy twin): the natural base may not be
     // a path-cond pc, so the anchor-union below never re-anchors exactly
     // there — emit the traj-window forms at (base_pc, prev_insn_pc) too.
-    if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_BOTH_FOLDS", true) && base_pc.is_some() {
+    if base_pc.is_some() {
         for (t_label, okv) in [
             ("traj", crate::refinement::refine_unreachable::try_prove_unreachable_traj(
                 state, base_pc, prev_insn_pc,
@@ -1511,8 +1422,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     }
 
     // Register-filtered discharge (provenance-seeded, mirrors the kernel's
-    // bcf_reg_expr data-dependency closure). DEFAULT-ON; set
-    // ZOVIA_BCF_REGFILTER=0 as a kill-switch.
+    // bcf_reg_expr data-dependency closure).
     //
     // After the immediate + ancestor PC-suffix discharges above, also emit
     // provenance-seeded register-filtered discharges: seed = the suffix's
@@ -1529,18 +1439,6 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // re-checks every proof on load, so a full-load = all proofs valid
     // (FA=0 floor preserved). Risk is bundle bloat, bounded by dedup +
     // the small per-anchor goal set.
-    //
-    // THOROUGH-MODE ONLY: this is a coverage-widening enhancement that
-    // belongs to thorough multi-pass analysis. Thorough mode spawns
-    // single-pass children (each --no-bcf-thorough) that do the actual
-    // analysis + discharge, marked with ZOVIA_BCF_THOROUGH_PASS=1 by the
-    // parent (main.rs). We key on that marker — NOT config.bcf_thorough,
-    // which is false in the children where the work happens. A standalone
-    // `--no-bcf-thorough` run lacks the marker, so reg-filter stays off
-    // there and the tight time budget isn't spent on extra cvc5 solves.
-    // Kill-switch: ZOVIA_BCF_REGFILTER=0.
-    if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_THOROUGH_PASS", true)
-        && std::env::var("ZOVIA_BCF_REGFILTER").ok().as_deref() != Some("0")
     {
         use crate::refinement::refine_unreachable as ru;
         for &hops in &[1usize, 2usize] {
@@ -1585,11 +1483,8 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // matched hashes preserve their byte-for-byte alignment) and dedups
     // by cond_hash before pushing.
     {
-        // ZOVIA_BCF_ANCESTOR_DEPTH caps the ancestor walk. Default 64.
-        let max_ancestor_depth: usize = std::env::var("ZOVIA_BCF_ANCESTOR_DEPTH")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(64);
+        // Ancestor-walk depth cap.
+        let max_ancestor_depth: usize = 64;
         let mut cur_cid_opt = base_cid_dbg;
         let mut depth = 0;
         while depth < max_ancestor_depth {
@@ -1644,11 +1539,11 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                     }
                 }
             }
-            // Faithful base→reject replay re-anchored at THIS ancestor
-            // (ZOVIA_BCF_REPLAY=1). Re-executes from the ancestor's cached
-            // state, so the goal is the kernel's exact bcf_track path cond
-            // for a replay starting here. Additive + deduped by cond_hash.
-            if crate::common::config::bcf_mirror_knob("ZOVIA_BCF_REPLAY", true) {
+            // Faithful base→reject replay re-anchored at THIS ancestor.
+            // Re-executes from the ancestor's cached state, so the goal is
+            // the kernel's exact bcf_track path cond for a replay starting
+            // here. Additive + deduped by cond_hash.
+            {
                 for (rung, rok) in try_prove_unreachable_via_replay(env, state, parent_cid) {
                     let rentry = RefineEntry::new(
                         rok.goal_root, rok.sym.exprs, rok.proof_bytes,
@@ -1677,11 +1572,5 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // its own path-unreachable bundle entry. Scoped to the same suffix
     // base as the path_conds (kernel parents[0..vstate_cnt-1]).
     crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
-    // Retry-round mirror: first uncovered reject ends the round (fat /
-    // base-less fallback path; same semantics as the lean return above).
-    if env.bcf_rounds_mode {
-        env.bcf_round_stop = true;
-        env.bcf_round_new = Some(natural_cond_hash);
-    }
     true
 }

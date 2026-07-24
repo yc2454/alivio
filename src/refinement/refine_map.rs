@@ -46,7 +46,6 @@ pub fn try_refine_map_access(
     map_limit: i64,
     size_reg: Option<Reg>,
     base_pc: Option<usize>,
-    base_conds_len: Option<usize>,
     // Pre-solve dedupe (replay-ladder cost control): when set, the built
     // goal's canonical hash is computed BEFORE the cvc5 solve and the
     // attempt bails if the hash is already known (it would be dropped at
@@ -62,51 +61,8 @@ pub fn try_refine_map_access(
     // bottoms out so the bundle's canonical_hash matches what the
     // kernel computes on its runtime CONJ.
     let pre_count = sym.path_conds.len();
-    // Kernel bcf_track slices the cond stream POSITIONALLY (the suffix
-    // of the walk from the base state to cur), not by pc value; the two
-    // coincide on straight-line paths, but when the path wraps a loop
-    // the pc filter over-keeps earlier-iteration conds. `base_conds_len`
-    // = the base state's own path_conds length (its snapshot is a prefix
-    // of cur's stream — same lineage) = the exact positional cut. The
-    // positional path engages only when it disagrees with the legacy pc
-    // filter, and then also runs the kernel replay-fold
-    // (faithful_fold_pass — bcf_refine tail resets bcf_expr, so
-    // pre-base operand chains rematerialize as fresh VARs + bound
-    // preds; verifier.c:894-926 lazy bcf_reg_expr).
-    // DEFAULT OFF: a coherent goal also needs the refine predicate
-    // rebuilt over the same fresh expr table (kernel bcf_track = ONE
-    // replay table; zovia's refine pred is built from the live reg
-    // chains, so the fold pass's fresh vars orphan it → cvc5 SAT → no
-    // goal). Enabling requires replay-rebuild integration for refine
-    // goals.
-    let positional_enabled =
-        std::env::var("ZOVIA_BCF_REFINE_POSITIONAL_CUT").ok().as_deref() == Some("1");
-    let mut positional_engaged = false;
-    if let (true, Some(bp), Some(cut)) = (positional_enabled, base_pc, base_conds_len) {
-        if cut <= sym.path_conds.len() {
-            let legacy_kept: Vec<usize> = sym
-                .path_cond_pcs
-                .iter()
-                .enumerate()
-                .filter(|&(_, &pc)| pc == 0 || pc >= bp)
-                .map(|(i, _)| i)
-                .collect();
-            let positional_kept: Vec<usize> = sym
-                .path_cond_pcs
-                .iter()
-                .enumerate()
-                .filter(|&(i, &pc)| pc == 0 || i >= cut)
-                .map(|(i, _)| i)
-                .collect();
-            if legacy_kept != positional_kept {
-                sym.retain_path_conds_by_index(&positional_kept);
-                super::refine_unreachable::faithful_fold_pass(&mut sym, base_pc);
-                positional_engaged = true;
-            }
-        }
-    }
     if let Some(bp) = base_pc {
-        if !positional_engaged {
+        {
             // TODO(faithful): plumb prev_insn_pc from caller (mirror of
             // refine_unreachable's wiring) so the kernel's record_path_cond
             // at replay-start is also captured for map-bounds refinement.

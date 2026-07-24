@@ -144,17 +144,7 @@ impl Default for VerifierConfig {
             domain_mode: DomainMode::Zone,
             skip_dbm_check: false,
             use_widening: false,
-            // EXPERIMENT (worktree): ZOVIA_STATES_CAP=N overrides the fixed
-            // per-pc cap (0 = uncapped, kernel-faithful: verifier.c has only
-            // utility eviction). ZOVIA_UNCAPPED_CACHE=1 = legacy alias for 0.
-            // Prerequisite probe for making ZOVIA_KERNEL_PUSH_ORDER default.
-            max_states_per_pc: if let Ok(v) = std::env::var("ZOVIA_STATES_CAP") {
-                v.parse().unwrap_or(64)
-            } else if std::env::var("ZOVIA_UNCAPPED_CACHE").ok().as_deref() == Some("1") {
-                0
-            } else {
-                64
-            },
+            max_states_per_pc: 64,
             log_interval: 100_000,
             debug_pc: None,
             target_btf_path: None,
@@ -173,19 +163,3 @@ impl Default for VerifierConfig {
     }
 }
 
-/// All-faithful mirror knob resolution.
-///
-/// The kernel-faithful BCF behaviors (kernel push order, kernel-shape
-/// caching, faithful precision/fold/prenarrow, both-folds + anchor-union
-/// emission, reg-filtered discharge) are ON BY DEFAULT whenever the
-/// context is BCF bundle generation, and OFF in the base verifier
-/// (selftest baseline untouched). Env overrides are kill-switches now:
-///   <NAME>=0  → force off (legacy emission profile / A-B studies)
-///   <NAME>=1  → force on even outside the default context
-pub fn bcf_mirror_knob(name: &str, bcf_context: bool) -> bool {
-    match std::env::var(name).ok().as_deref() {
-        Some("1") => true,
-        Some("0") => false,
-        _ => bcf_context,
-    }
-}

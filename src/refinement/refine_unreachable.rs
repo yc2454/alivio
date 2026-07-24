@@ -54,29 +54,6 @@ thread_local! {
     // mirrors the kernel's linear base→reject replay when zovia's path
     // crossed higher-pc code before the base. ADDITIVE via union modes.
     static TRAJ_SUFFIX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    // Retry-round covered check (ZOVIA_BCF_ROUNDS): build the natural goal
-    // and return WITHOUT proving. The kernel's FOUND path
-    // (bcf_bundle_try_discharge) hashes the canonical goal and looks it up
-    // in the bundle — no solver runs on a discharge hit.
-    static HASH_ONLY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Natural-goal canonical hash WITHOUT proving — the retry-round mirror's
-/// covered check. Returns the same `cond_hash` that
-/// `try_prove_unreachable` + `RefineEntry::new` would compute for this
-/// reject, but skips cvc5 entirely (kernel `bcf_bundle_try_discharge`
-/// analog: hash lookup only).
-pub fn natural_goal_hash(
-    state: &State,
-    base_pc: Option<usize>,
-    prev_insn_pc: Option<usize>,
-) -> Option<u64> {
-    HASH_ONLY.with(|c| c.set(true));
-    let r = try_prove_unreachable_inner(
-        state, base_pc, prev_insn_pc, true, None, false, None, None, false,
-    );
-    HASH_ONLY.with(|c| c.set(false));
-    r.map(|ok| crate::refinement::canonical_hash::hash_expr(ok.goal_root, &ok.sym.exprs))
 }
 
 /// Trajectory-suffix window variants of [`try_prove_unreachable`] — same
@@ -278,9 +255,7 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
         // wrongly fold to a `K op K` literal; the pre-narrow range keeps
         // it a VAR{bound} the kernel-faithful way. Mirrors kernel
         // bcf_reg_expr first-reference-range semantics.
-        // Default ON; kill-switch ZOVIA_BCF_FOLD_PRENARROW=0.
-        let prenarrow_on =
-            crate::common::config::bcf_mirror_knob("ZOVIA_BCF_FOLD_PRENARROW", true);
+        let prenarrow_on = true;
         // In-suffix branches (pc ≥ base) materialize the reg AT their own
         // branch, so they use the range ENTERING it — PRE-narrow
         // `pre_bounds` — mirroring kernel bcf_reg_expr, which runs before
@@ -504,10 +479,9 @@ fn try_prove_unreachable_inner(
     // VAR+bounds), processing path_conds in suffix order so the per-reg
     // cache (`fresh_var_for_reg`) reproduces the kernel's
     // first-materialize-and-cache. Default ON: this fn only runs with a
-    // BCF symbolic state present. Kill-switch ZOVIA_BCF_FAITHFUL_FOLD=0.
-    let faithful_fold = FOLD_OVERRIDE.with(|c| c.get()).unwrap_or_else(|| {
-        crate::common::config::bcf_mirror_knob("ZOVIA_BCF_FAITHFUL_FOLD", true)
-    });
+    // BCF symbolic state present. FOLD_OVERRIDE(false) selects the legacy
+    // fold for the additive both-folds emission variant.
+    let faithful_fold = FOLD_OVERRIDE.with(|c| c.get()).unwrap_or(true);
     let mut orphaned_vars: std::collections::HashSet<u32> = std::collections::HashSet::new();
     for i in 0..sym.path_conds.len() {
         if faithful_fold {
@@ -1116,12 +1090,6 @@ fn try_prove_unreachable_inner(
             "[goalmode] hash=0x{:016x} fresh_rewrite={} faithful_fold={} base_pc={:?}",
             h, do_fresh_var_rewrite, faithful_fold, base_pc
         );
-    }
-
-    // Retry-round covered check: hand the built goal back unproven (the
-    // caller only wants its canonical hash — kernel bundle-lookup analog).
-    if HASH_ONLY.with(|c| c.get()) {
-        return Some(UnreachableOk { proof_bytes: Vec::new(), goal_root, sym });
     }
 
     // Don't set sym.refine_cond — leaving it None makes smtlib::encode

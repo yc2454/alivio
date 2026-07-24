@@ -274,9 +274,6 @@ impl ScalarBounds {
     /// 64-bit range, so `bcf_bound_reg`-style materialization never emits
     /// the `ULE(reg,0xffffffff)` / signed bounds the kernel emits.
     pub fn assign_32_into_64(&mut self) {
-        if std::env::var("ZOVIA_DBG_ADDIMM").ok().as_deref() == Some("1") {
-            eprintln!("[a3264-in] s32=[{},{}] u32=[{:#x},{:#x}]", self.s32_min, self.s32_max, self.u32_min, self.u32_max);
-        }
         self.umin = self.u32_min as u64;
         self.umax = self.u32_max as u64;
         // Pull s32 into s64 only when both halves are non-negative (the

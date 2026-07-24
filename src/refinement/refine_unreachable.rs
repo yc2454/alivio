@@ -102,9 +102,8 @@ pub fn try_prove_unreachable_traj_no_rewrite(
 }
 
 /// Legacy-fold variant of [`try_prove_unreachable`]: forces the pre-
-/// FAITHFUL_FOLD pipeline (K==K rewrite + per-reg fresh-VAR Class-B) for this
-/// one emission regardless of `ZOVIA_BCF_FAITHFUL_FOLD`. ADDITIVE; caller
-/// dedups by cond_hash.
+/// faithful-fold pipeline (K==K rewrite + per-reg fresh-VAR Class-B) for
+/// this one emission. ADDITIVE; caller dedups by cond_hash.
 pub fn try_prove_unreachable_fold_legacy(
     state: &State,
     base_pc: Option<usize>,
@@ -385,28 +384,6 @@ fn try_prove_unreachable_inner(
 ) -> Option<UnreachableOk> {
     let bcf_ref = state.bcf.as_ref()?;
     let mut sym: SymbolicState = (**bcf_ref).clone();
-
-    // ZOVIA_DUMP_PRETRIM=1: dump the full PRE-trim recorded cond list at
-    // this reject — (pc, is_branch, narrowed (k,op)) per cond.
-    if std::env::var("ZOVIA_DUMP_PRETRIM").ok().as_deref() == Some("1") {
-        let mut s = String::new();
-        for i in 0..sym.path_conds.len() {
-            let n = match sym.path_cond_narrowed_const.get(i).and_then(|x| *x) {
-                Some((k, op, _, _)) => format!("K{:x}op{:02x}", k, op),
-                None => "-".into(),
-            };
-            s.push_str(&format!(
-                "({},{},{}) ",
-                sym.path_cond_pcs[i],
-                if sym.path_cond_is_branch[i] { "B" } else { "b" },
-                n
-            ));
-        }
-        eprintln!(
-            "[pretrim] reject_pc={} base={:?} prev={:?} n={} conds: {}",
-            state.pc, base_pc, prev_insn_pc, sym.path_conds.len(), s
-        );
-    }
 
     // Mirror bcf_track's suffix-only emission: drop path_conds emitted
     // strictly before the suffix base. `prev_insn_pc` enables the
@@ -1077,14 +1054,6 @@ fn try_prove_unreachable_inner(
         }
     };
 
-    if std::env::var("ZOVIA_GOAL_MODE").is_ok() {
-        let h = crate::refinement::canonical_hash::hash_expr(goal_root, &sym.exprs);
-        eprintln!(
-            "[goalmode] hash=0x{:016x} fresh_rewrite={} faithful_fold={} base_pc={:?}",
-            h, do_fresh_var_rewrite, faithful_fold, base_pc
-        );
-    }
-
     // Don't set sym.refine_cond — leaving it None makes smtlib::encode
     // emit `(assert <path_conds>)` directly (no nested CONJ with a
     // refine_cond), which is what we want for the path-unreachable proof.
@@ -1143,8 +1112,8 @@ fn try_prove_unreachable_inner(
 }
 
 /// Build a path-unreachable proof directly from a SymbolicState whose
-/// `path_conds` were produced by the faithful base→reject replay
-/// (`ZOVIA_BCF_REPLAY`). Unlike [`try_prove_unreachable_inner`], this does
+/// `path_conds` were produced by the faithful base→reject replay.
+/// Unlike [`try_prove_unreachable_inner`], this does
 /// NO suffix filter and NO K==K / fresh-VAR fold rewrites — the replay
 /// already re-materialized every register exactly as the kernel's
 /// `bcf_track` re-execution does (verifier.c:24633 + bcf_reg_expr@897), so

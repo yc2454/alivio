@@ -99,18 +99,6 @@ pub fn apply_core_relos(
         let Some(val) = new_val else { continue };
         let was_imm = raw_insns[insn_idx].imm;
         let was_no_op = was_imm as u64 == val;
-        if std::env::var("ZOVIA_CORE_DEBUG").is_ok() {
-            let access = cstr(&program_btf.strings, relo.access_str_off);
-            let type_name = program_btf
-                .types
-                .get(&relo.type_id)
-                .map(|t| cstr(&program_btf.strings, t.name_off).to_string())
-                .unwrap_or_default();
-            eprintln!(
-                "[core-relo] insn={} kind={:?} type={:?} access={:?} → new_val={} (was imm={}, no_op={})",
-                insn_idx, relo.kind, type_name, access, val, was_imm, was_no_op
-            );
-        }
         if patch_insn(raw_insns, insn_idx, val) {
             if was_no_op {
                 stats.no_op += 1;

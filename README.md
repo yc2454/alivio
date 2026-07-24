@@ -311,13 +311,30 @@ All flags are global and may appear before *or* after the subcommand.
 
 ### Debug instrumentation (environment variables)
 
-`ZOVIA_DUMP_*`, `ZOVIA_TRACE_*`, and `ZOVIA_DBG_*` environment variables
-enable targeted diagnostic printing (prune-miss dimensions, state dumps at a
-PC, path-condition traces, SMT/proof dumps, ...). All of them are
-**print-only**: by design no environment variable changes verification
-behavior. The only behavior-relevant env vars are `ZOVIA_CVC5` (solver
-binary path) and `ZOVIA_BUNDLE_KEEP=1` (skip clearing a stale bundle
-sidecar for cross-run accumulation).
+A small, curated set of **print-only** diagnostics — by design no
+environment variable changes verification behavior:
+
+| Variable | Prints |
+|---|---|
+| `ZOVIA_DUMP_AST=1` | The lowered instruction stream (the tool's "objdump") |
+| `ZOVIA_TRACE_PC_RANGE=LO:HI` | Per-visit forensics inside a PC window: arrivals, subsumption verdicts, cache events, worklist push/pop, branch counts |
+| `ZOVIA_DUMP_SUBSUM_MISS=1` | Per-register/slot/type dimensions of every subsumption miss ("why didn't it prune") |
+| `ZOVIA_BCF_CENSUS=1` | One line per BCF goal formed (class, pc, hash, dup) |
+| `ZOVIA_BCF_DUMP_HASH_BYTES=1` | Canonical goal bytes (for external diffing) |
+| `ZOVIA_BCF_DUMP_PATH_COND_PCS=1` | Recorded path conditions with their emit PCs |
+| `ZOVIA_DUMP_DISCHARGE=1` | Per-reject discharge summary + children_unsafe markings |
+| `ZOVIA_BCF_REPLAY_DEBUG=1` | Base→reject replay progress and failures |
+| `ZOVIA_BCF_TRACK_DEBUG_PC=<pc>` | Backward demand-walk trace anchored at a reject PC |
+| `ZOVIA_DUMP_REGMASK=1` | The reject's refine target-register mask |
+| `ZOVIA_DBG_MAT=1` | Every symbolic VAR materialization (reg, pc, bounds) |
+| `ZOVIA_BCF_DUMP_SMT=<dir>` / `ZOVIA_BCF_DUMP_PROOF=<prefix>` | SMT-LIB queries / raw proof blobs |
+| `ZOVIA_SOLVER_STATS=1` | cvc5 invocation counts and timing |
+| `ZOVIA_BCF_CHECKER=<path>` | Cross-check each proof with the external bcf-checker |
+
+Operational (behavior-relevant) env vars: `ZOVIA_CVC5` (solver binary
+path), `ZOVIA_BUNDLE_KEEP=1` (skip clearing a stale bundle sidecar for
+cross-run accumulation), `ZOVIA_BCF_EAGER_FLUSH=<path>` (flush the bundle
+after every push, for runs that may be killed).
 
 ## Python harnesses (`scripts/`)
 

@@ -349,11 +349,6 @@ pub(crate) fn transfer_alu(
         if matches!(op, AluOp::Add | AluOp::Sub) && state.domain.is_interval_mode() {
             crate::analysis::transfer::alu::helpers::sync_tnum_to_bounds(&mut state, dst);
         }
-        if std::env::var("ZOVIA_DBG_ADDIMM").ok().as_deref() == Some("1") {
-            let (s32lo, s32hi) = state.domain.get_s32_bounds(dst);
-            let (lo, hi) = state.domain.get_interval(dst);
-            eprintln!("[post-zext] dst={:?} ivl=[{},{}] s32=[{},{}]", dst, lo, hi, s32lo, s32hi);
-        }
     }
 
     // 7. Post-operation consistency check

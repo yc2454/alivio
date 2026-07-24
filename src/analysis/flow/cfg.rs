@@ -177,7 +177,7 @@ fn visit_insn(pc: usize, prog: &Program, env: &mut VerifierEnv) -> Result<Vec<us
             // bpf_iter_num loops quickly. Without CFG-time marking,
             // the flag was set lazily by the kfunc handler — which is
             // AFTER the cache decision in `run_worklist` reads it. Under
-            // `ZOVIA_KERNEL_ENGINE=1`, that left iter_next sites
+            // kernel-engine sparse caching, that left iter_next sites
             // uncached on first visit and the loop never converged
             // (state explosion → verifier timeout on iters_num /
             // verifier_bits_iter / iters families).

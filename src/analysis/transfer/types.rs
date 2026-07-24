@@ -1407,9 +1407,6 @@ pub(crate) fn update_call_types(
                 let (_, hi) = state.domain.get_interval(Reg::R4);
                 let len = if hi <= 0xFFFF { hi as i16 } else { 0 };
                 if len > 0 {
-                    if std::env::var("ZOVIA_DBG_SLOTW").ok().as_deref() == Some("1") {
-                        eprintln!("[slotw] skb_load_bytes pc={} off={} len={}", state.pc, off, len);
-                    }
                     // Kernel check_stack_range_initialized clobber semantics
                     // (verifier.c:8630 "helper can write anything into the
                     // stack" → STACK_MISC; :8635-8640 spilled slot →

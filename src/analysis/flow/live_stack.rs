@@ -281,18 +281,6 @@ pub fn mark_stack_read(
     insn_idx: usize,
     mask: u64,
 ) {
-    // Diagnostic (ZOVIA_DBG_SPI=N): report every read-mark CALL on a
-    // frame0 slot — including gated-out ones (replay/disabled).
-    if frameno == 0
-        && let Ok(spi_s) = std::env::var("ZOVIA_DBG_SPI")
-        && let Ok(spi) = spi_s.parse::<u32>()
-        && mask & (1u64 << spi) != 0
-    {
-        eprintln!(
-            "[dbg-spi] frame0 spi={} read-mark call insn={} mask=0x{:x} enabled={} replay={}",
-            spi, insn_idx, mask, env.live_stack.enabled, env.replay_mode
-        );
-    }
     if !env.live_stack.enabled || env.replay_mode || mask == 0 {
         return;
     }
@@ -350,15 +338,6 @@ pub fn invalidate_write_bracket(env: &mut VerifierEnv) {
 /// masks into must_write at the bracket's insn.
 #[allow(clippy::needless_range_loop)]
 pub fn commit_stack_write_marks(env: &mut VerifierEnv) {
-    if std::env::var("ZOVIA_DBG_WCOMMIT").ok().as_deref() == Some("1")
-        && env.live_stack.write_insn == 1433
-        && env.live_stack.write_key.is_some()
-    {
-        eprintln!(
-            "[dbg-wcommit-entry] insn=1433 enabled={} replay={} acc0=0x{:x}",
-            env.live_stack.enabled, env.replay_mode, env.live_stack.write_acc[0]
-        );
-    }
     if !env.live_stack.enabled || env.replay_mode {
         return;
     }
@@ -376,12 +355,6 @@ pub fn commit_stack_write_marks(env: &mut VerifierEnv) {
     }
     let idx = write_insn - inst.start;
     let was_set = inst.must_write_set[idx];
-    if std::env::var("ZOVIA_DBG_WCOMMIT").ok().as_deref() == Some("1") && write_insn == 1433 {
-        eprintln!(
-            "[dbg-wcommit] insn=1433 was_set={} acc0=0x{:x}",
-            was_set, acc[0]
-        );
-    }
     for frame in 0..inst.nframes.min(MAX_FRAMES) {
         let mut mask = acc[frame];
         // avoid allocating frames for zero masks
@@ -610,23 +583,3 @@ pub fn frame_alive_mask(ls: &LiveStack, key: &[usize], q_insn: usize, frameno: u
     alive
 }
 
-/// Throwaway diagnostic (ZOVIA_DBG_LIVE26): dump one spi's per-insn
-/// dataflow bits for the given instance at the given insns.
-pub fn dbg_dump_bit(ls: &LiveStack, key: &[usize], frameno: usize, spi: u32, insns: &[usize]) {
-    let Some(inst) = ls.instances.get(key) else {
-        eprintln!("[dbg-live] no instance for key {:?}", key);
-        return;
-    };
-    for &i in insns {
-        match inst.masks(frameno, i) {
-            Some(m) => eprintln!(
-                "[dbg-live] insn={} spi={} may_read={} must_write={} live_before={}",
-                i, spi,
-                (m.may_read >> spi) & 1,
-                (m.must_write >> spi) & 1,
-                (m.live_before >> spi) & 1
-            ),
-            None => eprintln!("[dbg-live] insn={} spi={} NO MASKS", i, spi),
-        }
-    }
-}

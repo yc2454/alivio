@@ -343,14 +343,6 @@ pub fn apply_add_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
         bounds.s32_max = i32::MAX;
     }
     bounds.sync_bounds();
-    if std::env::var("ZOVIA_DBG_ADDIMM").ok().as_deref() == Some("1") {
-        eprintln!(
-            "[addimm] dst={:?} imm={} post s=[{},{}] u=[{:#x},{:#x}] s32=[{},{}] u32=[{:#x},{:#x}]",
-            dst, imm, bounds.smin, bounds.smax, bounds.umin, bounds.umax,
-            bounds.s32_min, bounds.s32_max, bounds.u32_min, bounds.u32_max
-        );
-    }
-
     // Update pointer offset if present
     if let Some(ref mut po) = state.get_mut(dst).ptr_offset {
         po.off = po.off.saturating_add(imm);

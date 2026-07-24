@@ -297,10 +297,6 @@ fn refine_data_region_bounds(
                 let mut new_po = po;
                 new_po.pkt_end_rel = Some(mark);
                 ivl.get_mut(checked_reg).ptr_offset = Some(new_po);
-                if std::env::var("ZOVIA_DUMP_PKTEND").ok().as_deref() == Some("1") {
-                    eprintln!("[pktend-mark] pc={} reg={:?} rel={:?} upper_strict={}",
-                        state.pc, checked_reg, mark, upper_strict);
-                }
             }
     }
 }

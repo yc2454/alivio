@@ -126,7 +126,6 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
     // ── Stack slots ──────────────────────────────────────────────────────────
     // Only propagate to scalar slots; apply the same consistency guard as for
     // registers so that a subsequent fill_at doesn't load inconsistent bounds.
-    let state_pc = state.pc;
     for frame in state.frames.iter_mut() {
         for (_, slot) in frame.stack.iter_mut() {
             if slot.scalar_id != Some(id) {
@@ -155,15 +154,6 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
             let new_max = if hi < slot.bounds.max { hi } else { slot.bounds.max };
             if new_min > new_max {
                 continue; // Would make bounds inconsistent — skip
-            }
-            if (new_min, new_max) != (slot.bounds.min, slot.bounds.max)
-                && std::env::var("ZOVIA_DUMP_SLOT_FANOUT").ok().as_deref() == Some("1")
-            {
-                eprintln!(
-                    "[slot-fanout] pc={} left={:?} left_off={} slot_bounds=[{},{}] -> [{},{}] from=[{},{}]",
-                    state_pc, left, left_off, slot.bounds.min, slot.bounds.max,
-                    new_min, new_max, lo, hi
-                );
             }
             slot.bounds.min = new_min;
             slot.bounds.max = new_max;

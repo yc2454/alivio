@@ -14,7 +14,7 @@ use super::record::{cmp_op_to_bcf_pair, record_path_cond_for_side};
 /// actual replay path, and mis-cache pre-window materializations), this
 /// re-executes the instruction path from the cached base state to the
 /// reject, with a fresh bcf, so `state.bcf.path_conds` is rebuilt exactly
-/// as the kernel's re-execution would. Gated by `ZOVIA_BCF_REPLAY=1`.
+/// as the kernel's re-execution would.
 /// Returns the proven goals or empty (no base cache, path divergence, or
 /// cvc5 declined).
 pub(crate) fn try_prove_unreachable_via_replay(

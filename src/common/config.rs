@@ -124,8 +124,8 @@ pub struct VerifierConfig {
     /// the bundle is written here.
     pub bcf_bundle_out: Option<String>,
 
-    /// Kernel-shape state-cache placement (formerly `ZOVIA_KERNEL_ENGINE`
-    /// env var). When true, the walker only caches at `is_prune_point`
+    /// Kernel-shape state-cache placement. When true, the walker only
+    /// caches at `is_prune_point`
     /// PCs and uses the kernel's `add_new_state` heuristic; when false,
     /// the original dense per-popped-state caching is used.
     pub kernel_engine: bool,

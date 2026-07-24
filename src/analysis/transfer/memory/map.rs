@@ -288,18 +288,6 @@ fn interval_check_map_access(
         // Use PtrOffset to get offset range from buffer start
         let min_off = ptr_off.min_offset() + (insn_off as i64);
         let max_off = ptr_off.max_offset() + (insn_off as i64) + size;
-        if std::env::var("ZOVIA_TRACE_MAP_ACCESS").ok().as_deref() == Some("1") {
-            eprintln!(
-                "[MAP_ACCESS] pc={} base={:?} ptr_off=[{},{}] insn_off={} size={} -> min_off={} max_off={} limit={} btf_id={:?}",
-                pc, base, ptr_off.min_offset(), ptr_off.max_offset(),
-                insn_off, size, min_off, max_off, map_limit, map_def.btf_val_type_id,
-            );
-            if let Some(btf_id) = map_def.btf_val_type_id {
-                let sf = env.ctx.btf.find_special_fields(btf_id);
-                eprintln!("[MAP_ACCESS]   special_fields(btf_id={}) = {:?}", btf_id, sf);
-            }
-        }
-
         // enforce value_size bounds even when the map carries a
         // BTF value-type. The special-fields check below is additive — a
         // spin_lock overlap is one rejection reason, but plain OOB is another.

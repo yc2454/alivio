@@ -87,19 +87,6 @@ pub(crate) fn transfer_if(
         }
     }
 
-    // ZOVIA_DBG_BRANCHVAL=<pc>: dump the branch operand's tracked value at
-    // that pc.
-    if let Ok(v) = std::env::var("ZOVIA_DBG_BRANCHVAL")
-        && v.parse::<usize>().ok() == Some(state.pc)
-    {
-        let (lo, hi) = state.domain.get_interval(left);
-        let (ulo, uhi) = state.domain.get_u64_bounds(left);
-        eprintln!(
-            "[brval] pc={} left={:?} ivl=[{},{}] u=[{:#x},{:#x}] tn={:?} ty={:?} right={:?}",
-            state.pc, left, lo, hi, ulo, uhi,
-            state.get_tnum(left), state.types.get(left), right
-        );
-    }
     // --- STEP 1: Abstract Interpretation (Constraint Refinement) ---
     let mut state_then = state.clone();
     let mut state_else = state.clone();

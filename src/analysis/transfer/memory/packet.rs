@@ -95,17 +95,6 @@ pub fn check_packet_access(
     }
 
     let (start_ok, end_ok) = state.domain.verify_packet_bounds(base, off as i64, size);
-    if std::env::var("ZOVIA_DUMP_PKTACC").ok().as_deref() == Some("1") {
-        use crate::domains::numeric::NumericDomain;
-        let po = match state.domain {
-            NumericDomain::Interval(ref ivl) => ivl.get_ptr_offset(base).cloned(),
-            _ => None,
-        };
-        eprintln!(
-            "[pktacc] pc={} base={:?} off={} size={} start_ok={} end_ok={} po={:?}",
-            pc, base, off, size, start_ok, end_ok, po
-        );
-    }
     debug!(
         "Packet access check at pc {}: base {} offset {} size {} => start_ok {}, end_ok {}",
         pc,

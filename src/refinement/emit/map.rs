@@ -17,9 +17,7 @@ pub(crate) fn try_bcf_refine_map(
     size: i64,
     map_limit: i64,
 ) -> bool {
-    let bcf_debug = std::env::var("ZOVIA_TRACE_BCF_REFINE").ok().as_deref() == Some("1");
     if state.bcf.is_none() {
-        if bcf_debug { eprintln!("[REFINE] pc={} bcf=None -> skip", state.pc); }
         return false;
     }
     let size_reg = env.bcf_size_reg;
@@ -35,12 +33,6 @@ pub(crate) fn try_bcf_refine_map(
         Some(ptr_off) => ptr_off.min_offset() == ptr_off.max_offset(),
         None => true,
     };
-    if bcf_debug {
-        let po = state.domain.as_interval().and_then(|i| i.get_ptr_offset(base));
-        eprintln!("[REFINE-TARGETS] pc={} base={:?} ptr_is_const={} ptr_off=[{:?}..{:?}]",
-                  state.pc, base, ptr_is_const,
-                  po.as_ref().map(|p| p.min_offset()), po.as_ref().map(|p| p.max_offset()));
-    }
     let mut target_regs: Vec<Reg> = Vec::new();
     if !ptr_is_const {
         target_regs.push(base);
@@ -62,11 +54,6 @@ pub(crate) fn try_bcf_refine_map(
         .history_idx
         .and_then(|hidx| crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(env, hidx, state.parent_cache_id, &target_regs));
     let base_pc = landed.map(|(pc, _)| pc);
-    if bcf_debug {
-        eprintln!("[REFINE] pc={} base={:?} insn_off={} size={} limit={} size_reg={:?} base_pc={:?} parent_cid={:?} history_idx={:?}",
-                  state.pc, base, insn_off, size, map_limit, size_reg, base_pc,
-                  state.parent_cache_id, state.history_idx);
-    }
     let legacy_ok = crate::refinement::refine_map::try_refine_map_access(
         state, base, insn_off, size, map_limit, size_reg, base_pc, None,
     );
@@ -136,17 +123,6 @@ pub(crate) fn try_bcf_refine_map(
                     cur = env.state_by_cache_id(c).and_then(|(_, s)| s.parent_cache_id);
                 }
             }
-            if bcf_debug {
-                let rung_desc: Vec<String> = rung_cids
-                    .iter()
-                    .map(|c| {
-                        env.state_by_cache_id(*c)
-                            .map(|(_, s)| format!("cid={} pc={} first={:?}", c, s.pc, s.first_insn_idx))
-                            .unwrap_or_else(|| format!("cid={} <gone>", c))
-                    })
-                    .collect();
-                eprintln!("[REFINE-RUNGS] pc={} rungs=[{}]", state.pc, rung_desc.join(" | "));
-            }
             let mut known: std::collections::HashSet<u64> =
                 env.bcf_proofs.iter().map(|e| e.cond_hash).collect();
             for (ri, rcid) in rung_cids.iter().enumerate() {
@@ -186,13 +162,6 @@ pub(crate) fn try_bcf_refine_map(
                             &rst, base, insn_off, size, map_limit, size_reg, None,
                             Some(&known),
                         ) {
-                            if bcf_debug {
-                                eprintln!(
-                                    "[REFINE] pc={} replay-variant(rung={} parent={} share={} cross={:?}) proof_bytes={}",
-                                    state.pc, ri, anchor_at_parent, share_slot_vars, crossing,
-                                    ok.proof_bytes.len()
-                                );
-                            }
                             known.insert(crate::refinement::canonical_hash::hash_expr(
                                 ok.goal_root,
                                 &ok.sym.exprs,
@@ -223,12 +192,6 @@ pub(crate) fn try_bcf_refine_map(
                                 &rst, base, insn_off, size, map_limit, size_reg, None,
                                 Some(&known),
                             ) {
-                                if bcf_debug {
-                                    eprintln!(
-                                        "[REFINE] pc={} deep-cut(pc={} k={}) proof_bytes={}",
-                                        state.pc, cut_pc, k, ok.proof_bytes.len()
-                                    );
-                                }
                                 known.insert(crate::refinement::canonical_hash::hash_expr(
                                     ok.goal_root,
                                     &ok.sym.exprs,
@@ -245,7 +208,6 @@ pub(crate) fn try_bcf_refine_map(
         .chain(replay_variants.into_iter().map(|o| (true, o)))
         .collect();
     if attempts.is_empty() {
-        if bcf_debug { eprintln!("[REFINE] pc={} try_refine_map_access -> None", state.pc); }
         return false;
     }
     // Kernel bcf_refine TRACKING-mode guard (verifier.c:25153-25157): during
@@ -259,7 +221,6 @@ pub(crate) fn try_bcf_refine_map(
     }
     let mut emitted = false;
     for (is_replay_variant, ok) in attempts {
-    if bcf_debug { eprintln!("[REFINE] pc={} SUCCESS proof_bytes={}", state.pc, ok.proof_bytes.len()); }
     let entry = crate::refinement::bundle::RefineEntry::new(
         ok.goal_root,
         ok.sym.exprs,

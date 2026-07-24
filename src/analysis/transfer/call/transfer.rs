@@ -782,9 +782,6 @@ fn initialize_uninit_mem_args(
                         {
                             if max_size != i64::MAX && max_size > 0 {
                                 let max_bytes = (max_size as usize).min(512); // Bound to max stack size just in case
-                                if std::env::var("ZOVIA_DBG_SLOTW").ok().as_deref() == Some("1") {
-                                    eprintln!("[slotw] memsize-clobber pc={} off={} n={}", state.pc, off, max_bytes);
-                                }
                                 let stack = state.stack_at_mut(frame_level);
                                 // Kernel check_stack_range_initialized clobber
                                 // (verifier.c:8635-8640): a helper WRITE into a

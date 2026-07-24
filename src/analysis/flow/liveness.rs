@@ -60,40 +60,6 @@ pub fn compute_liveness(prog: &Program, env: &mut VerifierEnv) {
     // For each CallRel, propagate callee-saved registers that are live in the
     // caller's continuation into the callee's body. Iterate to handle nested calls.
     propagate_cross_frame_liveness(prog, env, &subprogs);
-
-    // Diagnostic: dump live_regs per pc in the kernel's bit convention
-    // (bit j = Rj) for diffing against the kernel's live_regs_before.
-    if std::env::var("ZOVIA_DUMP_LIVENESS").is_ok() {
-        for pc in 0..env.insn_aux_data.len() {
-            let mut mask: u16 = 0;
-            for r in &env.insn_aux_data[pc].live_regs {
-                let bit = match r {
-                    Reg::R0 => 0,
-                    Reg::R1 => 1,
-                    Reg::R2 => 2,
-                    Reg::R3 => 3,
-                    Reg::R4 => 4,
-                    Reg::R5 => 5,
-                    Reg::R6 => 6,
-                    Reg::R7 => 7,
-                    Reg::R8 => 8,
-                    Reg::R9 => 9,
-                    _ => continue,
-                };
-                mask |= 1 << bit;
-            }
-            let mut slots: Vec<i16> =
-                env.insn_aux_data[pc].live_slots.iter().copied().collect();
-            slots.sort_unstable();
-            eprintln!(
-                "[zlrb] {} 0x{:x} pp={} slots={:?}",
-                pc,
-                mask,
-                env.insn_aux_data[pc].prune_point as u8,
-                slots
-            );
-        }
-    }
 }
 
 // ---------- Phase 2: Cross-Frame Propagation ----------

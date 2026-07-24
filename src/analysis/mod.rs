@@ -35,18 +35,6 @@ pub struct AnalysisResult {
 }
 
 
-/// ZOVIA_DBG_JMPCNT=LO:HI (diagnosis-only): absolute insn_processed window
-/// for the [jmpcnt] jump-stream dump.
-fn jmpcnt_in_range(ip: usize) -> bool {
-    std::env::var("ZOVIA_DBG_JMPCNT")
-        .ok()
-        .and_then(|s| {
-            let (lo, hi) = s.split_once(':')?;
-            Some((lo.parse::<usize>().ok()?, hi.parse::<usize>().ok()?))
-        })
-        .is_some_and(|(lo, hi)| ip >= lo && ip <= hi)
-}
-
 pub fn analyze_program(
     ctx: &ExecContext,
     prog: &Program,
@@ -341,38 +329,6 @@ pub fn analyze_program_full(
     // 3. & 4. Run worklist analysis
     let prune_count = run_worklist(&mut env, prog, config, initial_state);
 
-    // Audit hook: dump per-PC subsumption-miss histogram.
-    // Gated on `ZOVIA_DUMP_PRUNING=1` so it stays out of the sweep
-    // path entirely. Pinpoints the dominant subsumption-miss reason.
-    if std::env::var("ZOVIA_DUMP_PRUNING").ok().as_deref() == Some("1") {
-        crate::analysis::flow::diag::dump_subsumption_miss_histogram(&env);
-    }
-    if std::env::var("ZOVIA_DUMP_VISITS").ok().as_deref() == Some("1") {
-        crate::analysis::flow::diag::dump_pc_visit_count(&env);
-    }
-    // Cache-topology probe: when ZOVIA_DUMP_CACHE_AT_PC=N is set, dump
-    // the count and per-entry reg/range/type snapshot for every cached
-    // state at PC=N. Cheap one-shot diagnostic, gate-off by default.
-    if let Ok(pcs) = std::env::var("ZOVIA_DUMP_CACHE_AT_PC") {
-        for pc_s in pcs.split(',') {
-            if let Ok(pc) = pc_s.trim().parse::<usize>() {
-                let entries = env.explored_states.get(&pc);
-                let n = entries.map(|v| v.len()).unwrap_or(0);
-                eprintln!("[cache-probe] pc={} cached_states={}", pc, n);
-                if let Some(vec) = entries {
-                    for (i, st) in vec.iter().enumerate() {
-                        eprintln!(
-                            "  [{}] cache_id={:?} parent_cache_id={:?} history_idx={:?}",
-                            i, st.cache_id, st.parent_cache_id, st.history_idx,
-                        );
-                        eprintln!("      Types:  {}", st.types.reg_types_str());
-                        eprintln!("      Ranges: {}", st.reg_ranges_str());
-                    }
-                }
-            }
-        }
-    }
-
     // --- BCF bundle emit ---
     // Each entry in bcf_proofs is an INDEPENDENT cvc5-proven UNSAT goal
     // for a specific rejection site discharged earlier in this analysis.
@@ -564,49 +520,6 @@ pub(crate) fn trace_pc_in_range(pc: usize) -> bool {
     } else {
         false
     }
-}
-
-/// ZOVIA_DBG_PUSHDUMP=<pc>: dump R5 + stack bytes -216..-209 (spi26) at every
-/// worklist PUSH of a successor whose resume pc == <pc> and every POP of a
-/// state at that pc. The kernel's pending states are immutable full copies
-/// (push_stack → copy_verifier_state); this instrument shows whether zovia's
-/// pushed snapshot mutates between push and pop.
-pub(crate) fn pushdump_pc() -> Option<usize> {
-    static PC: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
-    *PC.get_or_init(|| {
-        std::env::var("ZOVIA_DBG_PUSHDUMP")
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-    })
-}
-
-/// Emit one `[pushdump]` line for `state` when its pc matches
-/// `ZOVIA_DBG_PUSHDUMP` (see `pushdump_pc` above); no-op otherwise.
-fn pushdump(side: &str, state: &crate::analysis::machine::state::State) {
-    if pushdump_pc() != Some(state.pc) {
-        return;
-    }
-    use crate::analysis::machine::reg::Reg;
-    let mut slots = String::new();
-    for off in -216i16..=-209 {
-        match state.frames.current().stack.get_slot(off) {
-            Some(s) => slots.push_str(&format!(" {}:{:?}/{:?}", off, s.kind, s.reg_type)),
-            None => slots.push_str(&format!(" {}:-", off)),
-        }
-    }
-    let (r5lo, r5hi) = state.domain.get_interval(Reg::R5);
-    eprintln!(
-        "[pushdump] {} pc={} parent={:?} jd={} id={} r5={:?}[{}..{}] spi26={}",
-        side,
-        state.pc,
-        state.parent_cache_id,
-        state.path_jmp_count,
-        state.path_insn_count,
-        state.types.get(Reg::R5),
-        r5lo,
-        r5hi,
-        slots
-    );
 }
 
 /// Kernel `check_map_prog_compatibility` (verifier.c L19910–L19950):

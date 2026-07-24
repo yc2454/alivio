@@ -55,16 +55,8 @@ pub struct StateMetrics {
     pub miss_cnt: u32,
 }
 
-/// Per-PC histogram of *why* a `state_subsumed_by` check failed. Used
-/// by the end-of-analysis dump to figure out which subsumption sub-check
-/// is the dominant miss reason on timeout-prone tests — informs whether
-/// the next investment should be liveness (Stack), precision propagation
-/// (Types/Tnum/Domain/ScalarIdLinks), or widening breadth.
-///
-/// One entry is recorded per miss against the first sub-check that
-/// rejected; later sub-checks short-circuit so we don't see them. That's
-/// the right granularity for "which mechanism would unblock the most
-/// states."
+/// *Why* a `state_subsumed_by` check failed — the first sub-check that
+/// rejected (later sub-checks short-circuit so we don't see them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SubsumptionMissReason {
     Types,
@@ -76,97 +68,6 @@ pub enum SubsumptionMissReason {
     GotoBudget,
     ActiveRefs,
     CallerFrame,
-}
-
-/// Coarse counters describing how `should_prune` decisions broke down.
-/// Lets the audit dump distinguish:
-///   - "we didn't even try to prune" (not a prune point, on-path skip)
-///   - "we tried but had no prev state to compare against" (first visit)
-///   - "we tried and went through standard or loop pruning"
-/// — which then composes with the miss-reason histogram to tell us
-/// whether the bottleneck is subsumption-failure (rework subsumption)
-/// or first-visit-explosion (rework prune-point density / loop detection).
-#[derive(Clone, Default, Debug)]
-pub struct PruningStats {
-    pub should_prune_calls: u64,
-    pub not_prune_point: u64,
-    pub on_path_skip: u64,
-    pub no_prev_states: u64,
-    pub std_pruning_calls: u64,
-    pub loop_pruning_calls: u64,
-    /// Of the `loop_pruning_calls`, how many bailed early because
-    /// `loop_has_conditional_exit` returned false. Distinguishes
-    /// "we identify the construct as a loop but can't see its exit"
-    /// (probably a missed iter_next-style exit pattern) from "we
-    /// reached subsumption but the cache didn't help."
-    pub loop_no_cond_exit: u64,
-    /// Of `should_prune` calls reaching the post-skip phase, how many
-    /// were short-circuited by the may_goto RANGE_WITHIN prune class
-    /// (counted *before* the std/loop branch, so it's not in those).
-    pub may_goto_range_within_hits: u64,
-    /// Per-call tracking inside `handle_loop_pruning` itself. The
-    /// outer `loop_pruning_calls` counts *attempts*; this is "we
-    /// actually walked prev_states." Difference would show if the
-    /// `loop_has_conditional_exit` bail-out happens after the counter
-    /// increment.
-    pub loop_walks_attempted: u64,
-    pub loop_walks_no_prev: u64,
-    pub loop_walks_hit: u64,
-    pub loop_walks_miss: u64,
-    pub loop_walks_pruned_via_convergence: u64,
-    /// Lifetime cache hits (every successful subsumption, even on
-    /// states that later get evicted via max_states_per_pc drain).
-    /// The per-state `StateMetrics.hit_cnt` is wrong for end-of-run
-    /// reporting because evicted entries take their counters with them;
-    /// these monotonic counters give the true picture.
-    pub lifetime_hits: u64,
-    pub lifetime_misses: u64,
-    /// Number of times a cached state was skipped in `handle_standard_pruning`
-    /// because it had `children_unsafe=true` (i.e., an earlier BCF
-    /// path-unreachable discharge invalidated it for subsumption).
-    /// Counts the SUBSUMPTION ATTEMPTS that were short-circuited; not
-    /// the number of distinct invalidated cache entries.
-    pub children_unsafe_skips: u64,
-}
-
-impl SubsumptionMissReason {
-    pub const ALL: [SubsumptionMissReason; 9] = [
-        SubsumptionMissReason::Types,
-        SubsumptionMissReason::Domain,
-        SubsumptionMissReason::Stack,
-        SubsumptionMissReason::Tnum,
-        SubsumptionMissReason::ScalarIdLinks,
-        SubsumptionMissReason::ActiveLock,
-        SubsumptionMissReason::GotoBudget,
-        SubsumptionMissReason::ActiveRefs,
-        SubsumptionMissReason::CallerFrame,
-    ];
-    pub fn idx(self) -> usize {
-        match self {
-            SubsumptionMissReason::Types => 0,
-            SubsumptionMissReason::Domain => 1,
-            SubsumptionMissReason::Stack => 2,
-            SubsumptionMissReason::Tnum => 3,
-            SubsumptionMissReason::ScalarIdLinks => 4,
-            SubsumptionMissReason::ActiveLock => 5,
-            SubsumptionMissReason::GotoBudget => 6,
-            SubsumptionMissReason::ActiveRefs => 7,
-            SubsumptionMissReason::CallerFrame => 8,
-        }
-    }
-    pub fn label(self) -> &'static str {
-        match self {
-            SubsumptionMissReason::Types => "types",
-            SubsumptionMissReason::Domain => "domain",
-            SubsumptionMissReason::Stack => "stack",
-            SubsumptionMissReason::Tnum => "tnum",
-            SubsumptionMissReason::ScalarIdLinks => "scalar_id_links",
-            SubsumptionMissReason::ActiveLock => "active_lock",
-            SubsumptionMissReason::GotoBudget => "goto_budget",
-            SubsumptionMissReason::ActiveRefs => "active_refs",
-            SubsumptionMissReason::CallerFrame => "caller_frame",
-        }
-    }
 }
 
 pub struct VerifierEnv<'a> {
@@ -211,15 +112,6 @@ pub struct VerifierEnv<'a> {
     /// creates bloats the no_log bundle past the kernel's size limit
     /// (E2BIG → load failure). See the precision.rs termination gate.
     pub bcf_enabled: bool,
-    /// Per-PC histogram of subsumption-miss reasons (one bucket per
-    /// `SubsumptionMissReason` variant). `subsumption_misses[pc][r.idx()]`
-    /// is incremented every time the per-cached-state subsumption check
-    /// rejected with reason `r`. Used by the end-of-analysis dump.
-    pub subsumption_misses: HashMap<usize, [u64; 9]>,
-    /// Coarse counters for `should_prune` to disambiguate "subsumption
-    /// failed" from "subsumption never even attempted". Incremented in
-    /// `should_prune` and dumped alongside the miss histogram.
-    pub pruning_stats: PruningStats,
     /// Set by the pruning scan when the current arrival encountered a
     /// cached state with `branches > 0` (an in-flight ancestor — the
     /// kernel's "processing a loop" signal). Consumed by the add_new_state
@@ -277,11 +169,6 @@ pub struct VerifierEnv<'a> {
     /// `prev_jmps_processed` / `prev_insn_processed` L19260-L19261).
     pub prev_jmps_processed: usize,
     pub prev_insn_processed: usize,
-    /// Per-PC visit counter (only populated when `ZOVIA_DUMP_VISITS=1`).
-    /// Bumped once per non-pruned state expansion. Used by the per-PC
-    /// audit dump to localize path-explosion hotspots vs the kernel
-    /// verifier's per-PC visit count from the log_level-2 trace.
-    pub pc_visit_count: HashMap<usize, u64>,
     /// Holds the FIRST critical failure encountered.
     /// If this is Some, the analysis should halt immediately.
     pub error: Option<VerificationError>,
@@ -415,8 +302,6 @@ impl<'a> VerifierEnv<'a> {
             state_metrics: HashMap::new(),
             kernel_faithful_alu,
             bcf_enabled,
-            subsumption_misses: HashMap::new(),
-            pruning_stats: PruningStats::default(),
             saw_active_state_at_check: false,
             insn_aux_data: vec![InsnAuxData::default(); prog.instrs.len()],
             invalid_pc_set: prog.invalid_pc_set.clone(),
@@ -428,7 +313,6 @@ impl<'a> VerifierEnv<'a> {
             jmps_processed: 0,
             prev_jmps_processed: 0,
             prev_insn_processed: 0,
-            pc_visit_count: HashMap::new(),
             error: None,
             history: History::new(),
             certificate,

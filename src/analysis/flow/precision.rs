@@ -219,26 +219,6 @@ pub fn mark_chain_precision_backward_seeded(
             frontier.extend(fr_d.iter().map(|&r| (step_depth, r)));
             stack_frontier.retain(|&(fd, _)| fd != step_depth);
             stack_frontier.extend(sf_d.iter().map(|&o| (step_depth, o)));
-            // ZOVIA_DBG_PWALK=LO:HI — per-step frontier dump for walks in
-            // a pc window (diff vs kernel log_level-2 mark_precise /
-            // backtrack_insn semantics).
-            if let Ok(v) = std::env::var("ZOVIA_DBG_PWALK")
-                && let Some((lo, hi)) = v.split_once(':')
-                && let (Ok(lo), Ok(hi)) = (lo.parse::<usize>(), hi.parse::<usize>())
-                && step_pc >= lo
-                && step_pc <= hi
-            {
-                let mut fr: Vec<String> =
-                    frontier.iter().map(|(d, r)| format!("f{}:{:?}", d, r)).collect();
-                fr.sort();
-                let mut sf: Vec<String> =
-                    stack_frontier.iter().map(|(d, o)| format!("f{}:{}", d, o)).collect();
-                sf.sort();
-                eprintln!(
-                    "[pwalk] pc={} {:?} regs={:?} slots={:?} (hidx={})",
-                    step_pc, instr_copy, fr, sf, history_idx
-                );
-            }
             // Mirror frontier marks into `precise_pcs` at every
             // history step the walker traverses. The widening site
             // checks (pc, scalar_id) regardless of whether a
@@ -298,19 +278,6 @@ pub fn mark_chain_precision_backward_seeded(
                 current_parent_id.and_then(|id| env.state_by_cache_id_mut(id))
             {
                 for &(_, r) in &frontier {
-                    // ZOVIA_DBG_PREG=<RegDebug>:<cid> — who marks this reg
-                    // precise on this cached state.
-                    if let Ok(v) = std::env::var("ZOVIA_DBG_PREG")
-                        && let Some((rs, cs)) = v.split_once(':')
-                        && format!("{:?}", r) == rs
-                        && s.cache_id.map(|c| c.to_string()).as_deref() == Some(cs)
-                        && !s.precise_regs.contains(&r)
-                    {
-                        eprintln!(
-                            "[prec-reg] {:?} marked cid={:?} (cache pc={}) sink_regs={:?} sink_slots={:?} hidx={}",
-                            r, s.cache_id, s.pc, sink_regs, sink_slots, history_idx
-                        );
-                    }
                     // Kernel parent-chain apply (verifier.c:5156-5170) marks
                     // EXACTLY the bt frame regs — no scalar-id fan-out on the
                     // ancestor state. The kernel's id-class propagation is
@@ -337,17 +304,6 @@ pub fn mark_chain_precision_backward_seeded(
                 for &(_, slot_off) in &stack_frontier {
                     if let Some(slot) = cur_frame.stack.get_slot_mut(slot_off) {
                         slot.precise = true;
-                        // ZOVIA_DBG_PSLOT=<off>: one line per lineage
-                        // slot-precise mark at that offset — sink info
-                        // identifies the demanding walk.
-                        if let Ok(v) = std::env::var("ZOVIA_DBG_PSLOT")
-                            && v.parse::<i16>().ok() == Some(slot_off)
-                        {
-                            eprintln!(
-                                "[prec-slot] off={} marked cid={:?} (cache pc={}) sink_regs={:?} sink_slots={:?} hidx={}",
-                                slot_off, current_parent_id, s.pc, sink_regs, sink_slots, history_idx
-                            );
-                        }
                     }
                 }
             }
@@ -419,14 +375,6 @@ pub fn propagate_precision(env: &mut VerifierEnv, cur: &State, old: &State) {
         })
         .collect();
     let Some(history_idx) = cur.history_idx else { return };
-    // ZOVIA_DBG_PSLOT companion: name the seeding HIT (which prune hit
-    // pulls which precise set into the arriving lineage).
-    if std::env::var("ZOVIA_DBG_PSLOT").is_ok() {
-        eprintln!(
-            "[prec-seed] hit_pc={} old_cid={:?} regs={:?} slots={:?} hidx={}",
-            cur.pc, old.cache_id, regs, slots, history_idx
-        );
-    }
     mark_chain_precision_backward_seeded(
         env,
         history_idx,
@@ -526,14 +474,15 @@ pub fn bcf_suffix_base_pc(
     parent_cache_id: Option<u32>,
     target_regs: &[Reg],
 ) -> Option<usize> {
-    // ZOVIA_BCF_TRACK_DEBUG_PC=<pc>: per-insn walk trace ONLY for walks
-    // whose reject breadcrumb sits at <pc> — the global flag drowns big
-    // objects (one trace per discharge attempt).
-    let debug = std::env::var("ZOVIA_BCF_TRACK_DEBUG").is_ok()
-        || std::env::var("ZOVIA_BCF_TRACK_DEBUG_PC")
+    // ZOVIA_BCF_TRACK_DEBUG_PC: set to anything for the per-insn walk
+    // trace; a numeric value restricts it to walks whose reject
+    // breadcrumb sits at that pc (an all-walks trace drowns big
+    // objects — one trace per discharge attempt).
+    let debug = std::env::var("ZOVIA_BCF_TRACK_DEBUG_PC").is_ok()
+        && std::env::var("ZOVIA_BCF_TRACK_DEBUG_PC")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
-            .is_some_and(|p| env.history.get(history_idx).map(|s| s.pc) == Some(p));
+            .is_none_or(|p| env.history.get(history_idx).map(|s| s.pc) == Some(p));
     let probe = std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1");
     if probe {
         eprintln!("[bcf-track-start] history_idx={} targets={:?}", history_idx, target_regs);

@@ -29,40 +29,6 @@ pub fn transfer(env: &mut VerifierEnv, mut state: State, instr: &Instr) -> Vec<S
         env.insn_aux_data[state.pc].seen = true;
     }
 
-    // ZOVIA_TRACE_VISIT_RANGE=lo:hi — dump every visit (with frame
-    // depth + key reg state) inside [lo, hi] inclusive. Diagnostic for
-    // exploration-path divergence vs kernel.
-    if let Ok(rng) = std::env::var("ZOVIA_TRACE_VISIT_RANGE") {
-        let mut it = rng.split(':');
-        if let (Some(lo), Some(hi)) = (it.next().and_then(|s| s.parse::<usize>().ok()),
-                                       it.next().and_then(|s| s.parse::<usize>().ok()))
-            && state.pc >= lo && state.pc <= hi
-        {
-            use crate::analysis::machine::reg::Reg;
-            let (r3lo, r3hi) = state.domain.get_interval(Reg::R3);
-            let (r4lo, r4hi) = state.domain.get_interval(Reg::R4);
-            let (r5lo, r5hi) = state.domain.get_interval(Reg::R5);
-            let (r6lo, r6hi) = state.domain.get_interval(Reg::R6);
-            let (w4lo, w4hi) = state.domain.get_u32_bounds(Reg::R4);
-            let (r1lo, r1hi) = state.domain.get_interval(Reg::R1);
-            let (r2lo, r2hi) = state.domain.get_interval(Reg::R2);
-            let (r8lo, r8hi) = state.domain.get_interval(Reg::R8);
-            let (w8lo, w8hi) = state.domain.get_u32_bounds(Reg::R8);
-            let r1t = state.types.get(Reg::R1);
-            let r2t = state.types.get(Reg::R2);
-            let r3t = state.types.get(Reg::R3);
-            let r4t = state.types.get(Reg::R4);
-            let r8t = state.types.get(Reg::R8);
-            let r8p = state.precise_regs.contains(&Reg::R8);
-            eprintln!(
-                "[VISIT] pc={} depth={} R1=[{}..{}]:{:?} R2=[{}..{}]:{:?} R3=[{}..{}]:{:?} R4=[{}..{}]:{:?} R5=[{}..{}] R6=[{}..{}] w4=[{}..{}] R8=[{}..{}]:{:?} w8=[{}..{}] R8prec={}",
-                state.pc, state.frames.depth(),
-                r1lo, r1hi, r1t, r2lo, r2hi, r2t, r3lo, r3hi, r3t, r4lo, r4hi, r4t, r5lo, r5hi, r6lo, r6hi, w4lo, w4hi,
-                r8lo, r8hi, r8t, w8lo, w8hi, r8p,
-            );
-        }
-    }
-
     match instr {
         Instr::Alu {
             width,

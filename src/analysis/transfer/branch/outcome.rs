@@ -16,17 +16,7 @@ pub(crate) fn condition_outcome(
     op: CmpOp,
     right: &Operand,
 ) -> Option<bool> {
-    let v = condition_outcome_inner(state, width, left, op, right);
-    if v.is_some() && std::env::var("ZOVIA_DUMP_BRANCH_RESOLVE").ok().as_deref() == Some("1") {
-        let cb = get_combined_bounds(state, left, width);
-        let (s32lo, s32hi) = state.domain.get_s32_bounds(left);
-        let (ilo, ihi) = state.domain.get_interval(left);
-        eprintln!(
-            "[branch-resolve] pc={} left={:?} op={:?} right={:?} verdict={:?} comb={:?} s32=[{},{}] ivl=[{},{}] tn={:?}",
-            state.pc, left, op, right, v, cb, s32lo, s32hi, ilo, ihi, state.get_tnum(left)
-        );
-    }
-    v
+    condition_outcome_inner(state, width, left, op, right)
 }
 
 fn condition_outcome_inner(
@@ -355,7 +345,7 @@ fn pkt_ptr_branch_taken(
 
     // Kernel `is_pkt_ptr_branch_taken`: only the unsigned pkt comparisons
     // are modeled. `pkt->range < 0` is implied by `rel` being set.
-    let verdict = match op {
+    match op {
         // `pkt > end` / `pkt <= end`: resolvable only when BEYOND.
         CmpOp::UGt | CmpOp::ULe => match rel {
             PktEndRel::Beyond => Some(op == CmpOp::UGt),
@@ -366,12 +356,7 @@ fn pkt_ptr_branch_taken(
             PktEndRel::Beyond | PktEndRel::At => Some(op == CmpOp::UGe),
         },
         _ => None,
-    };
-    if std::env::var("ZOVIA_DUMP_PKTEND").ok().as_deref() == Some("1") {
-        eprintln!("[pktend-resolve] pc={} reg={:?} op={:?} rel={:?} verdict={:?}",
-            state.pc, pkt_reg, op, rel, verdict);
     }
-    verdict
 }
 
 /// Flip a comparison operator's operands (kernel `flip_opcode`): rewrite

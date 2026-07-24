@@ -44,25 +44,6 @@ use crate::analysis::machine::state::State;
 ///
 /// Idempotent: skipped on already-cleaned states (kernel L19542
 /// `sl->state.cleaned` guard).
-/// DIAGNOSTIC (ZOVIA_CLEAN_STATS): [0]=cleaned [1]=skipped-incomplete.
-pub fn clean_stat(which: usize) {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::OnceLock;
-    static ON: OnceLock<bool> = OnceLock::new();
-    if !*ON.get_or_init(|| std::env::var("ZOVIA_CLEAN_STATS").is_ok()) {
-        return;
-    }
-    static C: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
-    let n = C[which].fetch_add(1, Ordering::Relaxed) + 1;
-    if n.is_multiple_of(500) || n == 1 {
-        eprintln!(
-            "[clean_stats] cleaned={} skipped_incomplete={}",
-            C[0].load(Ordering::Relaxed),
-            C[1].load(Ordering::Relaxed)
-        );
-    }
-}
-
 pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
     let Some(&(pc, idx)) = env.cache_loc_by_id.get(&cid) else {
         return;
@@ -87,10 +68,8 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
             if crate::analysis::trace_pc_in_range(pc) {
                 eprintln!("[CLEAN] pc={} cid={} SKIP incomplete_read_marks", pc, cid);
             }
-            clean_stat(1);
             return;
         }
-        clean_stat(0);
         let n = st.frames.depth();
         let ips = (0..n)
             .map(|i| {
@@ -128,12 +107,6 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
                     "[CLEAN] pc={} frame={} fip={} alive_mask={:#x}",
                     st_pc, fi, fip, alive
                 );
-                if std::env::var("ZOVIA_DBG_LIVE26").ok().as_deref() == Some("1") {
-                    crate::analysis::flow::live_stack::dbg_dump_bit(
-                        &env.live_stack, &ls_key, fi, 26,
-                        &[1674, 2240, 2242, 2244, 2246, 2248, 2314, 2349, 2354],
-                    );
-                }
             }
             (regs, alive)
         })
@@ -221,22 +194,6 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
             st.precise_regs.remove(&r);
         }
     }
-    // Audit dump (ZOVIA_DUMP_CLEAN=1): which regs got reset to
-    // NotInit at this cached state's pc. Used to diagnose
-    // tracking_for_u32_spill_fill-style FAs where the static
-    // MAY-liveness incorrectly marks a reg dead.
-    if std::env::var("ZOVIA_DUMP_CLEAN").ok().as_deref() == Some("1") {
-        let cleaned_regs: Vec<usize> = (0..10)
-            .filter(|i| !inner_live.iter().any(|r| {
-                crate::analysis::machine::reg::reg_to_index(*r) == Some(*i)
-            }))
-            .collect();
-        eprintln!(
-            "[clean] pc={} cid={} cleaned_innermost_regs={:?} (live_regs={:?})",
-            pc, cid, cleaned_regs, inner_live
-        );
-    }
-
     st.cleaned = true;
 }
 

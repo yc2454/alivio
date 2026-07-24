@@ -142,8 +142,7 @@ pub(super) fn state_exact_equal(prev: &State, cur: &State) -> bool {
 
 /// Check if `cur` is subsumed by `old` (old covers all behaviors of cur).
 /// Returns `Ok(())` on success or `Err(reason)` identifying the *first*
-/// sub-check that rejected. The reason is what the
-/// `subsumption_misses` instrumentation aggregates per-PC.
+/// sub-check that rejected.
 pub(super) fn state_subsumed_by(
     cur: &State,
     old: &State,
@@ -162,17 +161,17 @@ pub(super) fn state_subsumed_by(
     force_exact: bool,
 ) -> Result<(), SubsumptionMissReason> {
     // Order matters for instrumentation: the *first* rejecting check
-    // is what we record, so cheaper / more-fundamental checks come
-    // first to keep the histogram readable.
+    // is what the returned miss reason names, so cheaper / more-
+    // fundamental checks come first.
     if !types_subsumed_by(&cur.types, &old.types, live_regs) {
-        // Measurement hatch (mirror ZOVIA_DUMP_DOMAIN_MISS): on a Types
+        // Measurement hatch (ZOVIA_DUMP_SUBSUM_MISS): on a Types
         // miss, re-scan to report the first offending live reg + its
         // (cur, old) RegType at this pc. Runs ONLY when the env var is
         // set AND we already know the check failed — zero hot-path /
         // behavioral effect otherwise. Used to localize the
         // clean_verifier_state / liveness-fidelity gap (skb_drop = 100%
         // types misses).
-        if std::env::var("ZOVIA_DUMP_TYPES_MISS").ok().as_deref() == Some("1") {
+        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
             for &r in live_regs {
                 let ct = cur.types.get(r);
                 let ot = old.types.get(r);
@@ -306,22 +305,7 @@ pub(super) fn state_subsumed_by(
             }
             None => &saved,
         };
-        let dump_cf = |which: &str| {
-            if std::env::var("ZOVIA_DUMP_CALLERFRAME_MISS").ok().as_deref() == Some("1") {
-                for &r in mask {
-                    let (clo, chi) = cur_frame.caller_domain.get_interval(r);
-                    let (olo, ohi) = old_frame.caller_domain.get_interval(r);
-                    eprintln!(
-                        "[cf_miss] pc={} frame={} rp={} which={} reg={:?} cur={:?} [{},{}] old={:?} [{},{}]",
-                        cur.pc, k, cur_frame.return_pc, which, r,
-                        cur_frame.caller_types.get(r), clo, chi,
-                        old_frame.caller_types.get(r), olo, ohi
-                    );
-                }
-            }
-        };
         if !types_subsumed_by(&cur_frame.caller_types, &old_frame.caller_types, mask) {
-            dump_cf("types");
             return Err(SubsumptionMissReason::CallerFrame);
         }
         if !config.skip_dbm_check
@@ -335,11 +319,9 @@ pub(super) fn state_subsumed_by(
                 false,
             )
         {
-            dump_cf("domain");
             return Err(SubsumptionMissReason::CallerFrame);
         }
         if !caller_tnum_subsumed_by(cur_frame, old_frame, mask) {
-            dump_cf("tnum");
             return Err(SubsumptionMissReason::CallerFrame);
         }
     }
@@ -579,9 +561,9 @@ fn scalar_id_links_subsumed_by(
 fn types_subsumed_by(cur: &TypeState, old: &TypeState, live_regs: &HashSet<Reg>) -> bool {
     for &r in live_regs {
         if !type_subsumed_by(&cur.get(r), &old.get(r)) {
-            // ZOVIA_DUMP_TYPES_MISS=1: name the live reg + type pair that
+            // ZOVIA_DUMP_SUBSUM_MISS=1: name the live reg + type pair that
             // blocks the Types verdict.
-            if std::env::var("ZOVIA_DUMP_TYPES_MISS").ok().as_deref() == Some("1") {
+            if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[types_miss] reg={:?} old={:?} cur={:?}",
                     r,
@@ -737,7 +719,7 @@ fn domain_subsumed_by(
         let (old_smin, old_smax) = old.get_interval(r);
         let (cur_smin, cur_smax) = cur.get_interval(r);
         if !(old_smin <= cur_smin && old_smax >= cur_smax) {
-            if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+            if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[domain_miss] reg={:?} precise={} force_exact={} s64 old=[{},{}] cur=[{},{}]",
                     r, precise.contains(&r), force_exact, old_smin, old_smax, cur_smin, cur_smax
@@ -753,7 +735,7 @@ fn domain_subsumed_by(
             let ob = old_ivl.get_bounds(r);
             let cb = cur_ivl.get_bounds(r);
             if !(ob.umin <= cb.umin && ob.umax >= cb.umax) {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[domain_miss] reg={:?} precise u64 old=[{},{}] cur=[{},{}]",
                         r, ob.umin, ob.umax, cb.umin, cb.umax
@@ -762,7 +744,7 @@ fn domain_subsumed_by(
                 return false;
             }
             if !(ob.s32_min <= cb.s32_min && ob.s32_max >= cb.s32_max) {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[domain_miss] reg={:?} precise s32 old=[{},{}] cur=[{},{}]",
                         r, ob.s32_min, ob.s32_max, cb.s32_min, cb.s32_max
@@ -771,7 +753,7 @@ fn domain_subsumed_by(
                 return false;
             }
             if !(ob.u32_min <= cb.u32_min && ob.u32_max >= cb.u32_max) {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[domain_miss] reg={:?} precise u32 old=[{},{}] cur=[{},{}]",
                         r, ob.u32_min, ob.u32_max, cb.u32_min, cb.u32_max
@@ -813,7 +795,7 @@ fn zone_subsumed_by(
                 continue;
             }
             if old_dbm.get(a, b) < cur_dbm.get(a, b) {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[domain_miss] anchor-anchor a={:?} b={:?}", a, b);
                 }
                 return false;
@@ -842,13 +824,13 @@ fn zone_subsumed_by(
     for &r in &live {
         for &a in &anchors {
             if old_dbm.get(r, a) < cur_dbm.get(r, a) {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[domain_miss] reg-anchor r={:?} a={:?}", r, a);
                 }
                 return false;
             }
             if old_dbm.get(a, r) < cur_dbm.get(a, r) {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[domain_miss] anchor-reg a={:?} r={:?}", a, r);
                 }
                 return false;
@@ -881,7 +863,7 @@ fn interval_subsumed_by(
     let old_pkt = old_ivl.get_packet_size_bound().unwrap_or(0);
     let cur_pkt = cur_ivl.get_packet_size_bound().unwrap_or(0);
     if old_pkt > cur_pkt {
-        if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
             eprintln!("[ivl_miss] pkt_bound old={} cur={}", old_pkt, cur_pkt);
         }
         return false;
@@ -925,13 +907,13 @@ fn interval_subsumed_by(
         let cur_range = cur_po.and_then(|po| po.range);
         match (old_range, cur_range) {
             (Some(_), None) => {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[ivl_miss] reg={:?} range old=Some cur=None", r);
                 }
                 return false;
             }
             (Some(old_r), Some(cur_r)) if old_r > cur_r => {
-                if std::env::var("ZOVIA_DUMP_DOMAIN_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[ivl_miss] reg={:?} range old={} cur={}", r, old_r, cur_r);
                 }
                 return false;
@@ -1068,7 +1050,7 @@ fn stack_subsumed_by(
                         )
                     });
                     if !all_skippable {
-                        if std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref()
+                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref()
                             == Some("1")
                         {
                             eprintln!(
@@ -1152,7 +1134,7 @@ fn stack_subsumed_by(
                     }
                 };
                 if !ok {
-                    if std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1") {
+                    if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                         eprintln!(
                             "[stack_miss] pc={} frame={} base={} (scalar-pair regsafe)",
                             cur.pc, frame_i, base
@@ -1291,7 +1273,7 @@ fn stack_subsumed_by(
                         if covered {
                             continue;
                         }
-                        if std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1") {
+                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                             let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
                                 (slot_base..slot_base + 8)
                                     .map(|b| fr.stack.get_slot_kind(b))
@@ -1307,7 +1289,7 @@ fn stack_subsumed_by(
                         return false;
                     }
                     (Some(_), None) | (Some(_), Some(_)) => {
-                        if std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1") {
+                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} old_kind={:?} new_kind={:?}",
                                 cur.pc, frame_i, offset, ok, nk
@@ -1372,7 +1354,7 @@ fn stack_subsumed_by(
             // the same offset.
             if !stack_slot_type_subsumed_by(&new_ty, &old_ty) {
                 if crate::analysis::trace_pc_in_range(cur.pc)
-                    && std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1")
+                    && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                 {
                     eprintln!(
                         "[stack_miss] pc={} frame={} off={} old_ty={:?} new_ty={:?} (slot-type)",
@@ -1396,7 +1378,7 @@ fn stack_subsumed_by(
                 && old_s.precise {
                     if !tnum_covers(&new_s.tnum, &old_s.tnum) {
                         if crate::analysis::trace_pc_in_range(cur.pc)
-                            && std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1")
+                            && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                         {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} old_tn={:?} new_tn={:?} (precise-tnum)",
@@ -1409,7 +1391,7 @@ fn stack_subsumed_by(
                         && new_s.bounds.max <= old_s.bounds.max)
                     {
                         if crate::analysis::trace_pc_in_range(cur.pc)
-                            && std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1")
+                            && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                         {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} old=[{},{}] new=[{},{}] (precise-bounds)",
@@ -1467,7 +1449,7 @@ fn stack_subsumed_by(
             };
             if !iter_eq_modulo_depth {
                 if crate::analysis::trace_pc_in_range(cur.pc)
-                    && std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1")
+                    && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                 {
                     eprintln!("[stack_miss] pc={} frame={} off={} (iter-identity)", cur.pc, frame_i, offset);
                 }
@@ -1498,7 +1480,7 @@ fn stack_subsumed_by(
                     ) || matches!((old_range, new_range), (Some(o), Some(n)) if o > n);
                     if pkt_fail {
                         if crate::analysis::trace_pc_in_range(cur.pc)
-                            && std::env::var("ZOVIA_DUMP_STACK_MISS").ok().as_deref() == Some("1")
+                            && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                         {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} old_rng={:?} new_rng={:?} (pkt-range)",

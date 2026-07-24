@@ -193,7 +193,7 @@ pub struct State {
     pub loop_entry_cache_id: Option<u32>,
 
     /// Per-path counters for the `add_new_state` sparse-cache heuristic
-    /// (`ZOVIA_KERNEL_ENGINE=1`). The kernel's linear `do_check` flow
+    /// (kernel-engine mode). The kernel's linear `do_check` flow
     /// uses env-wide `insn_processed` / `jmps_processed` because cur
     /// IS the one in-flight path. Zovia's worklist interleaves paths,
     /// so we instead carry per-path counters on each State (cloned at

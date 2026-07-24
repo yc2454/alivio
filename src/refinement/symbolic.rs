@@ -421,21 +421,6 @@ impl SymbolicState {
     /// `bcf_track` suffix-only br_cond emission.
     #[allow(dead_code)]
     pub fn add_cond_at(&mut self, pred_idx: u32, pc: usize) {
-        if std::env::var("ZOVIA_TRACE_PATH_COND").ok().as_deref() == Some("1") {
-            let (lo, hi) = std::env::var("ZOVIA_TRACE_PATH_COND_RANGE")
-                .ok()
-                .and_then(|s| {
-                    let mut it = s.split(':');
-                    Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
-                })
-                .unwrap_or((0usize, usize::MAX));
-            if pc >= lo && pc <= hi {
-                eprintln!(
-                    "[PATH_COND] push pc={} pred_idx={} (depth_now={}, branch=true)",
-                    pc, pred_idx, self.path_conds.len() + 1
-                );
-            }
-        }
         self.path_conds.push(pred_idx);
         self.path_cond_pcs.push(pc);
         self.path_cond_is_branch.push(true);
@@ -935,17 +920,6 @@ impl SymbolicState {
         let rhs = self.add_val(imm, bit32);
         let pred = self.add_pred(op, lhs, rhs);
         let pc = self.current_pc;
-        if std::env::var("ZOVIA_TRACE_BOUND_PRED").ok().as_deref() == Some("1") {
-            let (lo, hi) = std::env::var("ZOVIA_TRACE_BOUND_PRED_RANGE")
-                .ok().and_then(|s| {
-                    let mut it = s.split(':');
-                    Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
-                }).unwrap_or((0usize, usize::MAX));
-            if pc >= lo && pc <= hi {
-                eprintln!("[BOUND_PRED] pc={} op=0x{:x} lhs={} imm={} bit32={} pred={}",
-                    pc, op, lhs, imm, bit32, pred);
-            }
-        }
         self.path_conds.push(pred);
         self.path_cond_pcs.push(pc);
         self.path_cond_is_branch.push(false);
@@ -1134,7 +1108,7 @@ impl SymbolicState {
         // operand bounds come from the per-branch bcf_bound_reg mirror in
         // record_path_cond_for_side. Emitting first-ref bounds here too would
         // DOUBLE the bound conjuncts (over-emit vs the kernel goal).
-        // ZOVIA_BCF_REPLAY_FIRSTREF: kernel-faithful FIRST-REF bound emission —
+        // Kernel-faithful FIRST-REF bound emission —
         // bcf_reg_expr→bcf_bound_reg emits a reg's bounds at its FIRST
         // materialization (read OR branch), wherever it is.
         let emit_first_ref_bounds = true;

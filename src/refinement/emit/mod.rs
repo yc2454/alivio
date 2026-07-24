@@ -5,10 +5,12 @@
 // interacts only through the re-exports below, always gated on
 // `env.bcf_enabled` / `state.bcf`; with BCF off none of this executes.
 
+pub mod map;
 pub mod record;
 pub mod replay;
 pub mod unreachable;
 
+pub(crate) use map::try_bcf_refine_map;
 pub(crate) use record::{cmp_op_to_bcf_pair, record_path_cond_for_side};
 pub(crate) use replay::replay_to_reject;
 pub(crate) use unreachable::try_emit_path_unreachable_entry;

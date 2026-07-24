@@ -62,7 +62,7 @@ fn try_bcf_refine_stack(
         }
     }
     if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
-        crate::analysis::transfer::branch::census_log(
+        crate::refinement::emit::unreachable::census_log(
             "refine_stack", state.pc, -1, -1, entry.cond_hash,
             env.bcf_proofs.iter().any(|e| e.cond_hash == entry.cond_hash),
         );

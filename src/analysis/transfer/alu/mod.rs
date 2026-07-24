@@ -61,7 +61,7 @@ pub(crate) fn transfer_alu(
         // surrounding path constraints (e.g. `r7 = 4`) prove the
         // operand is bounded even though kernel-faithful BPF_MOD
         // tracking lost the precise bound.
-        super::branch::try_emit_path_unreachable_entry(env, &state);
+        crate::refinement::emit::try_emit_path_unreachable_entry(env, &state);
         env.fail(VerificationError::InvalidPointerArithmetic { pc: state.pc });
         return vec![];
     }

@@ -10,6 +10,7 @@
 
 pub mod bcf;
 pub mod bundle;
+pub mod emit;
 pub mod canonical_hash;
 pub mod refine_map;
 pub mod refine_stack;

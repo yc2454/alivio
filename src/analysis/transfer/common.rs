@@ -92,7 +92,7 @@ pub(crate) fn check_reg_readable_ex(
             // `kind=UNREACHABLE` bundle entry and silently prune the
             // state. cvc5 is sound, so an UNSAT result is a genuine
             // proof of unreachability and no false accept can leak.
-            if crate::analysis::transfer::branch::try_emit_path_unreachable_entry(env, state) {
+            if crate::refinement::emit::try_emit_path_unreachable_entry(env, state) {
                 log::info!(
                     target: "app",
                     "[bcf] reactive path-unreachable: discharged !read_ok reject at pc {} for {:?} (cvc5 proof, kind=UNREACHABLE) — continuing path (check_reg_arg semantics)",

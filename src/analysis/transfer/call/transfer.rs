@@ -38,7 +38,7 @@ use crate::analysis::transfer::alu::helpers::bcf_reg_bounds;
 /// `check_helper_mem_access` analog).
 fn try_discharge_helper_arg_reject(env: &mut VerifierEnv, state: &State, pc: usize) -> bool {
     if matches!(env.error, Some(VerificationError::InvalidArgType { .. }))
-        && crate::analysis::transfer::branch::try_emit_path_unreachable_entry(env, state)
+        && crate::refinement::emit::try_emit_path_unreachable_entry(env, state)
     {
         log::info!(
             target: "app",

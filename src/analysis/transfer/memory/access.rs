@@ -392,7 +392,7 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
             // path_cond unsat via the solver and emit a
             // `kind=UNREACHABLE` bundle entry; drop the path only on a
             // successful, checkable proof.
-            if crate::analysis::transfer::branch::try_emit_path_unreachable_entry(env, state) {
+            if crate::refinement::emit::try_emit_path_unreachable_entry(env, state) {
                 info!(
                     target: "app",
                     "[bcf] reactive path-unreachable: discharged generic-load reject at pc {} (cvc5 proof, kind=UNREACHABLE)",

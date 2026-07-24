@@ -583,7 +583,7 @@ fn try_bcf_refine_map(
                     ]
                 };
                 for &(anchor_at_parent, share_slot_vars, crossing) in variants {
-                    if let Some(rst) = crate::analysis::transfer::branch::replay_to_reject(
+                    if let Some(rst) = crate::refinement::emit::replay_to_reject(
                         env, *rcid, anchor_at_parent, share_slot_vars, crossing, None,
                     ) {
                         if let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
@@ -621,7 +621,7 @@ fn try_bcf_refine_map(
                 cut_pcs.dedup();
                 for cut_pc in cut_pcs {
                     for k in 1..=4usize {
-                        if let Some(rst) = crate::analysis::transfer::branch::replay_to_reject(
+                        if let Some(rst) = crate::refinement::emit::replay_to_reject(
                             env, deep_cid, false, true, Some(k), Some(cut_pc),
                         ) {
                             if let Some(ok) = crate::refinement::refine_map::try_refine_map_access(
@@ -688,7 +688,7 @@ fn try_bcf_refine_map(
         }
     }
     if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
-        crate::analysis::transfer::branch::census_log(
+        crate::refinement::emit::unreachable::census_log(
             "refine_map", state.pc, -1, -1, entry.cond_hash,
             env.bcf_proofs.iter().any(|e| e.cond_hash == entry.cond_hash),
         );

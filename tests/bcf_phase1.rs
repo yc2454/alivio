@@ -45,7 +45,9 @@ fn phase1_shift_constraint_accepts_with_bcf() {
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let prog = manifest_dir.join("bcf-tests").join("shift_constraint.bpf.o");
+    let prog = manifest_dir
+        .join("bcf-tests")
+        .join("shift_constraint.bpf.o");
     assert!(prog.exists(), "fixture missing: {}", prog.display());
 
     let bundle = manifest_dir
@@ -102,7 +104,9 @@ fn phase1_shift_constraint_accepts_with_bcf() {
     assert!(
         proof_off + proof_sz <= bytes.len(),
         "proof slice OOB: off={}, sz={}, total={}",
-        proof_off, proof_sz, bytes.len()
+        proof_off,
+        proof_sz,
+        bytes.len()
     );
     let proof = &bytes[proof_off..proof_off + proof_sz];
     assert!(proof.len() >= 12, "proof has no header");

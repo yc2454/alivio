@@ -58,7 +58,6 @@ fn same_callsites(a: &State, b: &State) -> bool {
             .all(|(x, y)| x.return_pc == y.return_pc)
 }
 
-
 fn handle_loop_pruning(
     env: &mut VerifierEnv,
     state: &mut State,
@@ -121,81 +120,87 @@ fn handle_loop_pruning(
     // Kernel in-loop dampener input (see handle_standard_pruning).
     let mut saw_active_loop = false;
 
-    let (hit_idx, counted_miss_idxs): (
-        Option<usize>,
-        Vec<usize>,
-    ) = if let Some(prev_states) = env.explored_states.get(&pc) {
-        let mut h = None;
-        // Kernel scan shape: newest-first + per-sl miss counting under the
-        // RUNNING add_new_state (see the long comment in
-        // handle_standard_pruning).
-        let mut add_now = would_add_new_state_base(env, state, pc);
-        let mut cm: Vec<usize> = Vec::new();
-        for (i, prev) in prev_states.iter().enumerate().rev() {
-            // Kernel explored_state() buckets by `insn_idx ^ callsite`
-            // (verifier.c:2099-2105) + same_callsites (:2107): a callee
-            // state cached from a DIFFERENT call site lives in a different
-            // hash bucket and is INVISIBLE to this arrival's scan — no
-            // dampener, no miss counting, no eviction interplay.
-            if !same_callsites(prev, state) {
-                continue;
-            }
-            // Kernel children_unsafe (bcf_refine, verifier.c:24580-81).
-            if prev.children_unsafe {
-                if add_now {
-                    cm.push(i);
+    let (hit_idx, counted_miss_idxs): (Option<usize>, Vec<usize>) =
+        if let Some(prev_states) = env.explored_states.get(&pc) {
+            let mut h = None;
+            // Kernel scan shape: newest-first + per-sl miss counting under the
+            // RUNNING add_new_state (see the long comment in
+            // handle_standard_pruning).
+            let mut add_now = would_add_new_state_base(env, state, pc);
+            let mut cm: Vec<usize> = Vec::new();
+            for (i, prev) in prev_states.iter().enumerate().rev() {
+                // Kernel explored_state() buckets by `insn_idx ^ callsite`
+                // (verifier.c:2099-2105) + same_callsites (:2107): a callee
+                // state cached from a DIFFERENT call site lives in a different
+                // hash bucket and is INVISIBLE to this arrival's scan — no
+                // dampener, no miss counting, no eviction interplay.
+                if !same_callsites(prev, state) {
+                    continue;
                 }
-                continue;
-            }
-            // Kernel-faithful force_exact: the kernel gates RANGE_WITHIN
-            // strictness on `incomplete_read_marks(old)` alone
-            // (verifier.c v6.15 L20574: `loop = incomplete_read_marks();
-            // states_equal(..., loop ? RANGE_WITHIN : NOT_EXACT)`).
-            let force_exact = crate::analysis::flow::scc::incomplete_read_marks(env, prev);
-            // Kernel blanket active-state gate (`if (sl->state.branches)
-            // ... goto miss`, verifier.c v6.15 L19024): a cached state
-            // whose subtree is still in flight never subsumes an arrival,
-            // keeping the EXACT inf-loop trap as the only thing
-            // terminating an unbounded loop. See the matching comment in
-            // handle_standard_pruning.
-            let skip_active = prev.branches > 0;
-            if skip_active {
-                saw_active_loop = true;
-                // Kernel skip_inf_loop_check: flip the running
-                // add_new_state (unless force/thresholds); the active sl
-                // itself is never miss-counted (flip precedes its goto
-                // miss).
-                if dampener_would_suppress(env, state, pc) {
-                    add_now = false;
-                }
-                // Kernel: the active sl's own `goto miss` IS counted when
-                // the dampener didn't suppress — this is what accumulates
-                // miss_cnt on active states and can evict them from the
-                // bucket.
-                if add_now {
-                    cm.push(i);
-                }
-                subsum_skip_active_loop_trace(pc, i, prev);
-                continue;
-            }
-            match state_subsumed_by(state, prev, live_regs, frame_live_slots, frame_live_regs, config, force_exact) {
-                Ok(()) => {
-                    subsum_hit_loop_trace(pc, i, force_exact, state, prev);
-                    h = Some(i);
-                    break;
-                }
-                Err(reason) => {
-                    subsum_miss_loop_trace(pc, i, reason, prev, force_exact);
+                // Kernel children_unsafe (bcf_refine, verifier.c:24580-81).
+                if prev.children_unsafe {
                     if add_now {
                         cm.push(i);
                     }
+                    continue;
+                }
+                // Kernel-faithful force_exact: the kernel gates RANGE_WITHIN
+                // strictness on `incomplete_read_marks(old)` alone
+                // (verifier.c v6.15 L20574: `loop = incomplete_read_marks();
+                // states_equal(..., loop ? RANGE_WITHIN : NOT_EXACT)`).
+                let force_exact = crate::analysis::flow::scc::incomplete_read_marks(env, prev);
+                // Kernel blanket active-state gate (`if (sl->state.branches)
+                // ... goto miss`, verifier.c v6.15 L19024): a cached state
+                // whose subtree is still in flight never subsumes an arrival,
+                // keeping the EXACT inf-loop trap as the only thing
+                // terminating an unbounded loop. See the matching comment in
+                // handle_standard_pruning.
+                let skip_active = prev.branches > 0;
+                if skip_active {
+                    saw_active_loop = true;
+                    // Kernel skip_inf_loop_check: flip the running
+                    // add_new_state (unless force/thresholds); the active sl
+                    // itself is never miss-counted (flip precedes its goto
+                    // miss).
+                    if dampener_would_suppress(env, state, pc) {
+                        add_now = false;
+                    }
+                    // Kernel: the active sl's own `goto miss` IS counted when
+                    // the dampener didn't suppress — this is what accumulates
+                    // miss_cnt on active states and can evict them from the
+                    // bucket.
+                    if add_now {
+                        cm.push(i);
+                    }
+                    subsum_skip_active_loop_trace(pc, i, prev);
+                    continue;
+                }
+                match state_subsumed_by(
+                    state,
+                    prev,
+                    live_regs,
+                    frame_live_slots,
+                    frame_live_regs,
+                    config,
+                    force_exact,
+                ) {
+                    Ok(()) => {
+                        subsum_hit_loop_trace(pc, i, force_exact, state, prev);
+                        h = Some(i);
+                        break;
+                    }
+                    Err(reason) => {
+                        subsum_miss_loop_trace(pc, i, reason, prev, force_exact);
+                        if add_now {
+                            cm.push(i);
+                        }
+                    }
                 }
             }
-        }
-        (h, cm)
-    } else {
-        return false;
-    };
+            (h, cm)
+        } else {
+            return false;
+        };
     env.saw_active_state_at_check |= saw_active_loop;
 
     if let Some(idx) = hit_idx {
@@ -203,7 +208,12 @@ fn handle_loop_pruning(
         // Kernel-aligned propagate_precision (verifier.c v6.15 L18828):
         // pull cached's precise-mark set into cur's parent-cache lineage
         // so the path's continuation tracks the same precision contract.
-        if let Some(prev) = env.explored_states.get(&pc).and_then(|v| v.get(idx)).cloned() {
+        if let Some(prev) = env
+            .explored_states
+            .get(&pc)
+            .and_then(|v| v.get(idx))
+            .cloned()
+        {
             crate::analysis::flow::precision::propagate_precision(env, state, &prev);
             // SCC: at a force_exact hit, propagate prev's loop_entry to
             // cur (verifier.c L19178). cur is about to be pruned and
@@ -329,7 +339,15 @@ fn handle_standard_pruning(
             // regardless of read-mark completeness.
             let force_exact =
                 iter_next_pc || crate::analysis::flow::scc::incomplete_read_marks(env, prev);
-            match state_subsumed_by(state, prev, live_regs, frame_live_slots, frame_live_regs, config, force_exact) {
+            match state_subsumed_by(
+                state,
+                prev,
+                live_regs,
+                frame_live_slots,
+                frame_live_regs,
+                config,
+                force_exact,
+            ) {
                 Ok(()) => {
                     subsum_hit_std_trace(pc, i, prev);
                     hit_idx = Some(i);
@@ -353,7 +371,12 @@ fn handle_standard_pruning(
     if let Some(idx) = hit_idx {
         record_pruning_hit(env, pc, idx);
         // Kernel-aligned propagate_precision (per-path lineage walk).
-        if let Some(prev) = env.explored_states.get(&pc).and_then(|v| v.get(idx)).cloned() {
+        if let Some(prev) = env
+            .explored_states
+            .get(&pc)
+            .and_then(|v| v.get(idx))
+            .cloned()
+        {
             crate::analysis::flow::precision::propagate_precision(env, state, &prev);
         }
         // Kernel miss-label semantics run PER CANDIDATE DURING the scan
@@ -561,10 +584,7 @@ pub fn should_prune(
     // verifier_bits_iter.c::max_words and the like; iter_next sites
     // themselves are already covered by `is_inf_loop_skip_pc` for the
     // kernel's `is_iter_next_insn` short-circuit.
-    let any_active_iter = state
-        .frames
-        .iter()
-        .any(|f| f.stack.has_active_iterators());
+    let any_active_iter = state.frames.iter().any(|f| f.stack.has_active_iterators());
     if in_loop
         && !any_active_iter
         && pc < prog.instrs.len()
@@ -651,9 +671,9 @@ pub fn should_prune(
                 continue;
             }
             if state_exact_equal(prev, state) {
-                env.fail(crate::analysis::machine::error::VerificationError::InfiniteLoopDetected {
-                    pc,
-                });
+                env.fail(
+                    crate::analysis::machine::error::VerificationError::InfiniteLoopDetected { pc },
+                );
                 return true;
             }
         }
@@ -667,7 +687,10 @@ pub fn should_prune(
     // load-bearing mechanism for iters.c::loop_state_deps1/2: their
     // unsafe paths are reached only when each iteration's r6/r7 state
     // is tracked distinctly rather than collapsed by subsumption.
-    if env.ctx.has_flag(crate::common::constants::F_TEST_STATE_FREQ) {
+    if env
+        .ctx
+        .has_flag(crate::common::constants::F_TEST_STATE_FREQ)
+    {
         return false;
     }
 
@@ -678,17 +701,40 @@ pub fn should_prune(
     {
         let is_may_goto = matches!(prog.instrs[pc], Instr::MayGoto { .. });
         if is_may_goto
-            && may_goto_range_within_prune(state, prev_states, &live_regs, &frame_live_slots, &frame_live_regs, config)
+            && may_goto_range_within_prune(
+                state,
+                prev_states,
+                &live_regs,
+                &frame_live_slots,
+                &frame_live_regs,
+                config,
+            )
         {
             return true;
         }
     }
 
-    
     if in_loop {
-        handle_loop_pruning(env, state, pc, prog, &live_regs, &frame_live_slots, &frame_live_regs, config)
+        handle_loop_pruning(
+            env,
+            state,
+            pc,
+            prog,
+            &live_regs,
+            &frame_live_slots,
+            &frame_live_regs,
+            config,
+        )
     } else {
-        handle_standard_pruning(env, state, pc, &live_regs, &frame_live_slots, &frame_live_regs, config)
+        handle_standard_pruning(
+            env,
+            state,
+            pc,
+            &live_regs,
+            &frame_live_slots,
+            &frame_live_regs,
+            config,
+        )
     }
 }
 
@@ -714,16 +760,15 @@ fn record_pruning_misses(env: &mut VerifierEnv, pc: usize, miss_idxs: &[usize]) 
     // `branches > 0` means the cached state's downstream DFS is still in
     // progress (it's part of an active SCC iteration); the kernel
     // protects these from premature eviction at force-checkpoint pcs.
-    let branches_by_idx: std::collections::HashMap<usize, u32> = if let Some(states) =
-        env.explored_states.get(&pc)
-    {
-        miss_idxs
-            .iter()
-            .filter_map(|&i| states.get(i).map(|s| (i, s.branches)))
-            .collect()
-    } else {
-        std::collections::HashMap::new()
-    };
+    let branches_by_idx: std::collections::HashMap<usize, u32> =
+        if let Some(states) = env.explored_states.get(&pc) {
+            miss_idxs
+                .iter()
+                .filter_map(|&i| states.get(i).map(|s| (i, s.branches)))
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
 
     let id_by_idx = ev_id_map(env, pc, miss_idxs);
     let mut to_evict: Vec<usize> = Vec::new();
@@ -845,7 +890,17 @@ fn may_goto_range_within_prune(
         // pass force_exact=false so domain_subsumed_by keeps its NOT_EXACT
         // semantics for non-precise regs (the relaxed clone has cleared
         // precise_regs anyway).
-        if state_subsumed_by(&relaxed, prev, live_regs, frame_live_slots, frame_live_regs, config, false).is_ok() {
+        if state_subsumed_by(
+            &relaxed,
+            prev,
+            live_regs,
+            frame_live_slots,
+            frame_live_regs,
+            config,
+            false,
+        )
+        .is_ok()
+        {
             return true;
         }
     }
@@ -864,7 +919,9 @@ fn sp_entry_trace(env: &VerifierEnv, pc: usize) {
         let nprev = env.explored_states.get(&pc).map(|v| v.len()).unwrap_or(0);
         eprintln!(
             "[SP_ENTRY] pc={} nprev={} is_prune_point={}",
-            pc, nprev, is_prune_point(env, pc)
+            pc,
+            nprev,
+            is_prune_point(env, pc)
         );
     }
 }
@@ -892,7 +949,11 @@ fn sp_gate_trace(
         if nprev > 0 {
             eprintln!(
                 "[SP_GATE] pc={} nprev={} is_on_path={} in_loop={} force_ckpt={} prune_point={} -> would_skip_onpath={}",
-                pc, nprev, is_on_path, in_loop, pc_is_force_checkpoint,
+                pc,
+                nprev,
+                is_on_path,
+                in_loop,
+                pc_is_force_checkpoint,
                 is_prune_point(env, pc),
                 is_on_path && !in_loop && !pc_is_force_checkpoint,
             );
@@ -953,9 +1014,16 @@ fn subsum_hit_loop_trace(pc: usize, i: usize, force_exact: bool, state: &State, 
         let pu = prev.domain.get_u64_bounds(Reg::R8);
         eprintln!(
             "[SUBSUM_HIT] pc={} prev_idx={} prev.dfs_paths={} force_exact={} curR8=u[{:#x}..{:#x}]prec={} prevR8=u[{:#x}..{:#x}]prec={}",
-            pc, i, prev.dfs_paths, force_exact,
-            cu.0, cu.1, state.precise_regs.contains(&Reg::R8),
-            pu.0, pu.1, prev.precise_regs.contains(&Reg::R8),
+            pc,
+            i,
+            prev.dfs_paths,
+            force_exact,
+            cu.0,
+            cu.1,
+            state.precise_regs.contains(&Reg::R8),
+            pu.0,
+            pu.1,
+            prev.precise_regs.contains(&Reg::R8),
         );
     }
 }
@@ -1003,9 +1071,9 @@ fn ev_id_map(
                 miss_idxs
                     .iter()
                     .filter_map(|&i| {
-                        states.get(i).map(|s| {
-                            (i, (s.cache_id, s.domain.get_interval(Reg::R1).0))
-                        })
+                        states
+                            .get(i)
+                            .map(|s| (i, (s.cache_id, s.domain.get_interval(Reg::R1).0)))
                     })
                     .collect()
             })
@@ -1052,9 +1120,10 @@ fn ev_evict_trace(
 /// `None` when the pc isn't traced (suppresses the print).
 fn ev_hit_id(env: &VerifierEnv, pc: usize, prev_idx: usize) -> Option<(Option<u32>, i64)> {
     if crate::analysis::trace_pc_in_range(pc) {
-        env.explored_states.get(&pc).and_then(|v| v.get(prev_idx)).map(|s| {
-            (s.cache_id, s.domain.get_interval(Reg::R1).0)
-        })
+        env.explored_states
+            .get(&pc)
+            .and_then(|v| v.get(prev_idx))
+            .map(|s| (s.cache_id, s.domain.get_interval(Reg::R1).0))
     } else {
         None
     }

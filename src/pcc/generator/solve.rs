@@ -63,9 +63,10 @@ pub(super) fn solve_constraint(
             base,
             anchor,
             bound,
-        ) {
-            return Some(proof);
-        }
+        )
+    {
+        return Some(proof);
+    }
 
     // 3) Provenance-guided composition (transitive closure)
     let dbm = zone_dbms.get(target_pc)?;
@@ -107,10 +108,7 @@ pub(super) fn solve_constraint(
     let mut it = sub_proofs.into_iter().rev();
     let mut result = it.next().unwrap(); // rightmost
     for left_proof in it {
-        let via = left_proof
-            .last()
-            .map(|s| s.output_right_reg())
-            .unwrap_or(0);
+        let via = left_proof.last().map(|s| s.output_right_reg()).unwrap_or(0);
         result = vec![ProofStep::Compose {
             left: left_proof,
             right: result,

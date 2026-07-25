@@ -49,15 +49,10 @@ struct OpsVar {
     struct_type_id: u32,
 }
 
-fn resolve_ops_vars(
-    elf: &Elf<'_>,
-    section_idx: usize,
-    btf: &BtfContext,
-) -> Vec<OpsVar> {
+fn resolve_ops_vars(elf: &Elf<'_>, section_idx: usize, btf: &BtfContext) -> Vec<OpsVar> {
     // Collect ELF symbols pointing into this section. Each symbol gives
     // us the var's name and (st_value) byte offset within the section.
-    let mut by_name: std::collections::HashMap<&str, (u32, u32)> =
-        std::collections::HashMap::new();
+    let mut by_name: std::collections::HashMap<&str, (u32, u32)> = std::collections::HashMap::new();
     for sym in elf.syms.iter() {
         if sym.st_shndx != section_idx {
             continue;
@@ -105,11 +100,7 @@ fn resolve_ops_vars(
 /// ELF and produce one `StructOpsBinding` per `(member-slot, subprog)`
 /// relocation found. Sections that don't exist or carry no relocations
 /// are silently skipped — non-struct_ops ELFs return an empty Vec.
-pub fn extract_bindings(
-    _bytes: &[u8],
-    elf: &Elf<'_>,
-    btf: &BtfContext,
-) -> Vec<StructOpsBinding> {
+pub fn extract_bindings(_bytes: &[u8], elf: &Elf<'_>, btf: &BtfContext) -> Vec<StructOpsBinding> {
     let mut out = Vec::new();
     for sh_idx in 0..elf.section_headers.len() {
         let sh = &elf.section_headers[sh_idx];

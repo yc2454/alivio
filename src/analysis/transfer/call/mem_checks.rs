@@ -146,7 +146,9 @@ pub(crate) fn validate_readable_mem(
         // task_kfunc_success::test_task_from_pid_invalid where
         // bpf_strncmp(task->comm, ...) hands a `task_struct + 1912`
         // pointer into ARG_PTR_TO_MEM.
-        RegType::PtrToBtfId { type_name, flags, .. } => {
+        RegType::PtrToBtfId {
+            type_name, flags, ..
+        } => {
             use crate::analysis::machine::reg_types::PtrFlags;
             use crate::ast::ProgramKind;
             let probe_ok = matches!(
@@ -200,7 +202,12 @@ pub(crate) fn validate_readable_mem(
                 if (sz as u64) > remaining as u64 {
                     error!(
                         "[Verifier] pc {}: read of {} bytes at offset {} exceeds end of member at [{}, {}) in struct {}",
-                        pc, sz, field.current_offset, field.field_start, field.field_end, field.struct_name
+                        pc,
+                        sz,
+                        field.current_offset,
+                        field.field_start,
+                        field.field_end,
+                        field.struct_name
                     );
                     env.fail(VerificationError::InvalidArgType { pc, reg });
                     return false;
@@ -277,15 +284,7 @@ pub(crate) fn validate_writable_mem(
                 && let Some(sz) = size
             {
                 check_kptr_field_access(
-                    env,
-                    state,
-                    map_def,
-                    map_idx,
-                    reg,
-                    map_off,
-                    0,
-                    sz as i64,
-                    pc,
+                    env, state, map_def, map_idx, reg, map_off, 0, sz as i64, pc,
                     /*is_store=*/ true,
                 );
                 if env.failed() {
@@ -313,7 +312,11 @@ pub(crate) fn validate_writable_mem(
             // commit b0ac782).
             if let Some(size) = size {
                 crate::analysis::transfer::memory::access::check_load(
-                    env, state, reg, size as i64, 0,
+                    env,
+                    state,
+                    reg,
+                    size as i64,
+                    0,
                 );
                 if env.failed() {
                     return false;
@@ -328,14 +331,15 @@ pub(crate) fn validate_writable_mem(
             // the post-offset remaining size after pointer arithmetic
             // through `update_ptr_arithmetic_type`).
             if let Some(sz) = size
-                && (sz as u64) > mem_size {
-                    env.fail(VerificationError::InvalidArgType { pc, reg });
-                    error!(
-                        "[Verifier] pc {}: write size {} exceeds remaining alloc-mem size {}",
-                        pc, sz, mem_size
-                    );
-                    return false;
-                }
+                && (sz as u64) > mem_size
+            {
+                env.fail(VerificationError::InvalidArgType { pc, reg });
+                error!(
+                    "[Verifier] pc {}: write size {} exceeds remaining alloc-mem size {}",
+                    pc, sz, mem_size
+                );
+                return false;
+            }
             true
         }
         _ => {
@@ -468,15 +472,7 @@ pub(crate) fn check_single_mem_size_pair(
         // unknown / non-memory pointers are not re-checked here.
         if matches!(ptr_type, RegType::PtrToStack { .. }) {
             let ptr_arg_type = proto.args.get(pair.ptr_reg.idx() - 2).unwrap();
-            return check_ptr_access_size(
-                env,
-                state,
-                pair.ptr_reg,
-                ptr_type,
-                *ptr_arg_type,
-                0,
-                pc,
-            );
+            return check_ptr_access_size(env, state, pair.ptr_reg, ptr_type, *ptr_arg_type, 0, pc);
         }
         return true;
     }
@@ -547,10 +543,7 @@ pub(crate) fn check_ptr_access_size(
                         .stack_at(frame_level)
                         .read_overlaps_dynptr(off, size as i64)
                 {
-                    env.fail(VerificationError::InvalidStackRead {
-                        pc,
-                        offset: off,
-                    });
+                    env.fail(VerificationError::InvalidStackRead { pc, offset: off });
                     return false;
                 }
                 // Also check stack slots are initialized for reads
@@ -582,9 +575,9 @@ pub(crate) fn check_ptr_access_size(
                         return false;
                     }
                     if !matches!(
-                    ptr_arg_type,
-                    ArgKind::PtrToUninitMem | ArgKind::PtrToUninitMemOrNull
-                ) {
+                        ptr_arg_type,
+                        ArgKind::PtrToUninitMem | ArgKind::PtrToUninitMemOrNull
+                    ) {
                         for off_candidate in lo..=hi {
                             check_stack_arg_readable(
                                 env,
@@ -694,7 +687,9 @@ pub(crate) fn check_ptr_access_size(
         // tracing-class contexts where probe_read semantics apply.
         // Closes task_kfunc_success::test_task_from_pid_invalid where
         // bpf_strncmp(task->comm, ...) routes through MemSizePair.
-        RegType::PtrToBtfId { type_name, flags, .. } => {
+        RegType::PtrToBtfId {
+            type_name, flags, ..
+        } => {
             use crate::analysis::machine::reg_types::PtrFlags;
             use crate::ast::ProgramKind;
             let probe_ok = matches!(
@@ -747,7 +742,12 @@ pub(crate) fn check_ptr_access_size(
                 if (size as u64) > remaining as u64 {
                     error!(
                         "[Verifier] pc {}: read of {} bytes at offset {} exceeds end of member at [{}, {}) in struct {}",
-                        pc, size, field.current_offset, field.field_start, field.field_end, field.struct_name
+                        pc,
+                        size,
+                        field.current_offset,
+                        field.field_start,
+                        field.field_end,
+                        field.struct_name
                     );
                     env.fail(VerificationError::InvalidArgType { pc, reg: ptr_reg });
                     return false;

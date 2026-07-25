@@ -238,10 +238,7 @@ pub enum DevCmd {
         out: String,
     },
     /// Sweep upstream kernel selftests and write a baseline JSON
-    SelftestBaselineWriteUpstream {
-        upstream_root: String,
-        out: String,
-    },
+    SelftestBaselineWriteUpstream { upstream_root: String, out: String },
     /// Diff a baseline against a fresh modern+legacy sweep
     SelftestBaselineCheck {
         progs_dir: String,
@@ -249,10 +246,7 @@ pub enum DevCmd {
         baseline: String,
     },
     /// Diff a baseline against a fresh modern-only sweep (fast)
-    SelftestBaselineCheckModern {
-        progs_dir: String,
-        baseline: String,
-    },
+    SelftestBaselineCheckModern { progs_dir: String, baseline: String },
     /// Diff a baseline against a fresh upstream-tree sweep, skipping
     /// programs whose baseline outcome is non-deterministic (TIMEOUT,
     /// ERROR, SKIPPED). Mirror of `selftest-baseline-write-upstream`
@@ -285,9 +279,7 @@ pub enum DevCmd {
         sub: LegacySelftestCmd,
     },
     /// Run the PCC regression manifest
-    PccRegress {
-        manifest: Option<String>,
-    },
+    PccRegress { manifest: Option<String> },
     /// Export ELF metadata for a corpus directory to JSON
     BenchmarkScan { dir: String, out: String },
 }
@@ -399,9 +391,9 @@ impl GlobalOpts {
                     }
                     Err(_) => eprintln!("Warning: invalid size in map override '{spec}'"),
                 },
-                None => eprintln!(
-                    "Warning: invalid map override format '{spec}'. Expected 'name:size'"
-                ),
+                None => {
+                    eprintln!("Warning: invalid map override format '{spec}'. Expected 'name:size'")
+                }
             }
         }
 

@@ -12,11 +12,11 @@ use crate::analysis::machine::reg_types::{RegType, TypeState, new_iter_id, new_p
 use crate::analysis::machine::stack_state::{
     DynptrKind, DynptrSlot, IrqFlagSlot, IterState, IteratorSlot,
 };
-use crate::common::stack_objects::bpf_iter_size;
 use crate::analysis::machine::state::State;
 use crate::analysis::transfer::types::update_store_types;
 use crate::ast::MemSize;
 use crate::common::stack_objects::BPF_DYNPTR_SIZE;
+use crate::common::stack_objects::bpf_iter_size;
 
 use super::signatures::{CallFlags, CallProto, RetKind, SideEffect};
 
@@ -82,10 +82,8 @@ pub(crate) fn apply_call_proto_r0(
                 let rdonly = if matches!(kind, DynptrKind::Skb)
                     && matches!(
                         prog_kind,
-                        crate::ast::ProgramKind::SchedCls
-                            | crate::ast::ProgramKind::SchedAct
-                    )
-                {
+                        crate::ast::ProgramKind::SchedCls | crate::ast::ProgramKind::SchedAct
+                    ) {
                     false
                 } else {
                     rdonly
@@ -138,11 +136,23 @@ pub(crate) fn apply_call_proto_r0(
                 // Stamp annotation on both 8-byte slots of the pair.
                 stack.stack_set_dynptr(
                     base_off,
-                    DynptrSlot { kind, ref_id, rdonly, first_slot: true, dynptr_id },
+                    DynptrSlot {
+                        kind,
+                        ref_id,
+                        rdonly,
+                        first_slot: true,
+                        dynptr_id,
+                    },
                 );
                 stack.stack_set_dynptr(
                     base_off + 8,
-                    DynptrSlot { kind, ref_id, rdonly, first_slot: false, dynptr_id },
+                    DynptrSlot {
+                        kind,
+                        ref_id,
+                        rdonly,
+                        first_slot: false,
+                        dynptr_id,
+                    },
                 );
             }
             SideEffect::IterInitOnArg { arg, kind } => {
@@ -195,12 +205,14 @@ pub(crate) fn apply_call_proto_r0(
                     update_store_types(stack, RegType::ScalarValue, MemSize::U8, Some(byte_off));
                 }
                 let id = state.irq_save();
-                state.stack_at_mut(frame).stack_set_irq_flag(
-                    base_off,
-                    IrqFlagSlot { id, kfunc_class },
-                );
+                state
+                    .stack_at_mut(frame)
+                    .stack_set_irq_flag(base_off, IrqFlagSlot { id, kfunc_class });
             }
-            SideEffect::IrqRestoreFromArg { arg, kfunc_class: _ } => {
+            SideEffect::IrqRestoreFromArg {
+                arg,
+                kfunc_class: _,
+            } => {
                 let reg = arg_reg(arg);
                 let Some((frame, base_off)) = resolve_stack_arg(state, reg) else {
                     continue;
@@ -282,11 +294,23 @@ pub(crate) fn apply_call_proto_r0(
                 }
                 stack.stack_set_dynptr(
                     dst_off,
-                    DynptrSlot { kind, ref_id, rdonly, first_slot: true, dynptr_id },
+                    DynptrSlot {
+                        kind,
+                        ref_id,
+                        rdonly,
+                        first_slot: true,
+                        dynptr_id,
+                    },
                 );
                 stack.stack_set_dynptr(
                     dst_off + 8,
-                    DynptrSlot { kind, ref_id, rdonly, first_slot: false, dynptr_id },
+                    DynptrSlot {
+                        kind,
+                        ref_id,
+                        rdonly,
+                        first_slot: false,
+                        dynptr_id,
+                    },
                 );
             }
         }
@@ -420,9 +444,7 @@ pub(crate) fn apply_call_proto_r0(
             // Same dispatch shape as `IterNextElem` — both forking
             // returns are split into successors before the flat-state
             // applier runs.
-            unreachable!(
-                "RetKind::IterNextBtfId must be handled by the kfunc dispatcher fork"
-            );
+            unreachable!("RetKind::IterNextBtfId must be handled by the kfunc dispatcher fork");
         }
         RetKind::IterNextElem { .. } => {
             // The kfunc dispatcher forks IterNextElem into two
@@ -444,7 +466,11 @@ pub(crate) fn apply_call_proto_r0(
             // unknown pointee, which makes the __contains validator
             // fall through to the offset-only check.
             let ty = if proto.flags.contains(CallFlags::RET_NULL) {
-                RegType::PtrToOwnedKptrOrNull { ref_id, pointee_btf_id: None, offset: 0 }
+                RegType::PtrToOwnedKptrOrNull {
+                    ref_id,
+                    pointee_btf_id: None,
+                    offset: 0,
+                }
             } else {
                 RegType::PtrToOwnedKptr {
                     ref_id,
@@ -492,12 +518,7 @@ pub(crate) fn apply_call_proto_r0(
 /// size-arg upper bound, resolves the source dynptr slot to inherit
 /// `ref_id` / `dynptr_id`, and stamps the supplied `rdonly` bit on the
 /// returned `PtrToAllocMem*`.
-fn apply_alloc_mem_from_arg(
-    state: &mut State,
-    proto: &CallProto,
-    size_arg: u8,
-    rdonly: bool,
-) {
+fn apply_alloc_mem_from_arg(state: &mut State, proto: &CallProto, size_arg: u8, rdonly: bool) {
     let size_reg = arg_reg(size_arg);
     let (_, max_size) = state.domain.get_interval(size_reg);
     let mem_size = max_size.max(0) as u64;

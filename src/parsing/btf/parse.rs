@@ -121,8 +121,10 @@ pub fn parse_btf(bytes: &[u8]) -> Result<BtfContext, String> {
                         break;
                     }
                     let v_name = u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap());
-                    let v_lo = u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap());
-                    let v_hi = u32::from_le_bytes(bytes[cursor + 8..cursor + 12].try_into().unwrap());
+                    let v_lo =
+                        u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap());
+                    let v_hi =
+                        u32::from_le_bytes(bytes[cursor + 8..cursor + 12].try_into().unwrap());
                     cursor += 12;
                     members.push(BtfMember {
                         name_off: v_name,
@@ -141,7 +143,8 @@ pub fn parse_btf(bytes: &[u8]) -> Result<BtfContext, String> {
                         break;
                     }
                     let v_name = u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap());
-                    let v_val = u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap());
+                    let v_val =
+                        u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap());
                     cursor += 8;
                     members.push(BtfMember {
                         name_off: v_name,
@@ -174,9 +177,8 @@ pub fn parse_btf(bytes: &[u8]) -> Result<BtfContext, String> {
             }
             BTF_KIND_DECL_TAG => {
                 if cursor + 4 <= type_end {
-                    let component_idx = i32::from_le_bytes(
-                        bytes[cursor..cursor + 4].try_into().unwrap(),
-                    );
+                    let component_idx =
+                        i32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap());
                     // Defer resolving the tag name string until after the
                     // full strings blob is installed on BtfContext.
                     decl_tags.push(DeclTag {
@@ -190,11 +192,14 @@ pub fn parse_btf(bytes: &[u8]) -> Result<BtfContext, String> {
                     let last = decl_tags.last_mut().unwrap();
                     let start = name_off as usize;
                     if start < strings.len()
-                        && let Some(end) =
-                            strings[start..].iter().position(|&b| b == 0).map(|e| e + start)
-                            && let Ok(s) = std::str::from_utf8(&strings[start..end]) {
-                                last.name = s.to_string();
-                            }
+                        && let Some(end) = strings[start..]
+                            .iter()
+                            .position(|&b| b == 0)
+                            .map(|e| e + start)
+                        && let Ok(s) = std::str::from_utf8(&strings[start..end])
+                    {
+                        last.name = s.to_string();
+                    }
                     cursor += 4;
                 }
             }
@@ -232,7 +237,11 @@ pub fn parse_btf(bytes: &[u8]) -> Result<BtfContext, String> {
         if start >= strings.len() {
             continue;
         }
-        let Some(end) = strings[start..].iter().position(|&b| b == 0).map(|e| e + start) else {
+        let Some(end) = strings[start..]
+            .iter()
+            .position(|&b| b == 0)
+            .map(|e| e + start)
+        else {
             continue;
         };
         let Ok(name) = std::str::from_utf8(&strings[start..end]) else {

@@ -233,27 +233,97 @@ const BPF_SOCK_FIELDS: &[MemRegionField] = &[
 /// rx_queue_mapping (76).
 const BPF_SOCK_COMMON_FIELDS: &[MemRegionField] = &[
     // family @ 4
-    MemRegionField { offset: 4, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 4,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
     // src_ip4 @ 24
-    MemRegionField { offset: 24, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 24,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
     // src_ip6[4] @ 28..44
-    MemRegionField { offset: 28, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
-    MemRegionField { offset: 32, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
-    MemRegionField { offset: 36, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
-    MemRegionField { offset: 40, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 28,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
+    MemRegionField {
+        offset: 32,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
+    MemRegionField {
+        offset: 36,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
+    MemRegionField {
+        offset: 40,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
     // src_port @ 44
-    MemRegionField { offset: 44, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 44,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
     // dst_port @ 48 (BPF accepts U32 *and* U16 for compat — handled by narrow_access)
-    MemRegionField { offset: 48, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 48,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
     // dst_ip4 @ 52
-    MemRegionField { offset: 52, size: MemSize::U32, narrow_access: false, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 52,
+        size: MemSize::U32,
+        narrow_access: false,
+        kind: MemFieldKind::Scalar,
+    },
     // dst_ip6[4] @ 56..72
-    MemRegionField { offset: 56, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
-    MemRegionField { offset: 60, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
-    MemRegionField { offset: 64, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
-    MemRegionField { offset: 68, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 56,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
+    MemRegionField {
+        offset: 60,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
+    MemRegionField {
+        offset: 64,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
+    MemRegionField {
+        offset: 68,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
     // state @ 72
-    MemRegionField { offset: 72, size: MemSize::U32, narrow_access: true, kind: MemFieldKind::Scalar },
+    MemRegionField {
+        offset: 72,
+        size: MemSize::U32,
+        narrow_access: true,
+        kind: MemFieldKind::Scalar,
+    },
 ];
 
 /// struct bpf_tcp_sock

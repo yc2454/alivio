@@ -127,8 +127,7 @@ pub(crate) fn transfer_load(
         }
     }
 
-    let bounds_set =
-        update_load_types(env, &mut state, access_size as usize, dst, base, off);
+    let bounds_set = update_load_types(env, &mut state, access_size as usize, dst, base, off);
     if !bounds_set {
         // Default post-load: forget any prior dst bounds and re-clamp to
         // the access width's zero-extended range. Skipped when
@@ -442,7 +441,10 @@ pub(crate) fn transfer_store(
                         && let Some(hidx) = state.history_idx
                     {
                         crate::analysis::flow::precision::mark_chain_precision_backward(
-                            env, hidx, state.parent_cache_id, *r,
+                            env,
+                            hidx,
+                            state.parent_cache_id,
+                            *r,
                         );
                     }
                     state.spill_at(frame_level, *r, full_offset as i16, size);

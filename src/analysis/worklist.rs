@@ -11,12 +11,12 @@ use crate::analysis::machine::state::State;
 use crate::ast::{Instr, Program};
 use crate::common::config::VerifierConfig;
 
-use crate::analysis::machine::reg::Reg;
-use crate::pcc::{apply_verified_refinements, check_proof};
-use crate::analysis::flow::{self, merging, pruning};
-use crate::analysis::transfer;
-use crate::analysis::machine::error::VerificationError;
 use super::trace_pc_in_range;
+use crate::analysis::flow::{self, merging, pruning};
+use crate::analysis::machine::error::VerificationError;
+use crate::analysis::machine::reg::Reg;
+use crate::analysis::transfer;
+use crate::pcc::{apply_verified_refinements, check_proof};
 
 /// Worklist abstract-interpretation loop. Shared between the main-program
 /// analysis (`analyze_program_full`) and the exception-cb body pass
@@ -69,8 +69,7 @@ pub(super) fn run_worklist(
             use crate::analysis::machine::reg::Reg;
             use crate::analysis::machine::reg_types::RegType;
             let is_stack_base = |b: &Reg| {
-                *b == Reg::R10
-                    || matches!(state.types.get(*b), RegType::PtrToStack { .. })
+                *b == Reg::R10 || matches!(state.types.get(*b), RegType::PtrToStack { .. })
             };
             // Kernel write-side gate (check_stack_write_fixed_off:5664):
             // the else-branch — an UNALIGNED / misc-class write — zeroes
@@ -92,13 +91,15 @@ pub(super) fn run_worklist(
             };
             match prog.instrs.get(state.pc) {
                 Some(&Instr::Store { ref base, off, .. }) => {
-                    is_stack_base(base)
-                        && effective_off(base, off)
-                            .is_some_and(|o| o % 8 == 0)
+                    is_stack_base(base) && effective_off(base, off).is_some_and(|o| o % 8 == 0)
                 }
                 Some(Instr::StoreRel { base, .. }) => is_stack_base(base),
-                Some(&Instr::Load { ref base, ref off, .. })
-                | Some(&Instr::LoadAcq { ref base, ref off, .. }) => {
+                Some(&Instr::Load {
+                    ref base, ref off, ..
+                })
+                | Some(&Instr::LoadAcq {
+                    ref base, ref off, ..
+                }) => {
                     is_stack_base(base)
                         && matches!(
                             state.frames.current().stack.get_slot_kind(*off),
@@ -111,9 +112,7 @@ pub(super) fn run_worklist(
         if stack_spill_fill {
             state.jmp_history_cnt = state.jmp_history_cnt.saturating_add(1);
         }
-        if state.pc < env.insn_aux_data.len()
-            && env.insn_aux_data[state.pc].jmp_point
-        {
+        if state.pc < env.insn_aux_data.len() && env.insn_aux_data[state.pc].jmp_point {
             state.jmp_history_cnt = state.jmp_history_cnt.saturating_add(1);
         }
         // Per-instruction scope for the BCF `detect_conflict_eq`
@@ -197,15 +196,9 @@ pub(super) fn run_worklist(
         // produces a SUPERSET cache pattern (more entries than
         // either alone), maximising bundle coverage. The kernel
         // matches by HASH; extra entries are ignored.
-        let env_jmps_delta = env
-            .jmps_processed
-            .saturating_sub(env.prev_jmps_processed);
-        let env_insns_delta = env
-            .insn_processed
-            .saturating_sub(env.prev_insn_processed);
-        let path_jmps_delta = state
-            .path_jmp_count
-            .saturating_sub(state.prev_jmp_at_cache);
+        let env_jmps_delta = env.jmps_processed.saturating_sub(env.prev_jmps_processed);
+        let env_insns_delta = env.insn_processed.saturating_sub(env.prev_insn_processed);
+        let path_jmps_delta = state.path_jmp_count.saturating_sub(state.prev_jmp_at_cache);
         let path_insns_delta = state
             .path_insn_count
             .saturating_sub(state.prev_insn_at_cache);
@@ -220,8 +213,7 @@ pub(super) fn run_worklist(
         // kernel's).
         let long_history = state.jmp_history_cnt > 40;
         let force_new_state = insn_aux_force || long_history;
-        let env_heuristic =
-            env_jmps_delta >= 2 && env_insns_delta >= 8;
+        let env_heuristic = env_jmps_delta >= 2 && env_insns_delta >= 8;
         // Kernel `is_state_visited` add_new_state (verifier.c L20186-20189) is a
         // SINGLE condition on the env-wide counters:
         //   jmps_processed - prev_jmps_processed >= 2 && insn_processed - prev >= 8
@@ -244,18 +236,26 @@ pub(super) fn run_worklist(
             && !force_new_state
             && env_jmps_delta < 20
             && env_insns_delta < 100;
-        let add_new_state = !kernel_engine
-            || force_new_state
-            || (env_heuristic && !loop_dampener);
+        let add_new_state = !kernel_engine || force_new_state || (env_heuristic && !loop_dampener);
         if outer_gate && add_new_state {
-            let cache_id =
-                merging::record_state(env, state.clone(), config.max_states_per_pc);
+            let cache_id = merging::record_state(env, state.clone(), config.max_states_per_pc);
             if trace_pc_in_range(state.pc) {
-                let n_cached = env.explored_states.get(&state.pc).map(|v| v.len()).unwrap_or(0);
+                let n_cached = env
+                    .explored_states
+                    .get(&state.pc)
+                    .map(|v| v.len())
+                    .unwrap_or(0);
                 eprintln!(
                     "[TRACE] CACHE pc={} -> cache_id={} parent={:?} (n_now={}, force_new={} env_jd={} env_id={} path_jd={} path_id={} jmp_hist={} env_h={} outer_gate={})",
-                    state.pc, cache_id, state.parent_cache_id, n_cached,
-                    force_new_state, env_jmps_delta, env_insns_delta, path_jmps_delta, path_insns_delta,
+                    state.pc,
+                    cache_id,
+                    state.parent_cache_id,
+                    n_cached,
+                    force_new_state,
+                    env_jmps_delta,
+                    env_insns_delta,
+                    path_jmps_delta,
+                    path_insns_delta,
                     state.jmp_history_cnt,
                     env_heuristic,
                     outer_gate,
@@ -283,8 +283,13 @@ pub(super) fn run_worklist(
         } else if trace_pc_in_range(state.pc) {
             eprintln!(
                 "[TRACE] NOCACHE pc={} parent={:?} (force_new={} env_jd={} env_id={} path_jd={} path_id={} jmp_hist={} env_h={} outer_gate={})",
-                state.pc, state.parent_cache_id,
-                force_new_state, env_jmps_delta, env_insns_delta, path_jmps_delta, path_insns_delta,
+                state.pc,
+                state.parent_cache_id,
+                force_new_state,
+                env_jmps_delta,
+                env_insns_delta,
+                path_jmps_delta,
+                path_insns_delta,
                 state.jmp_history_cnt,
                 env_heuristic,
                 outer_gate,
@@ -307,9 +312,7 @@ pub(super) fn run_worklist(
             error!(target: "analysis", "[Verifier] Hit complexity limit ({} instructions). Aborting.", insn_limit);
             info!(target: "app", "[Verifier] (Pruned {} states before limit)", prune_count);
             info!(target: "app", "[Verifier] Tip: Try --skip-dbm or --max-insn N to increase limit");
-            env.fail(VerificationError::ComplexityLimitExceeded {
-                limit: insn_limit,
-            });
+            env.fail(VerificationError::ComplexityLimitExceeded { limit: insn_limit });
             break;
         }
 
@@ -354,8 +357,8 @@ pub(super) fn run_worklist(
         }
         if config.verbosity >= 2 || config.debug_pc == Some(state.pc) {
             let ranges = state.reg_ranges_str();
-            let rel    = state.domain.relations_str();
-            let tnums  = state.reg_tnums_compact_str();
+            let rel = state.domain.relations_str();
+            let tnums = state.reg_tnums_compact_str();
 
             let rel_line = if rel.is_empty() {
                 String::new()
@@ -392,8 +395,12 @@ pub(super) fn run_worklist(
         // downstream consumer that wants the cumulative figure.
         let is_jmp_class = matches!(
             instr,
-            Instr::If { .. } | Instr::Jmp { .. } | Instr::MayGoto { .. }
-                | Instr::Call { .. } | Instr::CallRel { .. } | Instr::Exit
+            Instr::If { .. }
+                | Instr::Jmp { .. }
+                | Instr::MayGoto { .. }
+                | Instr::Call { .. }
+                | Instr::CallRel { .. }
+                | Instr::Exit
         );
         if is_jmp_class {
             env.jmps_processed += 1;
@@ -418,9 +425,7 @@ pub(super) fn run_worklist(
                         continue;
                     }
                     for entry in &ann.entries {
-                        if let Some(v) =
-                            check_proof(entry, ann.pc, &env.explored_states, prog)
-                        {
+                        if let Some(v) = check_proof(entry, ann.pc, &env.explored_states, prog) {
                             verified.push(v);
                         }
                     }
@@ -445,9 +450,7 @@ pub(super) fn run_worklist(
                 for (i, step) in trace.iter().enumerate() {
                     println!(
                         "[{:03}] PC {:<4} | {}\n       Types:  {}\n       Ranges: {}",
-                        i, step.pc, step.instr_str,
-                        step.reg_types_str,
-                        step.reg_ranges_str,
+                        i, step.pc, step.instr_str, step.reg_types_str, step.reg_ranges_str,
                     );
                 }
                 println!("=============================================\n");
@@ -558,7 +561,10 @@ fn wl_pop_trace(state: &State) {
         let (r2lo, r2hi) = state.domain.get_interval(Reg::R2);
         eprintln!(
             "[WL_POP] pc={} parent_cache_id={:?} R2=[{}..{}] R9={:?}",
-            state.pc, state.parent_cache_id, r2lo, r2hi,
+            state.pc,
+            state.parent_cache_id,
+            r2lo,
+            r2hi,
             state.types.get(Reg::R9),
         );
     }
@@ -569,8 +575,11 @@ fn wl_push_trace(succ: &State, worklist_len: usize, ip: usize) {
     if trace_pc_in_range(succ.pc) {
         eprintln!(
             "[WL_PUSH] pc={} parent_cache_id={:?} (worklist_len_before={}) ip={} R9={:?}",
-            succ.pc, succ.parent_cache_id, worklist_len,
-            ip, succ.types.get(Reg::R9),
+            succ.pc,
+            succ.parent_cache_id,
+            worklist_len,
+            ip,
+            succ.types.get(Reg::R9),
         );
     }
 }
@@ -587,7 +596,9 @@ fn insn_trace(ip: usize, pc: usize) {
 /// [BR] (trace-range): parent checkpoint's branches bump at a fork.
 fn br_inc_trace(p: &State, pcid: u32, at: usize, n: usize) {
     if trace_pc_in_range(p.pc) {
-        eprintln!("[BR] inc pc={} cid={} now={} (fork@{} n={})",
-            p.pc, pcid, p.branches, at, n);
+        eprintln!(
+            "[BR] inc pc={} cid={} now={} (fork@{} n={})",
+            p.pc, pcid, p.branches, at, n
+        );
     }
 }

@@ -265,7 +265,11 @@ pub fn lower_raw_to_program(raw: &[RawBpfInsn]) -> Result<Program, LowerError> {
                 },
                 8 | 16 => Instr::MovSx {
                     width: Width::W32,
-                    src_bits: if insn.off == 8 { SxWidth::B8 } else { SxWidth::B16 },
+                    src_bits: if insn.off == 8 {
+                        SxWidth::B8
+                    } else {
+                        SxWidth::B16
+                    },
                     dst,
                     src: Operand::Reg(src),
                 },
@@ -273,7 +277,10 @@ pub fn lower_raw_to_program(raw: &[RawBpfInsn]) -> Result<Program, LowerError> {
                     return Err(LowerError {
                         pc,
                         code: insn.code,
-                        msg: format!("invalid MOV32 off field: {} (expected 0, 8, or 16)", insn.off),
+                        msg: format!(
+                            "invalid MOV32 off field: {} (expected 0, 8, or 16)",
+                            insn.off
+                        ),
                         kind: LowerErrorKind::UnknownOpcode,
                     });
                 }
@@ -324,7 +331,10 @@ pub fn lower_raw_to_program(raw: &[RawBpfInsn]) -> Result<Program, LowerError> {
                     return Err(LowerError {
                         pc,
                         code: insn.code,
-                        msg: format!("invalid MOV64 off field: {} (expected 0, 1, 8, 16, or 32)", insn.off),
+                        msg: format!(
+                            "invalid MOV64 off field: {} (expected 0, 1, 8, 16, or 32)",
+                            insn.off
+                        ),
                         kind: LowerErrorKind::UnknownOpcode,
                     });
                 }
@@ -1562,49 +1572,49 @@ pub fn lower_raw_to_program(raw: &[RawBpfInsn]) -> Result<Program, LowerError> {
                         kind: LowerErrorKind::UnknownAtomicOp,
                     });
                 } else {
-                // 1. Check for Complex Ops (XCHG, CMPXCHG)
-                // These specific values are hardcoded in the kernel spec.
-                let (op, fetch) = match insn.imm {
-                    // BPF_ADD (0x00) with/without Fetch (0x01)
-                    0x00 => (AtomicOp::Add, false),
-                    0x01 => (AtomicOp::Add, true),
+                    // 1. Check for Complex Ops (XCHG, CMPXCHG)
+                    // These specific values are hardcoded in the kernel spec.
+                    let (op, fetch) = match insn.imm {
+                        // BPF_ADD (0x00) with/without Fetch (0x01)
+                        0x00 => (AtomicOp::Add, false),
+                        0x01 => (AtomicOp::Add, true),
 
-                    // BPF_OR (0x40)
-                    0x40 => (AtomicOp::Or, false),
-                    0x41 => (AtomicOp::Or, true),
+                        // BPF_OR (0x40)
+                        0x40 => (AtomicOp::Or, false),
+                        0x41 => (AtomicOp::Or, true),
 
-                    // BPF_AND (0x50)
-                    0x50 => (AtomicOp::And, false),
-                    0x51 => (AtomicOp::And, true),
+                        // BPF_AND (0x50)
+                        0x50 => (AtomicOp::And, false),
+                        0x51 => (AtomicOp::And, true),
 
-                    // BPF_XOR (0xA0)
-                    0xA0 => (AtomicOp::Xor, false),
-                    0xA1 => (AtomicOp::Xor, true),
+                        // BPF_XOR (0xA0)
+                        0xA0 => (AtomicOp::Xor, false),
+                        0xA1 => (AtomicOp::Xor, true),
 
-                    // BPF_XCHG (0xE1) - Always implies Fetch
-                    0xE1 => (AtomicOp::Xchg, true),
+                        // BPF_XCHG (0xE1) - Always implies Fetch
+                        0xE1 => (AtomicOp::Xchg, true),
 
-                    // BPF_CMPXCHG (0xF1) - Always implies Fetch
-                    0xF1 => (AtomicOp::CmpXchg, true),
+                        // BPF_CMPXCHG (0xF1) - Always implies Fetch
+                        0xF1 => (AtomicOp::CmpXchg, true),
 
-                    _ => {
-                        return Err(LowerError {
-                            pc,
-                            code: insn.code,
-                            msg: format!("unknown atomic opcode imm: 0x{:x}", insn.imm),
-                            kind: LowerErrorKind::UnknownAtomicOp,
-                        });
+                        _ => {
+                            return Err(LowerError {
+                                pc,
+                                code: insn.code,
+                                msg: format!("unknown atomic opcode imm: 0x{:x}", insn.imm),
+                                kind: LowerErrorKind::UnknownAtomicOp,
+                            });
+                        }
+                    };
+
+                    Instr::Atomic {
+                        op,
+                        size,
+                        fetch,
+                        base: dst, // In BPF STX, 'dst' is the memory pointer
+                        off: insn.off,
+                        src, // In BPF STX, 'src' is the value
                     }
-                };
-
-                Instr::Atomic {
-                    op,
-                    size,
-                    fetch,
-                    base: dst, // In BPF STX, 'dst' is the memory pointer
-                    off: insn.off,
-                    src, // In BPF STX, 'src' is the value
-                }
                 }
             }
 

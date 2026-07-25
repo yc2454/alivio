@@ -155,11 +155,13 @@ pub fn try_load_function_with_subprogs_from_elf_with_relo(
     func_name: &str,
     maps: &[BpfMapDef],
     extra_roots: &[(String, String)],
-    core_relo_ctx: Option<(&crate::parsing::btf::BtfContext, &crate::parsing::btf::BtfContext)>,
+    core_relo_ctx: Option<(
+        &crate::parsing::btf::BtfContext,
+        &crate::parsing::btf::BtfContext,
+    )>,
 ) -> Result<(Program, HashMap<usize, RelocInfo>, HashMap<String, usize>), String> {
-    let mut combined =
-        combine_function_with_subprogs(path, maps, section, func_name, extra_roots)
-            .map_err(|e| format!("Failed to combine function with subprogs: {:?}", e))?;
+    let mut combined = combine_function_with_subprogs(path, maps, section, func_name, extra_roots)
+        .map_err(|e| format!("Failed to combine function with subprogs: {:?}", e))?;
 
     if combined.raw_insns.is_empty() {
         return Err(format!(
@@ -223,8 +225,12 @@ pub fn try_load_function_with_subprogs_from_elf_with_relo(
         if total_applied + total_skipped_oof + total_unsupported > 0 {
             println!(
                 "[co-re] {}/{}: applied={} (no_op={}) skipped_oof={} unsupported={}",
-                section, func_name, total_applied, total_no_op,
-                total_skipped_oof, total_unsupported
+                section,
+                func_name,
+                total_applied,
+                total_no_op,
+                total_skipped_oof,
+                total_unsupported
             );
         }
     }

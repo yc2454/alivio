@@ -37,7 +37,9 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
     if crate::analysis::trace_pc_in_range(state.pc) {
         eprintln!(
             "[fanout-entry] pc={} left={:?} scalar_id={:?}",
-            state.pc, left, state.scalar_id(left)
+            state.pc,
+            left,
+            state.scalar_id(left)
         );
     }
     let id = match state.scalar_id(left) {
@@ -57,8 +59,14 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
     if crate::analysis::trace_pc_in_range(state.pc) {
         eprintln!(
             "[fanout] pc={} left={:?} ivl=[{},{}] tnum={:?} linked={:?} r9(id={:?} ty={:?} tn={:?})",
-            state.pc, left, lo, hi, tnum, linked,
-            state.scalar_id(Reg::R9), state.types.get(Reg::R9),
+            state.pc,
+            left,
+            lo,
+            hi,
+            tnum,
+            linked,
+            state.scalar_id(Reg::R9),
+            state.types.get(Reg::R9),
             state.get_tnum(Reg::R9)
         );
     }
@@ -82,7 +90,11 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
         let (lo, hi, tnum) = if delta == 0 {
             (lo, hi, tnum)
         } else {
-            (lo.saturating_add(delta), hi.saturating_add(delta), tnum.add_imm(delta))
+            (
+                lo.saturating_add(delta),
+                hi.saturating_add(delta),
+                tnum.add_imm(delta),
+            )
         };
         let (r_lo, r_hi) = state.domain.get_interval(r);
         // Guard: skip if the new bound would make this register's
@@ -145,13 +157,25 @@ fn fanout_scalar_bounds(state: &mut State, left: Reg) {
             let (lo, hi, tnum) = if delta == 0 {
                 (lo, hi, tnum)
             } else {
-                (lo.saturating_add(delta), hi.saturating_add(delta), tnum.add_imm(delta))
+                (
+                    lo.saturating_add(delta),
+                    hi.saturating_add(delta),
+                    tnum.add_imm(delta),
+                )
             };
             if lo > slot.bounds.max || hi < slot.bounds.min {
                 continue;
             }
-            let new_min = if lo > slot.bounds.min { lo } else { slot.bounds.min };
-            let new_max = if hi < slot.bounds.max { hi } else { slot.bounds.max };
+            let new_min = if lo > slot.bounds.min {
+                lo
+            } else {
+                slot.bounds.min
+            };
+            let new_max = if hi < slot.bounds.max {
+                hi
+            } else {
+                slot.bounds.max
+            };
             if new_min > new_max {
                 continue; // Would make bounds inconsistent — skip
             }
@@ -244,21 +268,23 @@ fn is_non_null_acquired(ty: &RegType) -> bool {
 fn is_nullable_matching(non_null: &RegType, nullable: &RegType) -> bool {
     matches!(
         (non_null, nullable),
-        (RegType::PtrToSocket { .. }, RegType::PtrToSocketOrNull { .. })
+        (
+            RegType::PtrToSocket { .. },
+            RegType::PtrToSocketOrNull { .. }
+        ) | (
+            RegType::PtrToSockCommon { .. },
+            RegType::PtrToSockCommonOrNull { .. }
+        ) | (
+            RegType::PtrToTcpSock { .. },
+            RegType::PtrToTcpSockOrNull { .. }
+        ) | (
+            RegType::PtrToCpumask { .. },
+            RegType::PtrToCpumaskOrNull { .. }
+        ) | (RegType::PtrToArena { .. }, RegType::PtrToArenaOrNull { .. })
             | (
-                RegType::PtrToSockCommon { .. },
-                RegType::PtrToSockCommonOrNull { .. }
+                RegType::PtrToCgroup { .. },
+                RegType::PtrToCgroupOrNull { .. }
             )
-            | (
-                RegType::PtrToTcpSock { .. },
-                RegType::PtrToTcpSockOrNull { .. }
-            )
-            | (
-                RegType::PtrToCpumask { .. },
-                RegType::PtrToCpumaskOrNull { .. }
-            )
-            | (RegType::PtrToArena { .. }, RegType::PtrToArenaOrNull { .. })
-            | (RegType::PtrToCgroup { .. }, RegType::PtrToCgroupOrNull { .. })
             | (
                 RegType::PtrToOwnedKptr { .. },
                 RegType::PtrToOwnedKptrOrNull { .. }
@@ -348,13 +374,17 @@ fn maybe_demote_or_null_to_scalar(state: &mut State, reg: Reg) {
         // `maybe_refine_acquired_ref`, which both demotes AND releases the
         // ref on the null branch. Demoting it to ScalarValue here would
         // erase the ref_id before that runs, leaking the reference.
-        RegType::PtrToBtfIdOrNull { id, ref_id: None, .. } => id,
+        RegType::PtrToBtfIdOrNull {
+            id, ref_id: None, ..
+        } => id,
         _ => return,
     };
     for r in Reg::ALL {
         let same_id = match state.types.get(r) {
             RegType::PtrToMapValueOrNull { id, .. } if id == target_id => true,
-            RegType::PtrToBtfIdOrNull { id, ref_id: None, .. } if id == target_id => true,
+            RegType::PtrToBtfIdOrNull {
+                id, ref_id: None, ..
+            } if id == target_id => true,
             _ => false,
         };
         if same_id {
@@ -372,7 +402,11 @@ fn maybe_promote_map_val(state: &mut State, reg: Reg) {
         _ => return,
     };
     for r in Reg::ALL {
-        if let RegType::PtrToMapValueOrNull { id, map_idx, map_uid } = state.types.get(r)
+        if let RegType::PtrToMapValueOrNull {
+            id,
+            map_idx,
+            map_uid,
+        } = state.types.get(r)
             && id == target_id
         {
             state.types.set(
@@ -394,17 +428,22 @@ fn maybe_promote_map_val(state: &mut State, reg: Reg) {
             // The refinement at the map-region rejection site reads this
             // expression directly.
             if let Some(bcf) = state.bcf.as_mut()
-                && let Some(i) = r.bcf_idx() {
-                    let zero = bcf.add_val64(0);
-                    bcf.bind_reg(i, zero);
-                }
+                && let Some(i) = r.bcf_idx()
+            {
+                let zero = bcf.add_val64(0);
+                bcf.bind_reg(i, zero);
+            }
         }
     }
     promote_stack_slots_all_frames(
         state,
         |ty| matches!(ty, RegType::PtrToMapValueOrNull { id, .. } if *id == target_id),
         |ty| match ty {
-            RegType::PtrToMapValueOrNull { id, map_idx, map_uid } => RegType::PtrToMapValue {
+            RegType::PtrToMapValueOrNull {
+                id,
+                map_idx,
+                map_uid,
+            } => RegType::PtrToMapValue {
                 id: *id,
                 offset: Some(0),
                 map_idx: *map_idx,
@@ -465,12 +504,24 @@ fn maybe_promote_mem(state: &mut State, reg: Reg) {
         _ => return,
     };
     for r in Reg::ALL {
-        if let RegType::PtrToAllocMemOrNull { id, mem_size, ref_id, dynptr_id, rdonly } = state.types.get(r)
+        if let RegType::PtrToAllocMemOrNull {
+            id,
+            mem_size,
+            ref_id,
+            dynptr_id,
+            rdonly,
+        } = state.types.get(r)
             && id == target_id
         {
             state.types.set(
                 r,
-                RegType::PtrToAllocMem { id, mem_size, ref_id, dynptr_id, rdonly },
+                RegType::PtrToAllocMem {
+                    id,
+                    mem_size,
+                    ref_id,
+                    dynptr_id,
+                    rdonly,
+                },
             );
         }
     }
@@ -539,10 +590,9 @@ fn same_acquired_pointer(t1: &RegType, t2: &RegType) -> bool {
             RegType::PtrToOwnedKptrOrNull { ref_id: id1, .. },
             RegType::PtrToOwnedKptrOrNull { ref_id: id2, .. },
         ) => linked(id1, id2),
-        (
-            RegType::PtrToTaskOrNull { ref_id: id1 },
-            RegType::PtrToTaskOrNull { ref_id: id2 },
-        ) => linked(id1, id2),
+        (RegType::PtrToTaskOrNull { ref_id: id1 }, RegType::PtrToTaskOrNull { ref_id: id2 }) => {
+            linked(id1, id2)
+        }
         (
             RegType::PtrToBtfIdOrNull { ref_id: id1, .. },
             RegType::PtrToBtfIdOrNull { ref_id: id2, .. },
@@ -571,7 +621,9 @@ fn maybe_refine_acquired_ref(state: &mut State, reg: Reg, is_non_null: bool) {
         // entry-arg / decl-tag path uses `ref_id: None` and falls
         // through to the catch-all return below — no release needed on
         // the null branch.
-        RegType::PtrToBtfIdOrNull { ref_id: Some(rid), .. } => Some(rid),
+        RegType::PtrToBtfIdOrNull {
+            ref_id: Some(rid), ..
+        } => Some(rid),
         _ => return,
     };
 
@@ -635,14 +687,13 @@ fn maybe_refine_acquired_ref(state: &mut State, reg: Reg, is_non_null: bool) {
             for k in offsets {
                 let ty = frame.stack.get_slot_type(k);
                 if same_acquired_pointer(&reg_type, &ty)
-                    && let Some(slot) = frame.stack.get_slot_mut(k) {
-                        slot.reg_type = RegType::ScalarValue;
-                        slot.bounds = crate::analysis::machine::stack_state::ScalarBounds {
-                            min: 0,
-                            max: 0,
-                        };
-                        slot.tnum = crate::domains::tnum::Tnum::constant(0);
-                    }
+                    && let Some(slot) = frame.stack.get_slot_mut(k)
+                {
+                    slot.reg_type = RegType::ScalarValue;
+                    slot.bounds =
+                        crate::analysis::machine::stack_state::ScalarBounds { min: 0, max: 0 };
+                    slot.tnum = crate::domains::tnum::Tnum::constant(0);
+                }
             }
         }
     }

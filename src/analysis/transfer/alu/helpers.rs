@@ -36,10 +36,7 @@ pub(crate) fn bcf_reg_bounds(state: &State, reg: Reg) -> RegBounds {
         s32_min = smin as i32;
         s32_max = smax as i32;
     }
-    if (u32_min, u32_max) == (0, u32::MAX)
-        && smin >= 0
-        && smax <= u32::MAX as i64
-    {
+    if (u32_min, u32_max) == (0, u32::MAX) && smin >= 0 && smax <= u32::MAX as i64 {
         u32_min = smin as u32;
         u32_max = smax as u32;
     }
@@ -119,9 +116,7 @@ pub(crate) fn emit_bcf_alu_binop(
         }
         Operand::Reg(r) => {
             let si = r.bcf_idx();
-            if let (Some(bcf), Some(si), Some(sb)) =
-                (state.bcf.as_mut(), si, src_bounds_pre)
-            {
+            if let (Some(bcf), Some(si), Some(sb)) = (state.bcf.as_mut(), si, src_bounds_pre) {
                 let dst_expr = bcf.reg_expr(d, dst_bounds_pre, alu32);
                 let src_expr = bcf.reg_expr(si, sb, alu32);
                 let alu_result = bcf.add_alu(op, dst_expr, src_expr, bits);

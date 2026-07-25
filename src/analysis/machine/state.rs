@@ -664,7 +664,6 @@ impl State {
     // forward through arithmetic; the field is consumed to block
     // pruning that would generalise the marked register.
 
-
     /// Whether `r` has been marked precise on the current path.
     pub fn is_reg_precise(&self, r: Reg) -> bool {
         r != Reg::Zero && self.precise_regs.contains(&r)
@@ -762,7 +761,8 @@ impl State {
         use crate::analysis::machine::reg_types::PtrFlags;
         let demote_flags = |flags: PtrFlags| -> PtrFlags {
             if flags.contains(PtrFlags::RCU) {
-                flags.difference(PtrFlags::RCU | PtrFlags::TRUSTED)
+                flags
+                    .difference(PtrFlags::RCU | PtrFlags::TRUSTED)
                     .union(PtrFlags::UNTRUSTED)
             } else {
                 flags
@@ -1022,11 +1022,7 @@ impl State {
     }
 
     pub fn in_irq_disabled(&self) -> bool {
-        !self.acquired_irq_ids.is_empty()
-            || self
-                .acquired_res_locks
-                .iter()
-                .any(|e| e.is_irq)
+        !self.acquired_irq_ids.is_empty() || self.acquired_res_locks.iter().any(|e| e.is_irq)
     }
 
     /// True iff `(reg_id, ptr_id)` is already in the res-lock stack —
@@ -1193,7 +1189,8 @@ impl State {
     /// restores them wholesale).
     fn mark_callee_entry_regs(&mut self) {
         for r in [Reg::R0, Reg::R6, Reg::R7, Reg::R8, Reg::R9] {
-            self.types.set(r, crate::analysis::machine::reg_types::RegType::NotInit);
+            self.types
+                .set(r, crate::analysis::machine::reg_types::RegType::NotInit);
             self.domain.forget(r);
             self.set_tnum(r, crate::domains::tnum::Tnum::unknown());
             self.clear_scalar_id(r);

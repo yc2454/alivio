@@ -6,7 +6,9 @@ use crate::analysis::machine::error::VerificationError;
 use crate::analysis::machine::reg_types::RegType;
 
 use super::super::checks::ValidationContext;
-use super::super::mem_checks::{checked_by_mem_size_pairs, validate_readable_mem, validate_writable_mem};
+use super::super::mem_checks::{
+    checked_by_mem_size_pairs, validate_readable_mem, validate_writable_mem,
+};
 use super::super::signatures::helper_rejects_packet_for_arg;
 
 /// Validates PtrToMem argument type.
@@ -57,7 +59,9 @@ pub fn validate_ptr_to_uninit_mem(ctx: &mut ValidationContext) -> bool {
 pub fn validate_ptr_to_alloc_mem(ctx: &mut ValidationContext) -> bool {
     match ctx.actual {
         RegType::PtrToAllocMem { ref_id: None, .. } => true,
-        RegType::PtrToAllocMem { ref_id: Some(_), .. } => {
+        RegType::PtrToAllocMem {
+            ref_id: Some(_), ..
+        } => {
             ctx.fail_with_log(
                 VerificationError::InvalidArgType {
                     pc: ctx.pc,

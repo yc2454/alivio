@@ -36,7 +36,10 @@ pub enum SolverError {
     Io(std::io::Error),
     /// cvc5 exited non-zero. `code` is the process exit code (or `None` if killed
     /// by signal). `stderr` is its stderr output, truncated.
-    SolverFailed { code: Option<i32>, stderr: String },
+    SolverFailed {
+        code: Option<i32>,
+        stderr: String,
+    },
     /// cvc5 returned a `sat` or `unknown` answer — proof not produced.
     NotUnsat(String),
     /// Configured cvc5 binary doesn't exist or isn't executable.
@@ -47,11 +50,9 @@ impl std::fmt::Display for SolverError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SolverError::Io(e) => write!(f, "io: {}", e),
-            SolverError::SolverFailed { code, stderr } => write!(
-                f,
-                "cvc5 exited with code {:?}; stderr: {}",
-                code, stderr
-            ),
+            SolverError::SolverFailed { code, stderr } => {
+                write!(f, "cvc5 exited with code {:?}; stderr: {}", code, stderr)
+            }
             SolverError::NotUnsat(s) => write!(f, "cvc5 did not return unsat: {}", s),
             SolverError::CvcBinaryMissing(p) => {
                 write!(f, "cvc5 binary not found at {}", p.display())
@@ -110,7 +111,10 @@ pub fn validate_proof_bytes(bytes: &[u8]) -> Result<bool> {
         let stdout = truncate(String::from_utf8_lossy(&output.stdout).into_owned(), 1024);
         return Err(SolverError::SolverFailed {
             code: output.status.code(),
-            stderr: format!("bcf-checker rejected; stdout: {}; stderr: {}", stdout, stderr),
+            stderr: format!(
+                "bcf-checker rejected; stdout: {}; stderr: {}",
+                stdout, stderr
+            ),
         });
     }
 
@@ -135,7 +139,9 @@ pub fn cvc5_path() -> Result<PathBuf> {
             return Ok(pb);
         }
     }
-    Err(SolverError::CvcBinaryMissing(PathBuf::from(DEFAULT_CVC5_MACOS)))
+    Err(SolverError::CvcBinaryMissing(PathBuf::from(
+        DEFAULT_CVC5_MACOS,
+    )))
 }
 
 /// Send `smtlib` to cvc5 and return the raw BCF proof bytes.
@@ -312,7 +318,7 @@ fn tempdir() -> std::io::Result<TempDir> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::refinement::bcf::{BcfProof, BCF_MAGIC};
+    use crate::refinement::bcf::{BCF_MAGIC, BcfProof};
 
     /// Smoke test: feed cvc5 a trivially-unsat QF_BV query, confirm we get
     /// back well-formed BCF bytes. Skipped if cvc5 binary isn't found

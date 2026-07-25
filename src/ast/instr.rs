@@ -1,8 +1,7 @@
 // src/ast/instr.rs
 
 use super::{
-    AluOp, AtomicOp, CmpOp, EndianOp, MapLoadKind, MemSize, Operand, PacketLoadMode, SxWidth,
-    Width,
+    AluOp, AtomicOp, CmpOp, EndianOp, MapLoadKind, MemSize, Operand, PacketLoadMode, SxWidth, Width,
 };
 use crate::analysis::machine::reg::Reg;
 use std::collections::HashSet;
@@ -13,12 +12,16 @@ use std::fmt;
 /// 2 = kfunc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallKind {
-    Helper { id: u32 },
+    Helper {
+        id: u32,
+    },
     /// `btf_id` names the kfunc in its owning BTF module; `offset` selects the
     /// module (0 = vmlinux). Transfer semantics are unimplemented today.
-    Kfunc { btf_id: u32, offset: i16 },
+    Kfunc {
+        btf_id: u32,
+        offset: i16,
+    },
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instr {
@@ -412,7 +415,9 @@ impl fmt::Display for Instr {
             }
             Call { kind } => match kind {
                 CallKind::Helper { id } => write!(f, "call {}", id),
-                CallKind::Kfunc { btf_id, offset } => write!(f, "call kfunc #{}:{}", offset, btf_id),
+                CallKind::Kfunc { btf_id, offset } => {
+                    write!(f, "call kfunc #{}:{}", offset, btf_id)
+                }
             },
             CallRel { target } => write!(f, "call {}", target),
             LoadPacket { .. } => write!(f, "ld_abs or ld_ind"),

@@ -75,11 +75,7 @@ impl BtfContext {
         None
     }
 
-    pub fn field_at_offset(
-        &self,
-        struct_id: u32,
-        byte_offset: u32,
-    ) -> Option<BtfFieldInfo<'_>> {
+    pub fn field_at_offset(&self, struct_id: u32, byte_offset: u32) -> Option<BtfFieldInfo<'_>> {
         let id = self.peel_modifiers(struct_id);
         let ty = self.types.get(&id)?;
         if !matches!(ty.kind(), BTF_KIND_STRUCT | BTF_KIND_UNION) {
@@ -123,10 +119,7 @@ impl BtfContext {
         for _ in 0..16 {
             let Some(t) = self.types.get(&cur) else { break };
             match t.kind() {
-                BTF_KIND_TYPEDEF
-                | BTF_KIND_CONST
-                | BTF_KIND_VOLATILE
-                | BTF_KIND_RESTRICT => {
+                BTF_KIND_TYPEDEF | BTF_KIND_CONST | BTF_KIND_VOLATILE | BTF_KIND_RESTRICT => {
                     cur = t.size_or_type;
                 }
                 BTF_KIND_TYPE_TAG => {
@@ -197,11 +190,7 @@ impl BtfContext {
     /// or scalar field rather than at its boundary. Closes
     /// `task_kfunc_failure::task_access_comm{1,2}` where `task->comm + N`
     /// must reject a read that crosses the 16-byte `comm` array bound.
-    pub fn field_containing_offset(
-        &self,
-        struct_id: u32,
-        byte_offset: u32,
-    ) -> Option<(u32, u32)> {
+    pub fn field_containing_offset(&self, struct_id: u32, byte_offset: u32) -> Option<(u32, u32)> {
         let id = self.peel_modifiers(struct_id);
         let ty = self.types.get(&id)?;
         if !matches!(ty.kind(), BTF_KIND_STRUCT | BTF_KIND_UNION) {
@@ -250,10 +239,7 @@ impl BtfContext {
                 BTF_KIND_TYPE_TAG => {
                     return self.get_string(t.name_off).map(|s| s.to_string());
                 }
-                BTF_KIND_TYPEDEF
-                | BTF_KIND_CONST
-                | BTF_KIND_VOLATILE
-                | BTF_KIND_RESTRICT => {
+                BTF_KIND_TYPEDEF | BTF_KIND_CONST | BTF_KIND_VOLATILE | BTF_KIND_RESTRICT => {
                     id = t.size_or_type;
                 }
                 _ => return None,
@@ -269,10 +255,7 @@ impl BtfContext {
         for _ in 0..16 {
             let t = self.types.get(&id)?;
             match t.kind() {
-                BTF_KIND_TYPEDEF
-                | BTF_KIND_CONST
-                | BTF_KIND_VOLATILE
-                | BTF_KIND_RESTRICT
+                BTF_KIND_TYPEDEF | BTF_KIND_CONST | BTF_KIND_VOLATILE | BTF_KIND_RESTRICT
                 | BTF_KIND_TYPE_TAG => {
                     id = t.size_or_type;
                 }
@@ -305,12 +288,7 @@ impl BtfContext {
     /// [`SpecialFieldKind::from_type_name`], with the offset taken from
     /// the DATASEC entry (already in bytes).
     pub fn find_special_fields(&self, type_id: u32) -> Vec<SpecialField> {
-        if let Some(cached) = self
-            .special_fields_cache
-            .lock()
-            .unwrap()
-            .get(&type_id)
-        {
+        if let Some(cached) = self.special_fields_cache.lock().unwrap().get(&type_id) {
             return cached.clone();
         }
         let fields = self.find_special_fields_uncached(type_id);
@@ -431,10 +409,14 @@ impl BtfContext {
 
         match ty.kind() {
             BTF_KIND_ARRAY => {
-                let Some(arr) = ty.members.first() else { return };
+                let Some(arr) = ty.members.first() else {
+                    return;
+                };
                 let elem_id = self.peel_modifiers(arr.type_id);
                 let nelems = arr.offset;
-                let Some(elem_ty) = self.types.get(&elem_id) else { return };
+                let Some(elem_ty) = self.types.get(&elem_id) else {
+                    return;
+                };
                 let elem_size = elem_ty.size_or_type;
                 if elem_size == 0 || nelems == 0 {
                     return;
@@ -458,9 +440,7 @@ impl BtfContext {
                         .decl_tags_for(resolved_id)
                         .filter(|t| t.component_idx == member_idx as i32)
                         .find_map(|t| self.parse_contains_tag(&t.name));
-                    let next_contains = member_contains
-                        .as_ref()
-                        .or(inherited_contains);
+                    let next_contains = member_contains.as_ref().or(inherited_contains);
                     let next_contains_clone = next_contains.cloned();
                     self.collect_special_fields_at(
                         member.type_id,

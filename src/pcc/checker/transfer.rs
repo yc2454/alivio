@@ -204,8 +204,8 @@ pub(super) fn verify_transfer(
                 // dst_new - pre_right = dst_old + (src_reg - pre_right) <= dst_old_ub + b.
                 // delta must be >= ub(dst - pre_right) from the interval pre-state.
                 let pre_right_reg = Reg::idx_to_reg(pre_right).unwrap_or(Reg::Zero);
-                let dst_ub = distance_upper_bound(state, *dst, pre_right_reg)
-                    .filter(|&ub| ub != i64::MAX);
+                let dst_ub =
+                    distance_upper_bound(state, *dst, pre_right_reg).filter(|&ub| ub != i64::MAX);
                 let ok = dst_ub.is_some_and(|ub| delta >= ub);
                 debug!(
                     target: "pcc",

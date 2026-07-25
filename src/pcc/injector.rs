@@ -17,13 +17,7 @@ use super::checker::VerifiedEntry;
 ///   The bound `reg_i - anchor <= c` means `max_offset(reg_i) <= c`. Since
 ///   `max_offset = off + var_off`, we tighten `var_off <= c - off`. This lets
 ///   the interval's access check (which reads `off + var_off`) succeed.
-fn apply_verified_fact(
-    succ_state: &mut State,
-    i_idx: usize,
-    j_idx: usize,
-    c: i64,
-    succ_pc: usize,
-) {
+fn apply_verified_fact(succ_state: &mut State, i_idx: usize, j_idx: usize, c: i64, succ_pc: usize) {
     let Some(i) = Reg::idx_to_reg(i_idx) else {
         return;
     };
@@ -88,21 +82,22 @@ fn apply_verified_fact(
             RegType::PtrToMapValue { map_idx: j_map, .. },
         ) = (i_type, j_type)
             && i_map == j_map
-                && let Some(j_po) = ivl.get_ptr_offset(j).copied() {
-                    let j_max_off = j_po.off + j_po.var_off as i64;
-                    let new_var_off_ub = (c + j_max_off - po.off).max(0) as u64;
-                    let reg = ivl.get_mut(i);
-                    if let Some(ref mut ptr_off) = reg.ptr_offset {
-                        let old_var_off = ptr_off.var_off;
-                        ptr_off.var_off = ptr_off.var_off.min(new_var_off_ub);
-                        info!(
-                            target: "pcc",
-                            "[PCC] pc={}: tightened {}.var_off from {} to {} \
-                             (same-map reg={}, cert bound={})",
-                            succ_pc, i.name(), old_var_off, ptr_off.var_off, j.name(), c,
-                        );
-                    }
-                }
+            && let Some(j_po) = ivl.get_ptr_offset(j).copied()
+        {
+            let j_max_off = j_po.off + j_po.var_off as i64;
+            let new_var_off_ub = (c + j_max_off - po.off).max(0) as u64;
+            let reg = ivl.get_mut(i);
+            if let Some(ref mut ptr_off) = reg.ptr_offset {
+                let old_var_off = ptr_off.var_off;
+                ptr_off.var_off = ptr_off.var_off.min(new_var_off_ub);
+                info!(
+                    target: "pcc",
+                    "[PCC] pc={}: tightened {}.var_off from {} to {} \
+                     (same-map reg={}, cert bound={})",
+                    succ_pc, i.name(), old_var_off, ptr_off.var_off, j.name(), c,
+                );
+            }
+        }
     }
 }
 

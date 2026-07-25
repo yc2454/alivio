@@ -207,7 +207,10 @@ impl BtfContext {
                                 elem_size.saturating_mul(m.offset)
                             })
                             .unwrap_or(0);
-                        GlobalFuncArg::PtrToMem { mem_size, nonnull: false }
+                        GlobalFuncArg::PtrToMem {
+                            mem_size,
+                            nonnull: false,
+                        }
                     }
                     // Pointer-to-pointer (e.g. `struct S **s`): kernel
                     // treats as ARG_PTR_TO_MEM with mem_size = sizeof(void*)
@@ -217,7 +220,10 @@ impl BtfContext {
                         mem_size: 8,
                         nonnull: false,
                     },
-                    _ => GlobalFuncArg::PtrToMem { mem_size: 0, nonnull: false },
+                    _ => GlobalFuncArg::PtrToMem {
+                        mem_size: 0,
+                        nonnull: false,
+                    },
                 }
             }
             _ => GlobalFuncArg::Scalar,
@@ -302,9 +308,11 @@ impl BtfContext {
     /// in BTF (deferred to whatever path produces the missing-func
     /// error elsewhere).
     pub fn validate_exception_cb_signature(&self, cb_name: &str) -> Result<(), String> {
-        let Some(func_ty) = self.types.values().find(|ty| {
-            ty.kind() == BTF_KIND_FUNC && self.get_string(ty.name_off) == Some(cb_name)
-        }) else {
+        let Some(func_ty) = self
+            .types
+            .values()
+            .find(|ty| ty.kind() == BTF_KIND_FUNC && self.get_string(ty.name_off) == Some(cb_name))
+        else {
             return Ok(());
         };
         let Some(proto) = self.types.get(&func_ty.size_or_type) else {
@@ -369,9 +377,7 @@ impl BtfContext {
                 Some(name) => StructOpsArg::TrustedPtr(name.to_string()),
                 None => StructOpsArg::OpaquePtr,
             },
-            BTF_KIND_INT | BTF_KIND_ENUM | BTF_KIND_ENUM64 | BTF_KIND_FLOAT => {
-                StructOpsArg::Scalar
-            }
+            BTF_KIND_INT | BTF_KIND_ENUM | BTF_KIND_ENUM64 | BTF_KIND_FLOAT => StructOpsArg::Scalar,
             _ => StructOpsArg::Scalar,
         }
     }

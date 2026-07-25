@@ -79,10 +79,7 @@ pub fn validate_certificate_for_program(cert: &ProgramCertificate, prog: &Progra
             // Last step output matches entry target
             let last = e.proof.last().unwrap();
             if last.output_left_reg() != e.left_reg || last.output_right_reg() != e.right_reg {
-                anyhow::bail!(
-                    "{} proof endpoints mismatch entry target",
-                    ctx
-                );
+                anyhow::bail!("{} proof endpoints mismatch entry target", ctx);
             }
 
             // Sum: total bound contributions == entry.bound
@@ -90,10 +87,7 @@ pub fn validate_certificate_for_program(cert: &ProgramCertificate, prog: &Progra
             for step in &e.proof {
                 sum = match sum.checked_add(step.bound_contribution()) {
                     Some(s) => s,
-                    None => anyhow::bail!(
-                        "{} proof weight sum overflows i64",
-                        ctx
-                    ),
+                    None => anyhow::bail!("{} proof weight sum overflows i64", ctx),
                 };
             }
         }
@@ -144,10 +138,7 @@ fn validate_proof_chain(
     for w in proof.windows(2) {
         match &w[1] {
             ProofStep::Fact { .. } => {
-                anyhow::bail!(
-                    "{} has Fact step after first position",
-                    ctx
-                );
+                anyhow::bail!("{} has Fact step after first position", ctx);
             }
             ProofStep::Transfer {
                 pre_left_reg,
@@ -157,18 +148,12 @@ fn validate_proof_chain(
                 if w[0].output_left_reg() != *pre_left_reg
                     || w[0].output_right_reg() != *pre_right_reg
                 {
-                    anyhow::bail!(
-                        "{} proof chain disconnected at Transfer",
-                        ctx
-                    );
+                    anyhow::bail!("{} proof chain disconnected at Transfer", ctx);
                 }
             }
             ProofStep::Derive { source_reg, .. } => {
                 if w[0].output_left_reg() != *source_reg {
-                    anyhow::bail!(
-                        "{} proof chain disconnected at Derive",
-                        ctx
-                    );
+                    anyhow::bail!("{} proof chain disconnected at Derive", ctx);
                 }
             }
             ProofStep::Compose { .. } => {
@@ -192,7 +177,10 @@ fn validate_proof_chain(
         if step_pc >= target_pc {
             anyhow::bail!(
                 "{} step #{} pc={} >= target pc={}",
-                ctx, sidx, step_pc, target_pc
+                ctx,
+                sidx,
+                step_pc,
+                target_pc
             );
         }
         if let Some(prev) = prev_pc {
@@ -200,15 +188,15 @@ fn validate_proof_chain(
                 // Derive before first Transfer: may reference earlier PCs
             } else if !seen_transfer {
                 if step_pc < prev {
-                    anyhow::bail!(
-                        "{} step #{} pc={} < guard pc={}",
-                        ctx, sidx, step_pc, prev
-                    );
+                    anyhow::bail!("{} step #{} pc={} < guard pc={}", ctx, sidx, step_pc, prev);
                 }
             } else if step_pc <= prev {
                 anyhow::bail!(
                     "{} step #{} pc={} not strictly increasing (prev={})",
-                    ctx, sidx, step_pc, prev
+                    ctx,
+                    sidx,
+                    step_pc,
+                    prev
                 );
             }
         }
@@ -224,10 +212,7 @@ fn validate_proof_chain(
             continue;
         }
         if step.pc() >= prog_len {
-            anyhow::bail!(
-                "{} step #{} pc={} out of bounds",
-                ctx, sidx, step.pc()
-            );
+            anyhow::bail!("{} step #{} pc={} out of bounds", ctx, sidx, step.pc());
         }
     }
 
@@ -243,15 +228,29 @@ fn validate_step_registers(
     ctx: &str,
 ) -> Result<()> {
     match step {
-        ProofStep::Fact { left_reg, right_reg, .. } => {
+        ProofStep::Fact {
+            left_reg,
+            right_reg,
+            ..
+        } => {
             validate_reg_idx(*left_reg, sidx, ctx)?;
             validate_reg_idx(*right_reg, sidx, ctx)?;
         }
-        ProofStep::Derive { source_reg, target_reg, .. } => {
+        ProofStep::Derive {
+            source_reg,
+            target_reg,
+            ..
+        } => {
             validate_reg_idx(*source_reg, sidx, ctx)?;
             validate_reg_idx(*target_reg, sidx, ctx)?;
         }
-        ProofStep::Transfer { pre_left_reg, pre_right_reg, post_left_reg, post_right_reg, .. } => {
+        ProofStep::Transfer {
+            pre_left_reg,
+            pre_right_reg,
+            post_left_reg,
+            post_right_reg,
+            ..
+        } => {
             validate_reg_idx(*pre_left_reg, sidx, ctx)?;
             validate_reg_idx(*pre_right_reg, sidx, ctx)?;
             validate_reg_idx(*post_left_reg, sidx, ctx)?;
@@ -316,10 +315,7 @@ fn validate_compose_step(
 
 fn validate_reg_idx(idx: usize, sidx: usize, ctx: &str) -> Result<()> {
     if Reg::idx_to_reg(idx).is_none() {
-        anyhow::bail!(
-            "{} step #{} has invalid register index {}",
-            ctx, sidx, idx
-        );
+        anyhow::bail!("{} step #{} has invalid register index {}", ctx, sidx, idx);
     }
     Ok(())
 }

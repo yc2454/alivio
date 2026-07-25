@@ -174,8 +174,7 @@ pub(crate) fn handle_shr(state: &mut State, width: Width, dst: Reg, src: &Operan
 
             let dst_expr = bcf.reg_expr(d, &dst_bounds_pre, alu32);
             let k_expr = bcf.add_val(shift_amount as u64, alu32);
-            let alu_result =
-                bcf.add_alu(crate::refinement::bcf::BPF_RSH, dst_expr, k_expr, bits);
+            let alu_result = bcf.add_alu(crate::refinement::bcf::BPF_RSH, dst_expr, k_expr, bits);
 
             let final_idx = if alu32 || op_u32 {
                 bcf.add_extend(false, 32, 64, alu_result)
@@ -229,9 +228,10 @@ pub(crate) fn handle_shr(state: &mut State, width: Width, dst: Reg, src: &Operan
             bcf.clear_reg(d);
         }
     } else if let Some(d) = dst.bcf_idx()
-        && let Some(bcf) = state.bcf.as_mut() {
-            bcf.clear_reg(d);
-        }
+        && let Some(bcf) = state.bcf.as_mut()
+    {
+        bcf.clear_reg(d);
+    }
 }
 
 /// Abstract-domain (interval + tnum) update for a left shift by a *known*
@@ -402,8 +402,7 @@ pub(crate) fn handle_shl(state: &mut State, width: Width, dst: Reg, src: &Operan
 
             let dst_expr = bcf.reg_expr(d, &dst_bounds_pre, alu32);
             let k_expr = bcf.add_val(shift_amount as u64, alu32);
-            let alu_result =
-                bcf.add_alu(crate::refinement::bcf::BPF_LSH, dst_expr, k_expr, bits);
+            let alu_result = bcf.add_alu(crate::refinement::bcf::BPF_LSH, dst_expr, k_expr, bits);
 
             let final_idx = if alu32 || op_u32 {
                 bcf.add_extend(false, 32, 64, alu_result)
@@ -463,9 +462,10 @@ pub(crate) fn handle_shl(state: &mut State, width: Width, dst: Reg, src: &Operan
             bcf.clear_reg(d);
         }
     } else if let Some(d) = dst.bcf_idx()
-        && let Some(bcf) = state.bcf.as_mut() {
-            bcf.clear_reg(d);
-        }
+        && let Some(bcf) = state.bcf.as_mut()
+    {
+        bcf.clear_reg(d);
+    }
 }
 
 pub(crate) fn handle_arsh(state: &mut State, width: Width, dst: Reg, src: &Operand) {
@@ -651,12 +651,7 @@ pub(crate) fn handle_arsh(state: &mut State, width: Width, dst: Reg, src: &Opera
 
             let dst_expr = bcf.reg_expr(d, &dst_bounds_pre_bcf, alu32);
             let k_expr = bcf.add_val(shift_amount as u64, alu32);
-            let alu_result = bcf.add_alu(
-                crate::refinement::bcf::BPF_ARSH,
-                dst_expr,
-                k_expr,
-                bits,
-            );
+            let alu_result = bcf.add_alu(crate::refinement::bcf::BPF_ARSH, dst_expr, k_expr, bits);
 
             let final_idx = if alu32 || op_u32 {
                 bcf.add_extend(false, 32, 64, alu_result)
@@ -692,12 +687,8 @@ pub(crate) fn handle_arsh(state: &mut State, width: Width, dst: Reg, src: &Opera
 
                 let dst_expr = bcf.reg_expr(d, &dst_bounds_pre_bcf, alu32);
                 let k_expr = bcf.add_val(shift_amount as u64, alu32);
-                let alu_result = bcf.add_alu(
-                    crate::refinement::bcf::BPF_ARSH,
-                    dst_expr,
-                    k_expr,
-                    bits,
-                );
+                let alu_result =
+                    bcf.add_alu(crate::refinement::bcf::BPF_ARSH, dst_expr, k_expr, bits);
                 let final_idx = if alu32 || op_u32 {
                     bcf.add_extend(false, 32, 64, alu_result)
                 } else if op_s32 {
@@ -712,9 +703,10 @@ pub(crate) fn handle_arsh(state: &mut State, width: Width, dst: Reg, src: &Opera
             bcf.clear_reg(d);
         }
     } else if let Some(d) = dst.bcf_idx()
-        && let Some(bcf) = state.bcf.as_mut() {
-            bcf.clear_reg(d);
-        }
+        && let Some(bcf) = state.bcf.as_mut()
+    {
+        bcf.clear_reg(d);
+    }
 }
 
 pub(crate) fn handle_rsh(state: &mut State, width: Width, dst: Reg, src: &Operand) {

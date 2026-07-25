@@ -66,9 +66,7 @@ pub(crate) fn transfer_kfunc(env: &mut VerifierEnv, state: State, btf_id: u32) -
         // "calling kernel function bpf_sock_destroy is not allowed".
         // Closes sock_destroy_prog_fail.c::trace_tcp_destroy_sock surfaced
         // by the new bpf_sock_destroy proto registration.
-        if n == "bpf_sock_destroy"
-            && !matches!(env.ctx.attach_flavor.as_deref(), Some("iter"))
-        {
+        if n == "bpf_sock_destroy" && !matches!(env.ctx.attach_flavor.as_deref(), Some("iter")) {
             env.fail(VerificationError::KfuncNotAllowedForProgram {
                 pc,
                 btf_id,
@@ -130,10 +128,7 @@ fn transfer_kfunc_proto(
             || proto.flags.contains(CallFlags::RCU_READ_UNLOCK))
     {
         env.fail(
-            crate::analysis::machine::error::VerificationError::InvalidArgType {
-                pc,
-                reg: Reg::R0,
-            },
+            crate::analysis::machine::error::VerificationError::InvalidArgType { pc, reg: Reg::R0 },
         );
         return vec![];
     }
@@ -190,16 +185,21 @@ fn transfer_kfunc_proto(
                 | Some("bpf_rbtree_add_impl")
         );
         if is_graph_add
-            && let RegType::PtrToMapValue { offset: Some(head_off), map_idx, .. } =
-                in_types.get(Reg::R1)
-            && let RegType::PtrToOwnedKptr { offset: node_off, pointee_btf_id, .. } =
-                in_types.get(Reg::R2)
+            && let RegType::PtrToMapValue {
+                offset: Some(head_off),
+                map_idx,
+                ..
+            } = in_types.get(Reg::R1)
+            && let RegType::PtrToOwnedKptr {
+                offset: node_off,
+                pointee_btf_id,
+                ..
+            } = in_types.get(Reg::R2)
             && let Some(map_def) = env.ctx.map_defs.get(map_idx)
             && let Some(val_type_id) = map_def.btf_val_type_id
         {
             let fields = env.ctx.btf.find_special_fields(val_type_id);
-            if let Some(field) =
-                fields.iter().find(|f| f.offset as i64 == head_off)
+            if let Some(field) = fields.iter().find(|f| f.offset as i64 == head_off)
                 && let Some(contains) = field.contains.as_ref()
             {
                 let off_mismatch = match contains.node_offset {
@@ -291,18 +291,21 @@ fn transfer_kfunc_proto(
         let kfunc_name = env.ctx.btf.kfunc_name(btf_id);
         if kfunc_name == Some("bpf_wq_init") {
             if let (
-                RegType::PtrToMapValue { map_idx: wq_map, .. },
+                RegType::PtrToMapValue {
+                    map_idx: wq_map, ..
+                },
                 RegType::PtrToMapObject { map_idx: ptr_map },
             ) = (in_types.get(Reg::R1), in_types.get(Reg::R2))
-                && wq_map != ptr_map {
-                    env.fail(
-                        crate::analysis::machine::error::VerificationError::InvalidArgType {
-                            pc,
-                            reg: Reg::R2,
-                        },
-                    );
-                    return vec![];
-                }
+                && wq_map != ptr_map
+            {
+                env.fail(
+                    crate::analysis::machine::error::VerificationError::InvalidArgType {
+                        pc,
+                        reg: Reg::R2,
+                    },
+                );
+                return vec![];
+            }
         } else if kfunc_name == Some("bpf_wq_set_callback_impl") {
             return transfer_kfunc_wq_set_callback(env, &in_types, state, btf_id, proto);
         }
@@ -319,7 +322,10 @@ fn transfer_kfunc_proto(
     // Forking kfuncs (iter_next): handle the two successors inline so
     // each can carry its own R0 typing and slot-state transition.
     match proto.ret {
-        RetKind::IterNextElem { iter_arg, elem_size } => {
+        RetKind::IterNextElem {
+            iter_arg,
+            elem_size,
+        } => {
             return iter_next_fork(env, state, iter_arg, IterNextElemKind::AllocMem(elem_size));
         }
         RetKind::IterNextBtfId {
@@ -372,8 +378,7 @@ fn transfer_kfunc_proto(
             matches!(
                 e,
                 SideEffect::IrqSaveOnArg {
-                    kfunc_class:
-                        crate::analysis::machine::stack_state::IrqKfuncClass::Lock,
+                    kfunc_class: crate::analysis::machine::stack_state::IrqKfuncClass::Lock,
                     ..
                 }
             )
@@ -501,11 +506,13 @@ fn validate_kfunc_allowlists(
     if let Some(allowed) = proto.prog_type_allowlist
         && !allowed.contains(&env.ctx.prog_kind)
     {
-        env.fail(crate::analysis::machine::error::VerificationError::KfuncNotAllowedForProgram {
-            pc,
-            btf_id,
-            kind: env.ctx.prog_kind,
-        });
+        env.fail(
+            crate::analysis::machine::error::VerificationError::KfuncNotAllowedForProgram {
+                pc,
+                btf_id,
+                kind: env.ctx.prog_kind,
+            },
+        );
         return false;
     }
 
@@ -551,7 +558,9 @@ fn handle_kfunc_release(
     if !proto.flags.contains(super::signatures::CallFlags::RELEASE) {
         return true;
     }
-    let is_non_own = proto.flags.contains(super::signatures::CallFlags::RELEASE_NON_OWN);
+    let is_non_own = proto
+        .flags
+        .contains(super::signatures::CallFlags::RELEASE_NON_OWN);
     for eff in proto.side_effects {
         if let super::signatures::SideEffect::ReleaseRefFromArg { arg } = *eff {
             let reg = arg_regs[arg as usize];
@@ -673,9 +682,7 @@ fn apply_kfunc_name_specific_ret(
                 RegType::PtrToOwnedKptr { pointee_btf_id, .. } => (pointee_btf_id, None),
                 _ => (None, None),
             },
-            "bpf_list_pop_front"
-            | "bpf_list_pop_back"
-            | "bpf_rbtree_first"
+            "bpf_list_pop_front" | "bpf_list_pop_back" | "bpf_rbtree_first"
             | "bpf_rbtree_remove" => {
                 if let RegType::PtrToMapValue {
                     offset: Some(head_off),
@@ -690,8 +697,8 @@ fn apply_kfunc_name_specific_ret(
                         .iter()
                         .find(|f| f.offset as i64 == head_off)
                         .and_then(|f| f.contains.as_ref());
-                    let pointee = contains
-                        .and_then(|c| env.ctx.btf.find_struct_by_name(&c.struct_name));
+                    let pointee =
+                        contains.and_then(|c| env.ctx.btf.find_struct_by_name(&c.struct_name));
                     let node_off = contains
                         .and_then(|c| c.node_offset)
                         .and_then(|n| i32::try_from(n).ok());
@@ -704,7 +711,12 @@ fn apply_kfunc_name_specific_ret(
         };
         if let Some(new_btf_id) = pointee {
             match state.types.get(Reg::R0) {
-                RegType::PtrToOwnedKptr { ref_id, offset, non_owning, .. } => {
+                RegType::PtrToOwnedKptr {
+                    ref_id,
+                    offset,
+                    non_owning,
+                    ..
+                } => {
                     state.types.set(
                         Reg::R0,
                         RegType::PtrToOwnedKptr {
@@ -794,8 +806,8 @@ fn apply_kfunc_name_specific_ret(
     if let Some(kfunc_name) = env.ctx.btf.kfunc_name(btf_id)
         && kfunc_name == "bpf_cast_to_kern_ctx"
     {
-        use crate::ast::ProgramKind;
         use crate::analysis::machine::reg_types::PtrFlags;
+        use crate::ast::ProgramKind;
         let kern_name: Option<&'static str> = match env.ctx.prog_kind {
             ProgramKind::Xdp => Some("xdp_buff"),
             ProgramKind::SchedCls
@@ -819,8 +831,7 @@ fn apply_kfunc_name_specific_ret(
         };
         match kern_name {
             Some(name) => {
-                let interned =
-                    crate::analysis::machine::context::intern_btf_type_name_strict(name);
+                let interned = crate::analysis::machine::context::intern_btf_type_name_strict(name);
                 state.types.set(
                     Reg::R0,
                     RegType::PtrToBtfId {
@@ -848,8 +859,7 @@ fn apply_kfunc_name_specific_ret(
         if let Some(target_id) = r2_id
             && let Some(name) = env.ctx.btf.struct_name(target_id)
         {
-            let interned =
-                crate::analysis::machine::context::intern_btf_type_name_strict(name);
+            let interned = crate::analysis::machine::context::intern_btf_type_name_strict(name);
             state.types.set(
                 Reg::R0,
                 RegType::PtrToBtfId {
@@ -915,10 +925,7 @@ fn iter_next_fork(
         state.stack_at(frame).stack_get_iterator(base_off),
         Some(slot) if slot.untrusted
     ) {
-        env.fail(crate::analysis::machine::error::VerificationError::InvalidArgType {
-            pc,
-            reg,
-        });
+        env.fail(crate::analysis::machine::error::VerificationError::InvalidArgType { pc, reg });
         return vec![];
     }
 
@@ -1036,25 +1043,21 @@ fn iter_next_fork(
         .explored_states
         .get(&pc)
         .and_then(|prev_states| {
-            let mut iter = prev_states
-                .iter()
-                .rev()
-                .filter(|s| s.pc == pc)
-                .filter(|s| {
-                    s.stack_at(frame)
-                        .stack_get_iterator(base_off)
-                        .map(|slot| {
-                            // `cur_iter_depth` is `nonnull`'s post-bump
-                            // depth (state.depth + 1). Cached prev states
-                            // hold the PRE-call depth (= state.depth at
-                            // their iter). Consecutive iter step means
-                            // prev.slot.depth + 2 == cur_iter_depth (i.e.
-                            // prev was state.depth - 1 the iter before).
-                            Some(slot.id) == cur_iter_id
-                                && cur_iter_depth.is_some_and(|d| slot.depth + 2 == d)
-                        })
-                        .unwrap_or(false)
-                });
+            let mut iter = prev_states.iter().rev().filter(|s| s.pc == pc).filter(|s| {
+                s.stack_at(frame)
+                    .stack_get_iterator(base_off)
+                    .map(|slot| {
+                        // `cur_iter_depth` is `nonnull`'s post-bump
+                        // depth (state.depth + 1). Cached prev states
+                        // hold the PRE-call depth (= state.depth at
+                        // their iter). Consecutive iter step means
+                        // prev.slot.depth + 2 == cur_iter_depth (i.e.
+                        // prev was state.depth - 1 the iter before).
+                        Some(slot.id) == cur_iter_id
+                            && cur_iter_depth.is_some_and(|d| slot.depth + 2 == d)
+                    })
+                    .unwrap_or(false)
+            });
             iter.next()
         })
         .cloned();
@@ -1169,8 +1172,7 @@ fn widen_imprecise_scalars_impl(
         };
         let pc_precise = !at_iter_next_call
             && aliased_regs.iter().any(|&ar| {
-                env.precise_pcs.contains(&(prev.pc, ar))
-                    || env.precise_pcs.contains(&(cur.pc, ar))
+                env.precise_pcs.contains(&(prev.pc, ar)) || env.precise_pcs.contains(&(cur.pc, ar))
             });
         if !force_widen && (cur.precise_regs.contains(&r) || prev_block || pc_precise) {
             continue;
@@ -1224,9 +1226,7 @@ fn widen_imprecise_scalars_impl(
         for off in prev_stack_offsets {
             let prev_ty = prev.frames.get(level).stack.get_slot_type(off);
             let cur_ty = cur.frames.get(level).stack.get_slot_type(off);
-            if !matches!(prev_ty, RegType::ScalarValue)
-                || !matches!(cur_ty, RegType::ScalarValue)
-            {
+            if !matches!(prev_ty, RegType::ScalarValue) || !matches!(cur_ty, RegType::ScalarValue) {
                 continue;
             }
             let prev_slot = prev.frames.get(level).stack.get_slot(off);
@@ -1237,10 +1237,12 @@ fn widen_imprecise_scalars_impl(
             };
             let cur_precise = cur_slot.map(|s| s.precise).unwrap_or(false);
             let prev_precise = prev_slot.map(|s| s.precise).unwrap_or(false);
-            if differs && (force_widen || (!cur_precise && !prev_precise))
-                && let Some(p) = prev_slot {
-                    to_widen.push((off, p.clone()));
-                }
+            if differs
+                && (force_widen || (!cur_precise && !prev_precise))
+                && let Some(p) = prev_slot
+            {
+                to_widen.push((off, p.clone()));
+            }
         }
         let cur_stack = &mut cur.frames.get_mut(level).stack;
         for (off, prev_slot) in to_widen {
@@ -1297,20 +1299,22 @@ fn pointer_arg_meets_trust(actual: &RegType, band: TrustBand) -> bool {
         RegType::PtrToTask { ref_id: Some(_) }
             | RegType::PtrToCgroup { ref_id: Some(_) }
             | RegType::PtrToCpumask { ref_id: Some(_) }
-            | RegType::PtrToOwnedKptr { ref_id: Some(_), .. }
-            | RegType::PtrToArena { ref_id: Some(_), .. }
+            | RegType::PtrToOwnedKptr {
+                ref_id: Some(_),
+                ..
+            }
+            | RegType::PtrToArena {
+                ref_id: Some(_),
+                ..
+            }
             | RegType::PtrToSocket { ref_id: Some(_) }
             | RegType::PtrToSockCommon { ref_id: Some(_) }
             | RegType::PtrToTcpSock { id: Some(_) }
     );
 
     match band {
-        TrustBand::Trusted => {
-            (has_trusted && !has_untrusted) || is_acquire_tracked
-        }
-        TrustBand::Rcu => {
-            (has_trusted || has_rcu) && !has_untrusted || is_acquire_tracked
-        }
+        TrustBand::Trusted => (has_trusted && !has_untrusted) || is_acquire_tracked,
+        TrustBand::Rcu => (has_trusted || has_rcu) && !has_untrusted || is_acquire_tracked,
     }
 }
 
@@ -1331,9 +1335,7 @@ fn throw(env: &mut VerifierEnv, state: State) -> Vec<State> {
     // `__exception_cb` pass in `analyze_exception_cb` is allowed to throw
     // — its frames don't carry `is_callback`.) Mirrors the kernel
     // rejection "cannot be called from callback subprog".
-    if !env.analyzing_exception_cb
-        && state.frames.iter().any(|f| f.is_callback())
-    {
+    if !env.analyzing_exception_cb && state.frames.iter().any(|f| f.is_callback()) {
         env.fail(VerificationError::ExceptionCallbackInvalid {
             reason: "cannot be called from callback subprog".to_string(),
         });

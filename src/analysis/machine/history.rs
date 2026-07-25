@@ -1,5 +1,5 @@
-use crate::ast::Instr;
 use crate::analysis::machine::reg::Reg;
+use crate::ast::Instr;
 
 /// A lightweight record of a single step in the execution path.
 pub struct Breadcrumb {

@@ -190,9 +190,7 @@ pub fn analyze_subprograms(instrs: &[Instr]) -> BTreeMap<usize, SubprogInfo> {
 fn kfunc_name_might_sleep(name: &str) -> bool {
     matches!(
         name,
-        "bpf_copy_from_user_str"
-            | "bpf_copy_from_user_task"
-            | "bpf_copy_from_user_task_str"
+        "bpf_copy_from_user_str" | "bpf_copy_from_user_task" | "bpf_copy_from_user_task_str"
     )
 }
 
@@ -211,7 +209,9 @@ pub fn compute_may_sleep_subprogs(
     subprogs: &BTreeMap<usize, SubprogInfo>,
     btf: &crate::parsing::btf::BtfContext,
 ) -> HashSet<usize> {
-    use crate::analysis::transfer::call::signatures::{CallFlags, get_helper_proto, get_kfunc_proto};
+    use crate::analysis::transfer::call::signatures::{
+        CallFlags, get_helper_proto, get_kfunc_proto,
+    };
     use crate::ast::MapLoadKind;
 
     // Direct may-sleep + outgoing CallRel/PseudoFunc edges per subprog.
@@ -222,21 +222,26 @@ pub fn compute_may_sleep_subprogs(
         let mut callees = BTreeSet::new();
         for insn in &instrs[start_pc..info.end_pc] {
             match insn {
-                Instr::Call { kind: CallKind::Helper { id }, .. } => {
+                Instr::Call {
+                    kind: CallKind::Helper { id },
+                    ..
+                } => {
                     if let Some(proto) = get_helper_proto(*id)
                         && proto.flags.contains(CallFlags::MIGHT_SLEEP)
                     {
                         direct.insert(start_pc);
                     }
                 }
-                Instr::Call { kind: CallKind::Kfunc { btf_id, .. }, .. } => {
+                Instr::Call {
+                    kind: CallKind::Kfunc { btf_id, .. },
+                    ..
+                } => {
                     let name = btf.kfunc_name(*btf_id);
                     let proto_might_sleep = name
                         .and_then(get_kfunc_proto)
                         .map(|p| p.flags.contains(CallFlags::MIGHT_SLEEP))
                         .unwrap_or(false);
-                    let name_might_sleep =
-                        name.map(kfunc_name_might_sleep).unwrap_or(false);
+                    let name_might_sleep = name.map(kfunc_name_might_sleep).unwrap_or(false);
                     if proto_might_sleep || name_might_sleep {
                         direct.insert(start_pc);
                     }
@@ -301,20 +306,18 @@ fn compute_max_stack_depth(instrs: &[Instr]) -> u16 {
     let mut alias: [Option<i64>; Reg::ALL.len()] = [None; { Reg::ALL.len() }];
     alias[Reg::R10.idx()] = Some(0);
 
-    let track_access = |alias: &[Option<i64>; Reg::ALL.len()],
-                        base: Reg,
-                        off: i16,
-                        max_depth: &mut u16| {
-        if let Some(base_off) = alias[base.idx()] {
-            let total = base_off + off as i64;
-            if total < 0 {
-                let depth = (-total) as u64;
-                if depth <= u16::MAX as u64 {
-                    *max_depth = (*max_depth).max(depth as u16);
+    let track_access =
+        |alias: &[Option<i64>; Reg::ALL.len()], base: Reg, off: i16, max_depth: &mut u16| {
+            if let Some(base_off) = alias[base.idx()] {
+                let total = base_off + off as i64;
+                if total < 0 {
+                    let depth = (-total) as u64;
+                    if depth <= u16::MAX as u64 {
+                        *max_depth = (*max_depth).max(depth as u16);
+                    }
                 }
             }
-        }
-    };
+        };
 
     for insn in instrs {
         match insn {
@@ -347,7 +350,12 @@ fn compute_max_stack_depth(instrs: &[Instr]) -> u16 {
             // Alias propagation: only on 64-bit ALU (32-bit truncates the
             // pointer half; the kernel rejects stack accesses through
             // 32-bit-truncated pointers anyway).
-            Instr::Alu { width, op, dst, src } => {
+            Instr::Alu {
+                width,
+                op,
+                dst,
+                src,
+            } => {
                 if *dst == Reg::R10 {
                     // Defensive: R10 is never written; preserve its 0 alias.
                     continue;
@@ -520,8 +528,7 @@ pub fn check_stack_overflow(
         return Ok(());
     }
 
-    let private_stack =
-        private_stack_enabled && private_stack_eligible(prog_kind, &prog.instrs);
+    let private_stack = private_stack_enabled && private_stack_eligible(prog_kind, &prog.instrs);
 
     check_call_chain(
         prog,
@@ -575,8 +582,7 @@ pub fn check_stack_overflow(
 /// such a load clears the alias.
 fn collect_async_cb_roots(instrs: &[Instr]) -> BTreeSet<usize> {
     let mut roots = BTreeSet::new();
-    let mut pseudofunc_alias: [Option<usize>; Reg::ALL.len()] =
-        [None; { Reg::ALL.len() }];
+    let mut pseudofunc_alias: [Option<usize>; Reg::ALL.len()] = [None; { Reg::ALL.len() }];
 
     let clear_dst = |alias: &mut [Option<usize>; Reg::ALL.len()], dst: Reg| {
         alias[dst.idx()] = None;

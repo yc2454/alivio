@@ -557,8 +557,8 @@ pub fn create_spin_lock_btf() -> BtfContext {
         4,
         BtfType {
             id: 4,
-            name_off: 25,        // "bpf_timer"
-            info: 4 << 24,       // BTF_KIND_STRUCT, vlen=0
+            name_off: 25,  // "bpf_timer"
+            info: 4 << 24, // BTF_KIND_STRUCT, vlen=0
             size_or_type: 16,
             members: vec![],
         },
@@ -574,9 +574,9 @@ pub fn create_spin_lock_btf() -> BtfContext {
             info: (4 << 24) | 1, // BTF_KIND_STRUCT, 1 member
             size_or_type: 16,
             members: vec![BtfMember {
-                name_off: 41,    // "t"
-                type_id: 4,      // struct bpf_timer
-                offset: 0,       // bit offset 0 → byte 0
+                name_off: 41, // "t"
+                type_id: 4,   // struct bpf_timer
+                offset: 0,    // bit offset 0 → byte 0
             }],
         },
     );
@@ -588,8 +588,8 @@ pub fn create_spin_lock_btf() -> BtfContext {
         6,
         BtfType {
             id: 6,
-            name_off: 43,        // "bpf_list_head"
-            info: 4 << 24,       // BTF_KIND_STRUCT, vlen=0
+            name_off: 43,  // "bpf_list_head"
+            info: 4 << 24, // BTF_KIND_STRUCT, vlen=0
             size_or_type: 16,
             members: vec![],
         },
@@ -600,8 +600,8 @@ pub fn create_spin_lock_btf() -> BtfContext {
         7,
         BtfType {
             id: 7,
-            name_off: 57,        // "bpf_rb_root"
-            info: 4 << 24,       // BTF_KIND_STRUCT, vlen=0
+            name_off: 57,  // "bpf_rb_root"
+            info: 4 << 24, // BTF_KIND_STRUCT, vlen=0
             size_or_type: 16,
             members: vec![],
         },
@@ -621,19 +621,19 @@ pub fn create_spin_lock_btf() -> BtfContext {
             size_or_type: 40,
             members: vec![
                 BtfMember {
-                    name_off: 79,     // "lk"
-                    type_id: 2,       // struct bpf_spin_lock
-                    offset: 0,        // byte 0
+                    name_off: 79, // "lk"
+                    type_id: 2,   // struct bpf_spin_lock
+                    offset: 0,    // byte 0
                 },
                 BtfMember {
-                    name_off: 82,     // "lh"
-                    type_id: 6,       // struct bpf_list_head
-                    offset: 8 * 8,    // byte 8
+                    name_off: 82,  // "lh"
+                    type_id: 6,    // struct bpf_list_head
+                    offset: 8 * 8, // byte 8
                 },
                 BtfMember {
-                    name_off: 85,     // "rt"
-                    type_id: 7,       // struct bpf_rb_root
-                    offset: 24 * 8,   // byte 24
+                    name_off: 85,   // "rt"
+                    type_id: 7,     // struct bpf_rb_root
+                    offset: 24 * 8, // byte 24
                 },
             ],
         },
@@ -728,7 +728,7 @@ pub(crate) fn build_exec_context(
                             kind: RelocKind::MapPtr,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 }

@@ -19,7 +19,7 @@ use crate::common::constants;
 use crate::refinement::bcf::BPF_JSGT;
 use crate::refinement::smtlib;
 use crate::refinement::solver;
-use crate::refinement::symbolic::{build_goal_root, SymbolicState};
+use crate::refinement::symbolic::{SymbolicState, build_goal_root};
 use log::{debug, warn};
 
 /// Attempt to discharge a stack-OOB rejection via cvc5. Returns the BCF
@@ -117,7 +117,11 @@ pub fn try_refine_stack_oob(
     let oob = if min_off < lower_bound {
         let low_thresh = lower_bound - total_off;
         let low_thresh_expr = sym.add_val(low_thresh as u64, bit32);
-        let low_pred = sym.add_pred(crate::refinement::bcf::BPF_JSLT, off_expr_use, low_thresh_expr);
+        let low_pred = sym.add_pred(
+            crate::refinement::bcf::BPF_JSLT,
+            off_expr_use,
+            low_thresh_expr,
+        );
         sym.add_disj(vec![low_pred, high_pred])
     } else {
         high_pred
@@ -137,9 +141,16 @@ pub fn try_refine_stack_oob(
     }
     match solver::solve(&smt) {
         Ok(bytes) => {
-            debug!("[bcf] stack-OOB refinement: cvc5 accepted ({} bytes)", bytes.len());
+            debug!(
+                "[bcf] stack-OOB refinement: cvc5 accepted ({} bytes)",
+                bytes.len()
+            );
             let goal_root = build_goal_root(&mut sym, oob);
-            Some(RefineOk { proof_bytes: bytes, goal_root, sym })
+            Some(RefineOk {
+                proof_bytes: bytes,
+                goal_root,
+                sym,
+            })
         }
         Err(e) => {
             debug!("[bcf] stack-OOB refinement: cvc5 declined ({})", e);

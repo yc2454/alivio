@@ -43,9 +43,7 @@ pub(crate) fn is_struct_ops_arg_maybe_null(ops_struct: &str, member: &str, arg_i
 ///
 /// Source: vendor/linux/tools/testing/selftests/bpf/test_kmods/bpf_testmod.c
 /// `st_ops3_check_member`.
-const STRUCT_OPS_PRIV_STACK_REQUESTED: &[(&str, &str)] = &[
-    ("bpf_testmod_ops3", "test_1"),
-];
+const STRUCT_OPS_PRIV_STACK_REQUESTED: &[(&str, &str)] = &[("bpf_testmod_ops3", "test_1")];
 
 pub(crate) fn struct_ops_member_priv_stack_requested(ops_struct: &str, member: &str) -> bool {
     STRUCT_OPS_PRIV_STACK_REQUESTED
@@ -54,7 +52,7 @@ pub(crate) fn struct_ops_member_priv_stack_requested(ops_struct: &str, member: &
 }
 
 const STRUCT_OPS_REFCOUNTED_ARGS: &[(&str, &str, u8)] = &[
-    ("bpf_testmod_ops", "test_refcounted", 1),     // task__ref
+    ("bpf_testmod_ops", "test_refcounted", 1),      // task__ref
     ("bpf_testmod_ops", "test_return_ref_kptr", 1), // task__ref
 ];
 
@@ -97,9 +95,7 @@ pub(crate) fn is_unsupported_struct_ops_member(ops_struct: &str, member: &str) -
 /// `bpf_dummy_ops`: only `test_sleepable` is sleepable-allowed (see
 /// `dummy_st_ops_fail.c::test_unsupported_field_sleepable` which
 /// attaches `.s/test_2` and is `__failure`-asserted).
-const STRUCT_OPS_SLEEPABLE_MEMBERS: &[(&str, &str)] = &[
-    ("bpf_dummy_ops", "test_sleepable"),
-];
+const STRUCT_OPS_SLEEPABLE_MEMBERS: &[(&str, &str)] = &[("bpf_dummy_ops", "test_sleepable")];
 
 pub(crate) fn is_sleepable_allowed_struct_ops_member(ops_struct: &str, member: &str) -> bool {
     STRUCT_OPS_SLEEPABLE_MEMBERS
@@ -192,19 +188,39 @@ pub(crate) fn lsm_hook_is_disabled(hook: &str) -> bool {
 /// site, since clang emits one slot per user-declared kernel arg.
 const ATTACH_TARGET_ARG_TAGS: &[(&str, u8, crate::analysis::machine::reg_types::PtrFlags)] = &[
     // bpf_testmod_test_btf_type_tag_user_N(struct ... __user *arg)
-    ("bpf_testmod_test_btf_type_tag_user_1", 0,
-        crate::analysis::machine::reg_types::PtrFlags::USER),
-    ("bpf_testmod_test_btf_type_tag_user_2", 0,
-        crate::analysis::machine::reg_types::PtrFlags::USER),
+    (
+        "bpf_testmod_test_btf_type_tag_user_1",
+        0,
+        crate::analysis::machine::reg_types::PtrFlags::USER,
+    ),
+    (
+        "bpf_testmod_test_btf_type_tag_user_2",
+        0,
+        crate::analysis::machine::reg_types::PtrFlags::USER,
+    ),
     // bpf_testmod_test_btf_type_tag_percpu_N(struct ... __percpu *arg)
-    ("bpf_testmod_test_btf_type_tag_percpu_1", 0,
-        crate::analysis::machine::reg_types::PtrFlags::PERCPU),
-    ("bpf_testmod_test_btf_type_tag_percpu_2", 0,
-        crate::analysis::machine::reg_types::PtrFlags::PERCPU),
+    (
+        "bpf_testmod_test_btf_type_tag_percpu_1",
+        0,
+        crate::analysis::machine::reg_types::PtrFlags::PERCPU,
+    ),
+    (
+        "bpf_testmod_test_btf_type_tag_percpu_2",
+        0,
+        crate::analysis::machine::reg_types::PtrFlags::PERCPU,
+    ),
     // __sys_getsockname(int fd, struct sockaddr __user *usockaddr,
     //                   int __user *usockaddr_len)
-    ("__sys_getsockname", 1, crate::analysis::machine::reg_types::PtrFlags::USER),
-    ("__sys_getsockname", 2, crate::analysis::machine::reg_types::PtrFlags::USER),
+    (
+        "__sys_getsockname",
+        1,
+        crate::analysis::machine::reg_types::PtrFlags::USER,
+    ),
+    (
+        "__sys_getsockname",
+        2,
+        crate::analysis::machine::reg_types::PtrFlags::USER,
+    ),
 ];
 
 pub fn tracing_attach_arg_tag_flags(
@@ -291,7 +307,6 @@ const ATTACH_TARGET_ARG_KINDS: &[(&str, u8, TracingArgKind)] = &[
     ("bpf_fentry_test6", 6, TracingArgKind::Scalar),
     ("bpf_testmod_fentry_test7", 7, TracingArgKind::Scalar),
     ("bpf_testmod_fentry_test11", 11, TracingArgKind::Scalar),
-
     // testmod many-args targets:
     // bpf_testmod_fentry_test7(__u64 a, void *b, short c, int d, void *e, char f, int g)
     ("bpf_testmod_fentry_test7", 0, TracingArgKind::Scalar),
@@ -310,7 +325,6 @@ const ATTACH_TARGET_ARG_KINDS: &[(&str, u8, TracingArgKind)] = &[
     ("bpf_testmod_fentry_test11", 7, TracingArgKind::Scalar),
     ("bpf_testmod_fentry_test11", 8, TracingArgKind::Scalar),
     ("bpf_testmod_fentry_test11", 9, TracingArgKind::Scalar),
-
     // fmod_ret/update_socket_protocol(int family, int type, int protocol)
     // — all three int args are scalar. Lax-fallback over-typing makes
     // `R7 << 32` (sign-extending the loaded `type`) look like ptr-arith.
@@ -318,7 +332,6 @@ const ATTACH_TARGET_ARG_KINDS: &[(&str, u8, TracingArgKind)] = &[
     ("update_socket_protocol", 0, TracingArgKind::Scalar),
     ("update_socket_protocol", 1, TracingArgKind::Scalar),
     ("update_socket_protocol", 2, TracingArgKind::Scalar),
-
     // LSM hook attach targets — trailing scalar args. The `entry_args`
     // table in `derive_program_kind`'s LSM dispatch only declares the
     // BTF-typed pointer prefix; trailing slots fall through to the lax
@@ -379,7 +392,10 @@ pub(crate) fn lsm_int_hook_trailing_args(
         "file_mprotect" => vec![
             EntryArg::Scalar,
             EntryArg::Scalar,
-            EntryArg::BoundedScalar { lo: -MAX_ERRNO, hi: 0 },
+            EntryArg::BoundedScalar {
+                lo: -MAX_ERRNO,
+                hi: 0,
+            },
         ],
         _ => Vec::new(),
     }
@@ -427,19 +443,19 @@ pub(crate) fn is_noreturn_kernel_fn(name: &str) -> bool {
     )
 }
 
-
 pub(crate) fn license_is_gpl_compatible(s: &str) -> bool {
     matches!(
         s,
-        "GPL" | "GPL v2" | "GPL and additional rights" | "Dual BSD/GPL"
-            | "Dual MIT/GPL" | "Dual MPL/GPL"
+        "GPL"
+            | "GPL v2"
+            | "GPL and additional rights"
+            | "Dual BSD/GPL"
+            | "Dual MIT/GPL"
+            | "Dual MPL/GPL"
     )
 }
 
 /// struct_ops types the kernel registers as `BPF_PROG_GPL_ONLY`. Loading
 /// a non-GPL-compatible BPF program against any of these is rejected by
 /// the struct_ops registration path at attach time.
-pub(crate) const GPL_ONLY_STRUCT_OPS: &[&str] = &[
-    "tcp_congestion_ops",
-];
-
+pub(crate) const GPL_ONLY_STRUCT_OPS: &[&str] = &["tcp_congestion_ops"];

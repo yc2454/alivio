@@ -615,7 +615,9 @@ impl VerificationError {
                 )
             }
             VerificationError::UnreleasedReference => "Unreleased reference in program".to_string(),
-            VerificationError::UnreleasedIterator => "Unreleased open-coded iterator in program".to_string(),
+            VerificationError::UnreleasedIterator => {
+                "Unreleased open-coded iterator in program".to_string()
+            }
             VerificationError::UnreleasedDynptr => "Unreleased dynptr in program".to_string(),
             VerificationError::DynptrOverwrite { pc, off } => format!(
                 "Cannot overwrite referenced dynptr at pc {} (stack off {})",
@@ -648,10 +650,9 @@ impl VerificationError {
                 "store to referenced kptr disallowed at pc {} (off {})",
                 pc, off
             ),
-            VerificationError::UptrStoreDisallowed { pc, off } => format!(
-                "store to uptr disallowed at pc {} (off {})",
-                pc, off
-            ),
+            VerificationError::UptrStoreDisallowed { pc, off } => {
+                format!("store to uptr disallowed at pc {} (off {})", pc, off)
+            }
             VerificationError::UnreleasedLock => "Unreleased lock in program".to_string(),
             VerificationError::InvalidBtfType => "Invalid BTF type".to_string(),
             VerificationError::LockAlreadyHeld { pc } => {
@@ -723,7 +724,11 @@ impl VerificationError {
                     helper, kind, pc
                 )
             }
-            VerificationError::MapProgIncompat { map_name, field, kind } => {
+            VerificationError::MapProgIncompat {
+                map_name,
+                field,
+                kind,
+            } => {
                 format!(
                     "tracing/socket-filter prog {:?} cannot use map '{}' with {} field",
                     kind, map_name, field
@@ -750,7 +755,10 @@ impl VerificationError {
                     member, ops_struct
                 )
             }
-            VerificationError::StructOpsRequiresGpl { ops_struct, license } => {
+            VerificationError::StructOpsRequiresGpl {
+                ops_struct,
+                license,
+            } => {
                 format!(
                     "struct_ops {} requires GPL-compatible license, got '{}'",
                     ops_struct, license
@@ -762,7 +770,11 @@ impl VerificationError {
             VerificationError::GlobalFuncMalformed { pc, func, reason } => {
                 format!("global function '{}' at pc {} {}", func, pc, reason)
             }
-            VerificationError::GlobalFuncBadCallerArg { pc, func, arg_index } => {
+            VerificationError::GlobalFuncBadCallerArg {
+                pc,
+                func,
+                arg_index,
+            } => {
                 format!(
                     "Caller passes invalid args into func '{}' (arg #{}) at pc {}",
                     func,

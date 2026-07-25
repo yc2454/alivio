@@ -79,11 +79,7 @@ pub fn resolve_type_conflicts(env: &VerifierEnv, state: &mut State) {
 /// `mark_all_scalars_imprecise` at checkpoint, verifier.c v6.15
 /// L4543). Precision is then re-established on demand via
 /// `propagate_precision` walking the per-path parent-cache-id chain.
-pub fn record_state(
-    env: &mut VerifierEnv,
-    mut state: State,
-    max_states_per_pc: usize,
-) -> u32 {
+pub fn record_state(env: &mut VerifierEnv, mut state: State, max_states_per_pc: usize) -> u32 {
     let pc = state.pc;
 
     let cache_id = env.next_cache_id;
@@ -139,18 +135,31 @@ pub fn record_state(
         let r8p = state.precise_regs.contains(&Reg::R8);
         eprintln!(
             "[cache] pc={} idx={} cid={} parent={:?} r0={:?} r1={:?}[{}..{}] r2={:?}[{}..{}] r9={:?}[{}..{}] r8={:?}u[{:#x}..{:#x}]prec={}",
-            pc, idx, cache_id, state.parent_cache_id, r0t, r1t, r1i.0, r1i.1, r2t, r2i.0, r2i.1,
-            r9t, r9i.0, r9i.1, r8t, r8u.0, r8u.1, r8p
+            pc,
+            idx,
+            cache_id,
+            state.parent_cache_id,
+            r0t,
+            r1t,
+            r1i.0,
+            r1i.1,
+            r2t,
+            r2i.0,
+            r2i.1,
+            r9t,
+            r9i.0,
+            r9i.1,
+            r8t,
+            r8u.0,
+            r8u.1,
+            r8p
         );
     }
     states.push(state);
     env.cache_loc_by_id.insert(cache_id, (pc, idx));
 
     // parallel metrics vector. Same indices as states.
-    let metrics = env
-        .state_metrics
-        .entry(pc)
-        .or_default();
+    let metrics = env.state_metrics.entry(pc).or_default();
     metrics.push(crate::analysis::machine::env::StateMetrics::default());
 
     // Enforce limit: keep only the most recent states. Apply the same

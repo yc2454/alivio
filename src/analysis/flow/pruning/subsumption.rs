@@ -80,15 +80,23 @@ pub(super) fn iter_active_depths_differ(prev: &State, cur: &State) -> bool {
         let prev_frame = prev.frames.get(level);
         let cur_frame = cur.frames.get(level);
         for off in prev_frame.stack.slot_offsets() {
-            let Some(prev_slot) = prev_frame.stack.get_slot(off) else { continue; };
-            let Some(prev_it) = prev_slot.iterator else { continue; };
+            let Some(prev_slot) = prev_frame.stack.get_slot(off) else {
+                continue;
+            };
+            let Some(prev_it) = prev_slot.iterator else {
+                continue;
+            };
             if prev_it.state != IterState::Active {
                 continue;
             }
             // The matching slot in cur. If absent or no iter ⇒ treat as
             // different depth (the loop's iter context changed).
-            let Some(cur_slot) = cur_frame.stack.get_slot(off) else { return true; };
-            let Some(cur_it) = cur_slot.iterator else { return true; };
+            let Some(cur_slot) = cur_frame.stack.get_slot(off) else {
+                return true;
+            };
+            let Some(cur_it) = cur_slot.iterator else {
+                return true;
+            };
             if cur_it.depth != prev_it.depth {
                 return true;
             }
@@ -449,12 +457,7 @@ fn check_ids(old_id: u32, cur_id: u32, map: &mut Vec<(u32, u32)>) -> bool {
 /// zero id gets a fresh unique temp so `0 vs ID` / `ID vs 0` are valid
 /// (but still consistently bijective). `tmp` is a per-comparison
 /// generator seeded high (disjoint from real low-valued zovia ids).
-fn check_scalar_ids(
-    old_id: u32,
-    cur_id: u32,
-    map: &mut Vec<(u32, u32)>,
-    tmp: &mut u32,
-) -> bool {
+fn check_scalar_ids(old_id: u32, cur_id: u32, map: &mut Vec<(u32, u32)>, tmp: &mut u32) -> bool {
     let o = if old_id != 0 {
         old_id
     } else {
@@ -526,11 +529,7 @@ fn scalar_ids_subsumed_by(cur: &State, old: &State, live_regs: &HashSet<Reg>) ->
 /// those are exactly the cases where future refinement in old's
 /// continuation would silently miss propagation in cur. Mirrors
 /// upstream `check_ids` in `regsafe`.
-fn scalar_id_links_subsumed_by(
-    cur: &State,
-    old: &State,
-    live_regs: &HashSet<Reg>,
-) -> bool {
+fn scalar_id_links_subsumed_by(cur: &State, old: &State, live_regs: &HashSet<Reg>) -> bool {
     let live: Vec<Reg> = live_regs.iter().copied().collect();
     for i in 0..live.len() {
         for j in (i + 1)..live.len() {
@@ -623,10 +622,9 @@ fn type_subsumed_by(cur_ty: &RegType, old_ty: &RegType) -> bool {
         // call tag used for null-check narrowing on the *current*
         // state's continuation, not for cross-state subsumption.
         // Pattern observed in iters.c::iter_tricky_but_fine.
-        (
-            PtrToMapValueOrNull { map_idx: m1, .. },
-            PtrToMapValueOrNull { map_idx: m2, .. },
-        ) => m1 == m2,
+        (PtrToMapValueOrNull { map_idx: m1, .. }, PtrToMapValueOrNull { map_idx: m2, .. }) => {
+            m1 == m2
+        }
 
         // Socket pointers
         (PtrToSocket { ref_id: id1 }, PtrToSocket { ref_id: id2 }) => id1 == id2,
@@ -649,12 +647,28 @@ fn type_subsumed_by(cur_ty: &RegType, old_ty: &RegType) -> bool {
         // The `id` field is intentionally ignored — it's a per-call
         // tag, not a structural property.
         (
-            PtrToAllocMem { mem_size: ms1, ref_id: ri1, .. },
-            PtrToAllocMem { mem_size: ms2, ref_id: ri2, .. },
+            PtrToAllocMem {
+                mem_size: ms1,
+                ref_id: ri1,
+                ..
+            },
+            PtrToAllocMem {
+                mem_size: ms2,
+                ref_id: ri2,
+                ..
+            },
         ) => ms1 == ms2 && ri1 == ri2,
         (
-            PtrToAllocMemOrNull { mem_size: ms1, ref_id: ri1, .. },
-            PtrToAllocMemOrNull { mem_size: ms2, ref_id: ri2, .. },
+            PtrToAllocMemOrNull {
+                mem_size: ms1,
+                ref_id: ri1,
+                ..
+            },
+            PtrToAllocMemOrNull {
+                mem_size: ms2,
+                ref_id: ri2,
+                ..
+            },
         ) => ms1 == ms2 && ri1 == ri2,
 
         // Default: structural equality. Covers variants without a
@@ -722,7 +736,13 @@ fn domain_subsumed_by(
             if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[domain_miss] reg={:?} precise={} force_exact={} s64 old=[{},{}] cur=[{},{}]",
-                    r, precise.contains(&r), force_exact, old_smin, old_smax, cur_smin, cur_smax
+                    r,
+                    precise.contains(&r),
+                    force_exact,
+                    old_smin,
+                    old_smax,
+                    cur_smin,
+                    cur_smax
                 );
             }
             return false;
@@ -984,9 +1004,7 @@ fn stack_subsumed_by(
     // (`STACK_MISC`) and a byte another path never wrote (`STACK_INVALID`)
     // must NOT look identical, or the two paths wrongly subsume each
     // other. The faithful per-byte kind rule is unconditional.
-    for (frame_i, (old_frame, new_frame)) in
-        old.frames.iter().zip(cur.frames.iter()).enumerate()
-    {
+    for (frame_i, (old_frame, new_frame)) in old.frames.iter().zip(cur.frames.iter()).enumerate() {
         let all_offsets: HashSet<i16> = old_frame
             .stack
             .slot_offsets()
@@ -1003,9 +1021,7 @@ fn stack_subsumed_by(
         // (verifier.c:19800): any old-allocation byte at
         // `i >= cur->allocated_stack` fails outright — old INVALID bytes
         // included — so old_alloc > cur_alloc is an immediate mismatch.
-        if force_exact
-            && old_frame.stack.allocated_stack() > new_frame.stack.allocated_stack()
-        {
+        if force_exact && old_frame.stack.allocated_stack() > new_frame.stack.allocated_stack() {
             return false;
         }
 
@@ -1043,16 +1059,10 @@ fn stack_subsumed_by(
                 // were used"). The bridge's unbound-cur wildcard never
                 // sees the slot.
                 if -(base as i32) > new_frame.stack.allocated_stack() as i32 {
-                    let all_skippable = (base..base + 8).all(|b| {
-                        matches!(
-                            old_frame.stack.get_slot_kind(b),
-                            None | Some(Misc)
-                        )
-                    });
+                    let all_skippable = (base..base + 8)
+                        .all(|b| matches!(old_frame.stack.get_slot_kind(b), None | Some(Misc)));
                     if !all_skippable {
-                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref()
-                            == Some("1")
-                        {
+                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} base={} (alloc-boundary: cur_alloc={})",
                                 cur.pc,
@@ -1073,37 +1083,36 @@ fn stack_subsumed_by(
                 // None ⇒ not scalar-readable; Some(None) ⇒ unbound
                 // (all-misc/uninit); Some(Some(off)) ⇒ real 8-byte
                 // scalar spill anchored at `base`.
-                let scalar_read = |fr: &crate::analysis::machine::frame_stack::CallFrame|
-                    -> Option<Option<()>> {
-                    let structural = fr
-                        .stack
-                        .get_slot(base)
-                        .map(|s| {
-                            s.iterator.is_some() || s.dynptr.is_some() || s.irq_flag.is_some()
-                        })
-                        .unwrap_or(false);
-                    if structural {
-                        return None;
-                    }
-                    let spill64 = fr.stack.get_slot_kind(base) == Some(Spill)
-                        && fr.stack.get_slot_kind(base + 7) == Some(Spill)
-                        && fr
+                let scalar_read =
+                    |fr: &crate::analysis::machine::frame_stack::CallFrame| -> Option<Option<()>> {
+                        let structural = fr
                             .stack
                             .get_slot(base)
-                            .map(|s| matches!(s.reg_type, RegType::ScalarValue))
+                            .map(|s| {
+                                s.iterator.is_some() || s.dynptr.is_some() || s.irq_flag.is_some()
+                            })
                             .unwrap_or(false);
-                    if spill64 {
-                        return Some(Some(()));
-                    }
-                    let all_misc = (base..base + 8)
-                        .all(|b| matches!(fr.stack.get_slot_kind(b), Some(Misc) | None));
-                    if all_misc {
-                        return Some(None);
-                    }
-                    None
-                };
-                let (Some(o), Some(c)) = (scalar_read(old_frame), scalar_read(new_frame))
-                else {
+                        if structural {
+                            return None;
+                        }
+                        let spill64 = fr.stack.get_slot_kind(base) == Some(Spill)
+                            && fr.stack.get_slot_kind(base + 7) == Some(Spill)
+                            && fr
+                                .stack
+                                .get_slot(base)
+                                .map(|s| matches!(s.reg_type, RegType::ScalarValue))
+                                .unwrap_or(false);
+                        if spill64 {
+                            return Some(Some(()));
+                        }
+                        let all_misc = (base..base + 8)
+                            .all(|b| matches!(fr.stack.get_slot_kind(b), Some(Misc) | None));
+                        if all_misc {
+                            return Some(None);
+                        }
+                        None
+                    };
+                let (Some(o), Some(c)) = (scalar_read(old_frame), scalar_read(new_frame)) else {
                     continue;
                 };
                 // regsafe scalar under !exact (verifier.c:18357): an
@@ -1163,11 +1172,7 @@ fn stack_subsumed_by(
                 let structural = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
                     fr.stack
                         .get_slot(offset)
-                        .map(|s| {
-                            s.iterator.is_some()
-                                || s.dynptr.is_some()
-                                || s.irq_flag.is_some()
-                        })
+                        .map(|s| s.iterator.is_some() || s.dynptr.is_some() || s.irq_flag.is_some())
                         .unwrap_or(false)
                 };
                 if !structural(old_frame) && !structural(new_frame) {
@@ -1203,8 +1208,7 @@ fn stack_subsumed_by(
                     // 19733).
                     (Some(Misc), _) if !force_exact => continue,
                     (Some(Spill), Some(Spill)) => { /* fall through to reg checks */ }
-                    (Some(Misc), Some(Misc | Zero))
-                    | (Some(Zero), Some(Zero)) => continue,
+                    (Some(Misc), Some(Misc | Zero)) | (Some(Zero), Some(Zero)) => continue,
                     // Kernel `scalar_reg_for_stack` (verifier.c:19686, applied at
                     // stacksafe:19737 BEFORE the per-byte kind rule): a 64-bit
                     // scalar spill and an all-MISC slot compare as SCALARS —
@@ -1214,9 +1218,7 @@ fn stack_subsumed_by(
                     // covers anything; precise old needs range_within+tnum_in
                     // (an unbound cur is only covered by a full-range old).
                     // Under EXACT the fake regs must be regs_exact → mismatch.
-                    (Some(Misc), Some(Spill)) | (Some(Spill), Some(Misc))
-                        if !force_exact =>
-                    {
+                    (Some(Misc), Some(Spill)) | (Some(Spill), Some(Misc)) if !force_exact => {
                         // Kernel preconditions are SLOT-granular: the spill side
                         // must be a 64-BIT SCALAR spill (is_spilled_scalar_reg64:
                         // slot_type[0]==SPILL && scalar), and the misc side's
@@ -1226,12 +1228,8 @@ fn stack_subsumed_by(
                         // imprecise) and regsafe's !exact scalar rule applies.
                         let slot_base = offset.div_euclid(8) * 8;
                         let all_misc = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
-                            (slot_base..slot_base + 8).all(|b| {
-                                matches!(
-                                    fr.stack.get_slot_kind(b),
-                                    Some(Misc) | None
-                                )
-                            })
+                            (slot_base..slot_base + 8)
+                                .all(|b| matches!(fr.stack.get_slot_kind(b), Some(Misc) | None))
                         };
                         // Kernel `is_spilled_scalar_reg64` = slot_type[0] ==
                         // STACK_SPILL, i.e. a FULL 8-byte scalar spill (zovia
@@ -1241,15 +1239,16 @@ fn stack_subsumed_by(
                         // walk TYPEFAILs the (SPILL, MISC) byte — a
                         // base-anchor-only check would HIT sub-8 spills vs
                         // all-misc where the kernel misses.
-                        let scalar_spill64 = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
-                            matches!(fr.stack.get_slot_kind(slot_base), Some(Spill))
-                                && matches!(fr.stack.get_slot_kind(slot_base + 7), Some(Spill))
-                                && fr
-                                    .stack
-                                    .get_slot(slot_base)
-                                    .map(|s| matches!(s.reg_type, RegType::ScalarValue))
-                                    .unwrap_or(false)
-                        };
+                        let scalar_spill64 =
+                            |fr: &crate::analysis::machine::frame_stack::CallFrame| {
+                                matches!(fr.stack.get_slot_kind(slot_base), Some(Spill))
+                                    && matches!(fr.stack.get_slot_kind(slot_base + 7), Some(Spill))
+                                    && fr
+                                        .stack
+                                        .get_slot(slot_base)
+                                        .map(|s| matches!(s.reg_type, RegType::ScalarValue))
+                                        .unwrap_or(false)
+                            };
                         let covered = if matches!(ok, Some(Spill)) {
                             // old spill vs cur misc: old fake scalar covers the
                             // unbound cur iff imprecise (or full-range precise).
@@ -1281,9 +1280,16 @@ fn stack_subsumed_by(
                             };
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} base={} old_kinds={:?} new_kinds={:?} old_slot@base={:?} (spill-misc-precond)",
-                                cur.pc, frame_i, offset, slot_base,
-                                kinds(old_frame), kinds(new_frame),
-                                old_frame.stack.get_slot(slot_base).map(|s| (s.reg_type, s.precise)),
+                                cur.pc,
+                                frame_i,
+                                offset,
+                                slot_base,
+                                kinds(old_frame),
+                                kinds(new_frame),
+                                old_frame
+                                    .stack
+                                    .get_slot(slot_base)
+                                    .map(|s| (s.reg_type, s.precise)),
                             );
                         }
                         return false;
@@ -1326,8 +1332,8 @@ fn stack_subsumed_by(
                 // above), so the kernel's byte-7 ≡ zovia's BASE byte.
                 // Gating on zovia's byte 7 would skip the whole
                 // reg/type/precision compare for every sub-8-byte spill.
-                let old_anchor_spill = old_frame.stack.get_slot_kind(slot_base)
-                    == Some(StackSlotKind::Spill);
+                let old_anchor_spill =
+                    old_frame.stack.get_slot_kind(slot_base) == Some(StackSlotKind::Spill);
                 if offset != slot_base || !old_anchor_spill {
                     continue;
                 }
@@ -1375,34 +1381,37 @@ fn stack_subsumed_by(
             let old_slot = old_frame.stack.get_slot(offset);
             let new_slot = new_frame.stack.get_slot(offset);
             if let (Some(old_s), Some(new_s)) = (old_slot, new_slot)
-                && old_s.precise {
-                    if !tnum_covers(&new_s.tnum, &old_s.tnum) {
-                        if crate::analysis::trace_pc_in_range(cur.pc)
-                            && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
-                        {
-                            eprintln!(
-                                "[stack_miss] pc={} frame={} off={} old_tn={:?} new_tn={:?} (precise-tnum)",
-                                cur.pc, frame_i, offset, old_s.tnum, new_s.tnum
-                            );
-                        }
-                        return false;
-                    }
-                    if !(old_s.bounds.min <= new_s.bounds.min
-                        && new_s.bounds.max <= old_s.bounds.max)
+                && old_s.precise
+            {
+                if !tnum_covers(&new_s.tnum, &old_s.tnum) {
+                    if crate::analysis::trace_pc_in_range(cur.pc)
+                        && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                     {
-                        if crate::analysis::trace_pc_in_range(cur.pc)
-                            && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
-                        {
-                            eprintln!(
-                                "[stack_miss] pc={} frame={} off={} old=[{},{}] new=[{},{}] (precise-bounds)",
-                                cur.pc, frame_i, offset,
-                                old_s.bounds.min, old_s.bounds.max,
-                                new_s.bounds.min, new_s.bounds.max
-                            );
-                        }
-                        return false;
+                        eprintln!(
+                            "[stack_miss] pc={} frame={} off={} old_tn={:?} new_tn={:?} (precise-tnum)",
+                            cur.pc, frame_i, offset, old_s.tnum, new_s.tnum
+                        );
                     }
+                    return false;
                 }
+                if !(old_s.bounds.min <= new_s.bounds.min && new_s.bounds.max <= old_s.bounds.max) {
+                    if crate::analysis::trace_pc_in_range(cur.pc)
+                        && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
+                    {
+                        eprintln!(
+                            "[stack_miss] pc={} frame={} off={} old=[{},{}] new=[{},{}] (precise-bounds)",
+                            cur.pc,
+                            frame_i,
+                            offset,
+                            old_s.bounds.min,
+                            old_s.bounds.max,
+                            new_s.bounds.min,
+                            new_s.bounds.max
+                        );
+                    }
+                    return false;
+                }
+            }
 
             // open-coded iterator identity.
             //
@@ -1451,7 +1460,10 @@ fn stack_subsumed_by(
                 if crate::analysis::trace_pc_in_range(cur.pc)
                     && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                 {
-                    eprintln!("[stack_miss] pc={} frame={} off={} (iter-identity)", cur.pc, frame_i, offset);
+                    eprintln!(
+                        "[stack_miss] pc={} frame={} off={} (iter-identity)",
+                        cur.pc, frame_i, offset
+                    );
                 }
                 return false;
             }
@@ -1474,10 +1486,8 @@ fn stack_subsumed_by(
                         _ => None,
                     };
 
-                    let pkt_fail = matches!(
-                        (old_range, new_range),
-                        (Some(_), None)
-                    ) || matches!((old_range, new_range), (Some(o), Some(n)) if o > n);
+                    let pkt_fail = matches!((old_range, new_range), (Some(_), None))
+                        || matches!((old_range, new_range), (Some(o), Some(n)) if o > n);
                     if pkt_fail {
                         if crate::analysis::trace_pc_in_range(cur.pc)
                             && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")

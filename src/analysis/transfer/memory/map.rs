@@ -56,10 +56,7 @@ pub fn classify_kptr_access(map_def: &BpfMapDef, off: i64, size: i64) -> KptrAcc
         // Wrong offset — partial overlap. Kernel reports
         // "kptr access misaligned expected=8 off=N" using the
         // *access* offset relative to the map value.
-        return KptrAccessOutcome::Misaligned {
-            off,
-            expected: 8,
-        };
+        return KptrAccessOutcome::Misaligned { off, expected: 8 };
     }
     KptrAccessOutcome::None
 }
@@ -121,10 +118,7 @@ pub fn check_kptr_field_access(
                             // read but never write — the kernel rejects any
                             // store regardless of the source value (NULL,
                             // scalar, or pointer alike).
-                            env.fail(VerificationError::UptrStoreDisallowed {
-                                pc,
-                                off: final_off,
-                            });
+                            env.fail(VerificationError::UptrStoreDisallowed { pc, off: final_off });
                         }
                         KptrFieldKind::Unref => {
                             // Direct stores to unreferenced kptr slots
@@ -136,7 +130,10 @@ pub fn check_kptr_field_access(
                     }
                 }
             }
-            KptrAccessOutcome::BadSize { _field_off: _, size } => {
+            KptrAccessOutcome::BadSize {
+                _field_off: _,
+                size,
+            } => {
                 env.fail(VerificationError::KptrAccessSizeMustBeDW {
                     pc,
                     off: final_off,
@@ -174,10 +171,7 @@ pub fn kptr_field_at(map_def: &BpfMapDef, off: i64, size: i64) -> Option<&KptrFi
     if size != 8 {
         return None;
     }
-    map_def
-        .kptr_fields
-        .iter()
-        .find(|f| f.offset as i64 == off)
+    map_def.kptr_fields.iter().find(|f| f.offset as i64 == off)
 }
 
 /// True iff a variable-offset access window `[lo, hi)` could overlap any
@@ -254,9 +248,10 @@ pub fn check_map_access(
     if let NumericDomain::Interval(ref ivl) = state.domain
         && interval_check_map_access(
             env, state, ivl, map_limit, map_idx, base, map_def, insn_off, size, pc,
-        ) {
-            return;
-        }
+        )
+    {
+        return;
+    }
 
     zone_check_map_access(
         env,
@@ -293,7 +288,14 @@ fn interval_check_map_access(
         // spin_lock overlap is one rejection reason, but plain OOB is another.
         if !(min_off >= 0 && max_off <= map_limit) {
             // BCF map-region refinement (α template 4b case iii).
-            if crate::refinement::emit::try_bcf_refine_map(env, state, base, insn_off as i64, size, map_limit) {
+            if crate::refinement::emit::try_bcf_refine_map(
+                env,
+                state,
+                base,
+                insn_off as i64,
+                size,
+                map_limit,
+            ) {
                 return true;
             }
             error!(
@@ -340,7 +342,14 @@ fn zone_check_map_access(
         // enforce value_size first; BTF special-field overlap is
         // additive, not a substitute.
         if !(access_start >= 0 && access_end <= map_limit) {
-            if crate::refinement::emit::try_bcf_refine_map(env, state, base, insn_off as i64, size, map_limit) {
+            if crate::refinement::emit::try_bcf_refine_map(
+                env,
+                state,
+                base,
+                insn_off as i64,
+                size,
+                map_limit,
+            ) {
                 return;
             }
             error!(
@@ -384,7 +393,14 @@ fn zone_check_map_access(
             check_btf_fields_access(env, pc, final_offset, access_end, size, map_limit, btf_id);
         }
     } else {
-        if crate::refinement::emit::try_bcf_refine_map(env, state, base, insn_off as i64, size, map_limit) {
+        if crate::refinement::emit::try_bcf_refine_map(
+            env,
+            state,
+            base,
+            insn_off as i64,
+            size,
+            map_limit,
+        ) {
             return;
         }
         error!("Unbounded variable map access at pc {}", pc);
@@ -396,7 +412,6 @@ fn zone_check_map_access(
         });
     }
 }
-
 
 pub(crate) fn transfer_map_load(
     env: &mut VerifierEnv,
@@ -449,37 +464,38 @@ pub(crate) fn transfer_map_load(
     // either way; passing them to `bpf_per_cpu_ptr` requires the typed form.
     if matches!(kind, MapLoadKind::PseudoBtfId { .. }) {
         if let Some(reloc) = env.ctx.pc_to_reloc.get(&state.pc).cloned()
-            && reloc.kind == crate::parsing::elf::RelocKind::Ksym {
-                use crate::analysis::machine::context::intern_btf_type_name_strict;
-                use crate::analysis::machine::reg_types::PtrFlags;
-                let mut flags = PtrFlags::TRUSTED | PtrFlags::RDONLY;
-                if reloc.ksym_is_percpu {
-                    flags |= PtrFlags::PERCPU;
-                }
-                // Typed struct ksyms get the resolved struct name.
-                // Primitive / typeless ksyms (`extern const int X __ksym;`,
-                // `extern const void X __ksym;`) become PtrToBtfId with
-                // type_name="unknown" — the flag combination still routes
-                // through `bpf_per_cpu_ptr`'s arg check (PERCPU-tagged
-                // BTF id), and `(__u64)&X`-style scalar uses just take
-                // the address through ptr-to-int conversion.
-                let type_name = reloc
-                    .ksym_struct_name
-                    .as_deref()
-                    .map(intern_btf_type_name_strict)
-                    .unwrap_or("unknown");
-                state.types.set(
-                    dst,
-                    RegType::PtrToBtfId {
-                        type_name,
-                        flags,
-                        ref_id: None,
-                    },
-                );
-                state.domain.forget(dst);
-                state.pc += 2;
-                return vec![state];
+            && reloc.kind == crate::parsing::elf::RelocKind::Ksym
+        {
+            use crate::analysis::machine::context::intern_btf_type_name_strict;
+            use crate::analysis::machine::reg_types::PtrFlags;
+            let mut flags = PtrFlags::TRUSTED | PtrFlags::RDONLY;
+            if reloc.ksym_is_percpu {
+                flags |= PtrFlags::PERCPU;
             }
+            // Typed struct ksyms get the resolved struct name.
+            // Primitive / typeless ksyms (`extern const int X __ksym;`,
+            // `extern const void X __ksym;`) become PtrToBtfId with
+            // type_name="unknown" — the flag combination still routes
+            // through `bpf_per_cpu_ptr`'s arg check (PERCPU-tagged
+            // BTF id), and `(__u64)&X`-style scalar uses just take
+            // the address through ptr-to-int conversion.
+            let type_name = reloc
+                .ksym_struct_name
+                .as_deref()
+                .map(intern_btf_type_name_strict)
+                .unwrap_or("unknown");
+            state.types.set(
+                dst,
+                RegType::PtrToBtfId {
+                    type_name,
+                    flags,
+                    ref_id: None,
+                },
+            );
+            state.domain.forget(dst);
+            state.pc += 2;
+            return vec![state];
+        }
         // No reloc info / unrecognized form. Fall through to reject —
         // a bare PSEUDO_BTF_ID without a Ksym reloc means the symbol
         // wasn't in `.ksyms`, which we can't resolve.

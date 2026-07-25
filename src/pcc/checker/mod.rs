@@ -12,7 +12,8 @@ mod chain;
 mod fact;
 mod transfer;
 
-#[allow(unused_imports)] // Constraint must be visible in pcc for derive_fact_from_branch's return type
+#[allow(unused_imports)]
+// Constraint must be visible in pcc for derive_fact_from_branch's return type
 pub(super) use fact::{Constraint, derive_fact_from_branch};
 
 // ---------------------------------------------------------------------------
@@ -58,19 +59,20 @@ pub fn distance_upper_bound(state: &State, i: Reg, j: Reg) -> Option<i64> {
     }
     if j == Reg::AnchorDataEnd
         && let Some(pkt_lb) = ivl.get_packet_size_bound()
-            && let Some(po) = ivl.get_ptr_offset(i)
-            && po.anchor == Reg::AnchorData
-        {
-            let lb = i64::try_from(pkt_lb).unwrap_or(i64::MAX);
-            return Some(po.max_offset().saturating_sub(lb));
-        }
+        && let Some(po) = ivl.get_ptr_offset(i)
+        && po.anchor == Reg::AnchorData
+    {
+        let lb = i64::try_from(pkt_lb).unwrap_or(i64::MAX);
+        return Some(po.max_offset().saturating_sub(lb));
+    }
 
     // Map pointers: if i has PtrOffset with anchor == j (typically Zero),
     // the max distance is off + var_off (the maximum map-buffer offset).
     if let Some(po) = ivl.get_ptr_offset(i)
-        && po.anchor == j {
-            return Some(po.max_offset());
-        }
+        && po.anchor == j
+    {
+        return Some(po.max_offset());
+    }
 
     Some(direct)
 }

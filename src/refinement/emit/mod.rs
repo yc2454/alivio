@@ -37,8 +37,16 @@ pub(crate) fn unreachable_target_regs(
 ) -> Vec<Reg> {
     use crate::analysis::machine::reg_types::RegType;
     const VARREGS: [Reg; 10] = [
-        Reg::R0, Reg::R1, Reg::R2, Reg::R3, Reg::R4,
-        Reg::R5, Reg::R6, Reg::R7, Reg::R8, Reg::R9,
+        Reg::R0,
+        Reg::R1,
+        Reg::R2,
+        Reg::R3,
+        Reg::R4,
+        Reg::R5,
+        Reg::R6,
+        Reg::R7,
+        Reg::R8,
+        Reg::R9,
     ];
     let mut targets: Vec<Reg> = Vec::new();
     for &r in &VARREGS {
@@ -81,13 +89,21 @@ pub(crate) fn unreachable_base_pc(env: &VerifierEnv, state: &State) -> Option<us
     // return the faithful `base->insn_idx` (parent_loc at bt-empty).
     let hidx = env.current_step_idx.or(state.history_idx)?;
     let targets = unreachable_target_regs(env, state, Some(hidx));
-    let base = crate::analysis::flow::precision::bcf_suffix_base_pc(env, hidx, state.parent_cache_id, &targets);
+    let base = crate::analysis::flow::precision::bcf_suffix_base_pc(
+        env,
+        hidx,
+        state.parent_cache_id,
+        &targets,
+    );
     if std::env::var("ZOVIA_DUMP_REGMASK").ok().as_deref() == Some("1") {
         let mut mask: u32 = 0;
-        for &r in &targets { mask |= 1u32 << (r as u32); }
-        eprintln!("[regmask] reject_pc={} mask=0x{:x} targets={:?} base={:?}",
-            state.pc, mask, targets, base);
+        for &r in &targets {
+            mask |= 1u32 << (r as u32);
+        }
+        eprintln!(
+            "[regmask] reject_pc={} mask=0x{:x} targets={:?} base={:?}",
+            state.pc, mask, targets, base
+        );
     }
     base
 }
-

@@ -65,8 +65,7 @@ pub(super) fn backward_trace(
         // First, compute the backward transfer through the instruction at this PC.
         // This tells us what the constraint looks like BEFORE this instruction.
         let instr = &prog.instrs[pc];
-        let (prev_i, prev_j, delta, hint) =
-            backward_transfer(instr, cur_i, cur_j, zone_dbms, pc)?;
+        let (prev_i, prev_j, delta, hint) = backward_transfer(instr, cur_i, cur_j, zone_dbms, pc)?;
         let pre_bound = cur_bound.checked_sub(delta)?;
 
         // Record this as a backward step (instruction transforms constraint).
@@ -88,10 +87,11 @@ pub(super) fn backward_trace(
             let mut fact_c = 0i64;
 
             if let Some(ivl_ub) = interval_upper_bound(&interval_states[pc], prev_i, prev_j)
-                && ivl_ub <= pre_bound {
-                    fact_found = true;
-                    fact_c = ivl_ub;
-                }
+                && ivl_ub <= pre_bound
+            {
+                fact_found = true;
+                fact_c = ivl_ub;
+            }
 
             // Path 2: Branch-derived — if the instruction at this PC is a branch
             // whose fall-through condition matches the tracked constraint pair,
@@ -100,15 +100,14 @@ pub(super) fn backward_trace(
             // variable-offset access where zone's closure captures the refinement
             // but the interval's var_off is not retroactively tightened).
             if !fact_found
-                && let Some(branch_fact) =
-                    derive_fact_from_branch(instr, pc, pc + 1)
-                    && branch_fact.left_reg == prev_i.idx()
-                        && branch_fact.right_reg == prev_j.idx()
-                        && branch_fact.c <= pre_bound
-                    {
-                        fact_found = true;
-                        fact_c = branch_fact.c;
-                    }
+                && let Some(branch_fact) = derive_fact_from_branch(instr, pc, pc + 1)
+                && branch_fact.left_reg == prev_i.idx()
+                && branch_fact.right_reg == prev_j.idx()
+                && branch_fact.c <= pre_bound
+            {
+                fact_found = true;
+                fact_c = branch_fact.c;
+            }
 
             if fact_found {
                 let mut proof = Vec::with_capacity(1 + backward_steps.len());
@@ -383,12 +382,13 @@ pub(super) fn transfer_deltas_sound(
             ..
         } = instr
             && dst.idx() == *pre_left_reg
-                && let Some(state) = interval_states.get(*pc) {
-                    let (_, src_max) = state.domain.get_interval(*src);
-                    if src_max != i64::MAX && *delta < src_max {
-                        return false;
-                    }
-                }
+            && let Some(state) = interval_states.get(*pc)
+        {
+            let (_, src_max) = state.domain.get_interval(*src);
+            if src_max != i64::MAX && *delta < src_max {
+                return false;
+            }
+        }
     }
     true
 }
@@ -401,7 +401,10 @@ pub(super) fn instr_writes(instr: &Instr, reg: Reg) -> bool {
         | Instr::Load { dst, .. }
         | Instr::LoadMap { dst, .. } => *dst == reg,
         Instr::Call { .. } | Instr::LoadPacket { .. } => {
-            matches!(reg, Reg::R0 | Reg::R1 | Reg::R2 | Reg::R3 | Reg::R4 | Reg::R5)
+            matches!(
+                reg,
+                Reg::R0 | Reg::R1 | Reg::R2 | Reg::R3 | Reg::R4 | Reg::R5
+            )
         }
         _ => false,
     }

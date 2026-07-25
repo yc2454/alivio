@@ -384,7 +384,10 @@ impl RegType {
             // loads (which the kernel can dereference via PROBE_MEM but
             // which the program may legitimately null-check, e.g.
             // `task->real_parent` in rcu_read_lock::non_sleepable_rcu_mismatch).
-            RegType::PtrToBtfId { ref_id: Some(_), .. }
+            RegType::PtrToBtfId {
+                ref_id: Some(_),
+                ..
+            }
         )
     }
 
@@ -397,15 +400,17 @@ impl RegType {
     #[allow(clippy::wrong_self_convention)]
     pub fn to_non_null(&self) -> Option<RegType> {
         match *self {
-            RegType::PtrToMapValueOrNull { id, map_idx, map_uid } => {
-                Some(RegType::PtrToMapValue {
-                    offset: Some(0),
-                    map_idx,
-                    id,
-                    map_uid,
-                    rdonly: false,
-                })
-            }
+            RegType::PtrToMapValueOrNull {
+                id,
+                map_idx,
+                map_uid,
+            } => Some(RegType::PtrToMapValue {
+                offset: Some(0),
+                map_idx,
+                id,
+                map_uid,
+                rdonly: false,
+            }),
             RegType::PtrToSocketOrNull { ref_id: id } => Some(RegType::PtrToSocket { ref_id: id }),
             RegType::PtrToSockCommonOrNull { ref_id: id } => {
                 Some(RegType::PtrToSockCommon { ref_id: id })
@@ -417,14 +422,16 @@ impl RegType {
             }
             RegType::PtrToCgroupOrNull { ref_id } => Some(RegType::PtrToCgroup { ref_id }),
             RegType::PtrToTaskOrNull { ref_id } => Some(RegType::PtrToTask { ref_id }),
-            RegType::PtrToOwnedKptrOrNull { ref_id, pointee_btf_id, offset } => {
-                Some(RegType::PtrToOwnedKptr {
-                    ref_id,
-                    offset,
-                    non_owning: false,
-                    pointee_btf_id,
-                })
-            }
+            RegType::PtrToOwnedKptrOrNull {
+                ref_id,
+                pointee_btf_id,
+                offset,
+            } => Some(RegType::PtrToOwnedKptr {
+                ref_id,
+                offset,
+                non_owning: false,
+                pointee_btf_id,
+            }),
             RegType::PtrToMapKptrOrNull {
                 pointee_btf_id,
                 ref_id,
@@ -752,14 +759,16 @@ mod tests {
     fn reg_type_is_trusted_false_for_non_btf_variants() {
         assert!(!RegType::ScalarValue.is_trusted());
         assert!(!RegType::PtrToCtx.is_trusted());
-        assert!(!RegType::PtrToMapValue {
-            id: 1,
-            offset: None,
-            map_idx: 0,
-            map_uid: None,
-            rdonly: false,
-        }
-        .is_trusted());
+        assert!(
+            !RegType::PtrToMapValue {
+                id: 1,
+                offset: None,
+                map_idx: 0,
+                map_uid: None,
+                rdonly: false,
+            }
+            .is_trusted()
+        );
     }
 
     #[test]
@@ -775,7 +784,14 @@ mod tests {
         assert_eq!(n.get_ref_id(), Some(7));
         assert!(n.is_untrusted());
         let nn = n.to_non_null().expect("convertible");
-        assert!(matches!(nn, RegType::PtrToMapKptr { pointee_btf_id: 12, ref_id: Some(7), .. }));
+        assert!(matches!(
+            nn,
+            RegType::PtrToMapKptr {
+                pointee_btf_id: 12,
+                ref_id: Some(7),
+                ..
+            }
+        ));
         assert_eq!(type_family(&n), type_family(&nn));
     }
 
@@ -791,6 +807,9 @@ mod tests {
             flags: PtrFlags::UNTRUSTED,
             ref_id: None,
         };
-        assert_ne!(a, b, "flags must participate in PartialEq to preserve old trusted-bool semantics");
+        assert_ne!(
+            a, b,
+            "flags must participate in PartialEq to preserve old trusted-bool semantics"
+        );
     }
 }

@@ -7,8 +7,8 @@ use crate::analysis::machine::reg_types::RegType;
 use crate::common::constants;
 
 use super::super::checks::ValidationContext;
-use super::super::mem_checks::validate_readable_mem;
 use super::super::compat::check_map_type_for_helper;
+use super::super::mem_checks::validate_readable_mem;
 
 /// Validates ConstMapPtr argument type.
 /// A ConstMapPtr must be either:
@@ -81,10 +81,7 @@ pub fn validate_const_map_ptr(ctx: &mut ValidationContext) -> bool {
 /// require a specific map kind (e.g. arena alloc/free), since the existing
 /// `validate_const_map_ptr` only checks the helper-id-driven type table,
 /// which doesn't apply to kfuncs.
-pub fn validate_const_map_ptr_of_type(
-    ctx: &mut ValidationContext,
-    required_type: u32,
-) -> bool {
+pub fn validate_const_map_ptr_of_type(ctx: &mut ValidationContext, required_type: u32) -> bool {
     // Also accept a `__map`-suffixed kfunc-arg shape: any
     // `PtrToBtfId{bpf_map, TRUSTED}` (kernel `verifier.c` ~L13227,
     // `KF_ARG_PTR_TO_MAP` — "If argument has '__map' suffix expect
@@ -270,7 +267,10 @@ pub fn validate_ptr_to_map_value(ctx: &mut ValidationContext) -> bool {
     // the destination's. This admits passing `&val` from a `.bss`
     // synthetic map (whose `value_size` covers the whole section) as
     // an `array_map`'s value source.
-    if let RegType::PtrToMapValue { map_idx, offset, .. } = actual {
+    if let RegType::PtrToMapValue {
+        map_idx, offset, ..
+    } = actual
+    {
         if let Some(map_def) = ctx.env.ctx.map_defs.get(map_idx) {
             let off = offset.unwrap_or(0).max(0) as u64;
             let remaining = (map_def.value_size as u64).saturating_sub(off);

@@ -27,7 +27,12 @@ use crate::analysis::machine::env::VerifierEnv;
 use crate::analysis::machine::state::State;
 use crate::ast::{Instr, Program};
 
-pub(super) fn loop_has_conditional_exit(env: &VerifierEnv, state: &State, pc: usize, prog: &Program) -> bool {
+pub(super) fn loop_has_conditional_exit(
+    env: &VerifierEnv,
+    state: &State,
+    pc: usize,
+    prog: &Program,
+) -> bool {
     if let Some(idx) = state.history_idx {
         // Only check PCs at the same frame depth (excludes callee instructions)
         let body_pcs = env.history.loop_body_pcs(idx, pc, Some(state.num_frames()));
@@ -45,11 +50,7 @@ pub(super) fn loop_has_conditional_exit(env: &VerifierEnv, state: &State, pc: us
     // Also check the loop head itself. `MayGoto` is a budget-bounded
     // conditional exit (BPF_JCOND v6.8): the kernel inlines a hidden
     // counter check that eventually short-circuits the back-edge.
-    if pc < prog.instrs.len()
-        && matches!(
-            prog.instrs[pc],
-            Instr::If { .. } | Instr::MayGoto { .. }
-        )
+    if pc < prog.instrs.len() && matches!(prog.instrs[pc], Instr::If { .. } | Instr::MayGoto { .. })
     {
         return true;
     }
@@ -83,7 +84,12 @@ fn is_backward_branch(pc: usize, prog: &Program) -> bool {
 }
 
 /// Check if we arrived at current PC via a backward jump (loop head detection).
-pub(super) fn arrived_via_back_edge(env: &VerifierEnv, state: &State, pc: usize, prog: &Program) -> bool {
+pub(super) fn arrived_via_back_edge(
+    env: &VerifierEnv,
+    state: &State,
+    pc: usize,
+    prog: &Program,
+) -> bool {
     state
         .history_idx
         .and_then(|idx| {
@@ -116,7 +122,12 @@ pub(super) fn arrived_via_back_edge(env: &VerifierEnv, state: &State, pc: usize,
 ///
 /// We require that the history confirms this is a back-edge at the current call depth,
 /// not just that we've visited this PC before on some other path.
-pub(super) fn is_at_loop_point(env: &VerifierEnv, state: &State, pc: usize, prog: &Program) -> bool {
+pub(super) fn is_at_loop_point(
+    env: &VerifierEnv,
+    state: &State,
+    pc: usize,
+    prog: &Program,
+) -> bool {
     // History must confirm this is a back-edge at current call depth
     let is_back_edge_pc = state
         .history_idx
@@ -131,11 +142,7 @@ pub(super) fn is_at_loop_point(env: &VerifierEnv, state: &State, pc: usize, prog
 /// is an iterator-style loop whose convergence the kernel guarantees
 /// via `process_iter_next_call` at the force-checkpoint site rather
 /// than at arbitrary back-edge targets.
-pub(super) fn loop_body_has_force_checkpoint(
-    env: &VerifierEnv,
-    state: &State,
-    pc: usize,
-) -> bool {
+pub(super) fn loop_body_has_force_checkpoint(env: &VerifierEnv, state: &State, pc: usize) -> bool {
     state
         .history_idx
         .map(|idx| {
@@ -170,11 +177,7 @@ pub(super) fn loop_body_has_force_checkpoint(
 /// iter would permanently defer outer pruning, or a widened outer
 /// iter would prematurely re-enable pruning at the inner back-edge
 /// before the inner had widened.
-pub(super) fn this_loop_iter_pre_widening(
-    env: &VerifierEnv,
-    state: &State,
-    pc: usize,
-) -> bool {
+pub(super) fn this_loop_iter_pre_widening(env: &VerifierEnv, state: &State, pc: usize) -> bool {
     use crate::analysis::machine::frame_stack::FrameLevel;
     use crate::analysis::machine::stack_state::IterState;
     let Some(idx) = state.history_idx else {

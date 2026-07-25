@@ -92,7 +92,7 @@ pub const BPF_ADD: u8 = 0x00;
 pub const BPF_SUB: u8 = 0x10;
 pub const BPF_MUL: u8 = 0x20;
 pub const BPF_DIV: u8 = 0x30;
-pub const BPF_OR:  u8 = 0x40;
+pub const BPF_OR: u8 = 0x40;
 pub const BPF_AND: u8 = 0x50;
 pub const BPF_LSH: u8 = 0x60;
 pub const BPF_RSH: u8 = 0x70;
@@ -103,15 +103,15 @@ pub const BPF_MOV: u8 = 0xb0;
 pub const BPF_ARSH: u8 = 0xc0;
 
 // JMP ops (BPF_JMP class — used in BV predicates as comparison op)
-pub const BPF_JEQ:  u8 = 0x10;
-pub const BPF_JGT:  u8 = 0x20;
-pub const BPF_JGE:  u8 = 0x30;
+pub const BPF_JEQ: u8 = 0x10;
+pub const BPF_JGT: u8 = 0x20;
+pub const BPF_JGE: u8 = 0x30;
 pub const BPF_JSET: u8 = 0x40;
-pub const BPF_JNE:  u8 = 0x50;
+pub const BPF_JNE: u8 = 0x50;
 pub const BPF_JSGT: u8 = 0x60;
 pub const BPF_JSGE: u8 = 0x70;
-pub const BPF_JLT:  u8 = 0xa0;
-pub const BPF_JLE:  u8 = 0xb0;
+pub const BPF_JLT: u8 = 0xa0;
+pub const BPF_JLE: u8 = 0xb0;
 pub const BPF_JSLT: u8 = 0xc0;
 pub const BPF_JSLE: u8 = 0xd0;
 
@@ -245,20 +245,38 @@ pub type Result<T> = std::result::Result<T, BcfError>;
 
 // ---------- accessors ----------
 
-pub fn rule_class(rule: u16) -> u16 { rule & BCF_RULE_CLASS_MASK }
-pub fn rule_code(rule: u16) -> u16 { rule & BCF_RULE_CODE_MASK }
-pub fn expr_type(code: u8) -> u8 { code & BCF_TYPE_MASK }
-pub fn expr_op(code: u8) -> u8 { code & BCF_OP_MASK }
+pub fn rule_class(rule: u16) -> u16 {
+    rule & BCF_RULE_CLASS_MASK
+}
+pub fn rule_code(rule: u16) -> u16 {
+    rule & BCF_RULE_CODE_MASK
+}
+pub fn expr_type(code: u8) -> u8 {
+    code & BCF_TYPE_MASK
+}
+pub fn expr_op(code: u8) -> u8 {
+    code & BCF_OP_MASK
+}
 /// BV bit width: low byte of `params` for any BV expression (per uapi/linux/bcf.h).
-pub fn bv_width(params: u16) -> u8 { (params & 0xff) as u8 }
+pub fn bv_width(params: u16) -> u8 {
+    (params & 0xff) as u8
+}
 /// Sign/zero-extension size: high byte of `params`.
-pub fn ext_len(params: u16) -> u8 { ((params >> 8) & 0xff) as u8 }
+pub fn ext_len(params: u16) -> u8 {
+    ((params >> 8) & 0xff) as u8
+}
 /// Extract `start` bit: high byte of `params`.
-pub fn extract_start(params: u16) -> u8 { ((params >> 8) & 0xff) as u8 }
+pub fn extract_start(params: u16) -> u8 {
+    ((params >> 8) & 0xff) as u8
+}
 /// Extract `end` bit: low byte of `params`.
-pub fn extract_end(params: u16) -> u8 { (params & 0xff) as u8 }
+pub fn extract_end(params: u16) -> u8 {
+    (params & 0xff) as u8
+}
 /// Bool literal value: low bit of `params` (0 = false, 1 = true).
-pub fn bool_literal(params: u16) -> u16 { params & 1 }
+pub fn bool_literal(params: u16) -> u16 {
+    params & 1
+}
 
 // ---------- helper builders ----------
 //
@@ -367,9 +385,7 @@ impl BcfProof {
         // bcf_expr layout: [code:u8 | vlen:u8 | params:u16]
         for e in &self.exprs {
             let vlen = e.args.len() as u8;
-            let head: u32 = (e.code as u32)
-                | ((vlen as u32) << 8)
-                | ((e.params as u32) << 16);
+            let head: u32 = (e.code as u32) | ((vlen as u32) << 8) | ((e.params as u32) << 16);
             out.extend_from_slice(&head.to_le_bytes());
             for a in &e.args {
                 out.extend_from_slice(&a.to_le_bytes());
@@ -387,9 +403,7 @@ impl BcfProof {
                 total
             );
             let param_cnt = total - s.premise_cnt as u32;
-            let head: u32 = (s.rule as u32)
-                | ((s.premise_cnt as u32) << 16)
-                | (param_cnt << 24);
+            let head: u32 = (s.rule as u32) | ((s.premise_cnt as u32) << 16) | (param_cnt << 24);
             out.extend_from_slice(&head.to_le_bytes());
             for a in &s.args {
                 out.extend_from_slice(&a.to_le_bytes());
@@ -530,13 +544,19 @@ mod tests {
         // Args follow as three little-endian u32s.
         assert_eq!(
             &bytes[16..28],
-            &[0xbb, 0xbb, 0xaa, 0xaa, 0xdd, 0xdd, 0xcc, 0xcc, 0xff, 0xff, 0xee, 0xee]
+            &[
+                0xbb, 0xbb, 0xaa, 0xaa, 0xdd, 0xdd, 0xcc, 0xcc, 0xff, 0xff, 0xee, 0xee
+            ]
         );
     }
 
     #[test]
     fn step_param_cnt_derived_from_args_len() {
-        let s = BcfProofStep { rule: 0, premise_cnt: 2, args: vec![1, 2, 9, 10, 11] };
+        let s = BcfProofStep {
+            rule: 0,
+            premise_cnt: 2,
+            args: vec![1, 2, 9, 10, 11],
+        };
         assert_eq!(s.param_cnt(), 3);
         assert_eq!(s.slot_len(), 1 + 5);
     }
@@ -554,7 +574,10 @@ mod tests {
         assert_eq!(bv_val32(0xdead).code, 0x08);
         assert_eq!(bv_val32(0xdead).params, 32);
         assert_eq!(bv_val32(0xdead).args, vec![0xdead]);
-        assert_eq!(bv_val64(0xdead_beef_cafe_babe).args, vec![0xcafe_babe, 0xdead_beef]);
+        assert_eq!(
+            bv_val64(0xdead_beef_cafe_babe).args,
+            vec![0xcafe_babe, 0xdead_beef]
+        );
         assert_eq!(bv_val64(0xdead_beef_cafe_babe).params, 64);
 
         // BV ALU: code = op | BCF_BV. BPF_ADD = 0x00 so add expr's code is 0.
@@ -577,10 +600,10 @@ mod tests {
     fn round_trip_simple() {
         let proof = BcfProof {
             exprs: vec![
-                bv_var(64),                                     // slot 0
-                bv_val64(0xdead_beef_cafe_babe),                // slot 1 (1+2 = 3 slots → next slot 4)
-                bv_alu(BPF_ADD, 0, 1, 64),                      // slot 4
-                pred_disj(vec![0, 4]),                          // slot 7
+                bv_var(64),                      // slot 0
+                bv_val64(0xdead_beef_cafe_babe), // slot 1 (1+2 = 3 slots → next slot 4)
+                bv_alu(BPF_ADD, 0, 1, 64),       // slot 4
+                pred_disj(vec![0, 4]),           // slot 7
             ],
             steps: vec![
                 // Assume rule (CORE class): 0 premises, 1 parameter (assumed expr).

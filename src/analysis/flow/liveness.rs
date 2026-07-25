@@ -301,7 +301,12 @@ fn compute_fp_alias(prog: &Program, start: usize, end: usize) -> Vec<AliasMap> {
 fn alias_transfer(instr: &Instr, mut map: AliasMap) -> AliasMap {
     use crate::ast::AluOp;
     match instr {
-        Instr::Alu { width, op, dst, src } => {
+        Instr::Alu {
+            width,
+            op,
+            dst,
+            src,
+        } => {
             match op {
                 AluOp::Mov => match src {
                     Operand::Reg(r) if *r == Reg::R10 => {
@@ -521,23 +526,25 @@ fn get_use_def(instr: &Instr, alias: &AliasMap) -> UseDef {
             // Kfuncs / unknown protos stay conservative (R1-R5).
             let nargs: Option<usize> = match kind {
                 crate::ast::CallKind::Helper { id } => {
-                    crate::analysis::transfer::call::helper_protos::get_helper_proto(*id)
-                        .map(|p| {
-                            p.args
-                                .iter()
-                                .take_while(|a| {
-                                    !matches!(
-                                        a,
-                                        crate::analysis::transfer::call::signatures::ArgKind::DontCare
-                                    )
-                                })
-                                .count()
-                        })
+                    crate::analysis::transfer::call::helper_protos::get_helper_proto(*id).map(|p| {
+                        p.args
+                            .iter()
+                            .take_while(|a| {
+                                !matches!(
+                                    a,
+                                    crate::analysis::transfer::call::signatures::ArgKind::DontCare
+                                )
+                            })
+                            .count()
+                    })
                 }
                 crate::ast::CallKind::Kfunc { .. } => None,
             };
             let n = nargs.unwrap_or(5);
-            for r in [Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5].into_iter().take(n) {
+            for r in [Reg::R1, Reg::R2, Reg::R3, Reg::R4, Reg::R5]
+                .into_iter()
+                .take(n)
+            {
                 ud.use_regs.insert(r);
             }
         }

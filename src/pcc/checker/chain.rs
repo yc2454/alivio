@@ -63,9 +63,10 @@ pub(super) fn replay_chain(
 
     // A single Compose step is a valid proof by itself
     if proof.len() == 1
-        && let ProofStep::Compose { left, right, via } = &proof[0] {
-            return verify_compose(left, right, *via, target_pc, explored_states, prog);
-        }
+        && let ProofStep::Compose { left, right, via } = &proof[0]
+    {
+        return verify_compose(left, right, *via, target_pc, explored_states, prog);
+    }
 
     // Step 0: Verify Fact (must be proof[0])
     let ProofStep::Fact {
@@ -84,7 +85,15 @@ pub(super) fn replay_chain(
         return None;
     }
 
-    if !verify_fact(*fact_pc, *fact_left, *fact_right, *fact_c, fact_state, prog, target_pc) {
+    if !verify_fact(
+        *fact_pc,
+        *fact_left,
+        *fact_right,
+        *fact_c,
+        fact_state,
+        prog,
+        target_pc,
+    ) {
         return None;
     }
 
@@ -106,7 +115,11 @@ pub(super) fn replay_chain(
                 return None;
             }
             ProofStep::Derive {
-                pc_start, pc_end, source_reg, target_reg, offset,
+                pc_start,
+                pc_end,
+                source_reg,
+                target_reg,
+                offset,
             } => {
                 if *source_reg != pcs.current_left {
                     debug!(
@@ -116,7 +129,15 @@ pub(super) fn replay_chain(
                     );
                     return None;
                 }
-                if !verify_derive(*pc_start, *pc_end, *source_reg, *target_reg, *offset, prog, target_pc) {
+                if !verify_derive(
+                    *pc_start,
+                    *pc_end,
+                    *source_reg,
+                    *target_reg,
+                    *offset,
+                    prog,
+                    target_pc,
+                ) {
                     return None;
                 }
                 pcs.current_left = *target_reg;
@@ -131,8 +152,13 @@ pub(super) fn replay_chain(
                 );
             }
             ProofStep::Transfer {
-                pc: step_pc, pre_left_reg, pre_right_reg,
-                post_left_reg, post_right_reg, delta, ..
+                pc: step_pc,
+                pre_left_reg,
+                pre_right_reg,
+                post_left_reg,
+                post_right_reg,
+                delta,
+                ..
             } => {
                 if *pre_left_reg != pcs.current_left || *pre_right_reg != pcs.current_right {
                     debug!(
@@ -150,9 +176,15 @@ pub(super) fn replay_chain(
                 }
                 let instr = &prog.instrs[*step_pc];
                 if !verify_transfer(
-                    *step_pc, *pre_left_reg, *pre_right_reg,
-                    *post_left_reg, *post_right_reg, *delta,
-                    step_state, instr, target_pc,
+                    *step_pc,
+                    *pre_left_reg,
+                    *pre_right_reg,
+                    *post_left_reg,
+                    *post_right_reg,
+                    *delta,
+                    step_state,
+                    instr,
+                    target_pc,
                 ) {
                     return None;
                 }
@@ -161,10 +193,13 @@ pub(super) fn replay_chain(
                 pcs.accumulated_bound = pcs.accumulated_bound.checked_add(*delta)?;
             }
             ProofStep::Compose { left, right, via } => {
-                let compose_result = verify_compose(left, right, *via, target_pc, explored_states, prog)?;
+                let compose_result =
+                    verify_compose(left, right, *via, target_pc, explored_states, prog)?;
                 pcs.current_left = compose_result.current_left;
                 pcs.current_right = compose_result.current_right;
-                pcs.accumulated_bound = pcs.accumulated_bound.checked_add(compose_result.accumulated_bound)?;
+                pcs.accumulated_bound = pcs
+                    .accumulated_bound
+                    .checked_add(compose_result.accumulated_bound)?;
             }
         }
     }
@@ -211,7 +246,8 @@ fn verify_compose(
     }
 
     // Compose: L - R <= a + b
-    let composed_bound = left_result.accumulated_bound
+    let composed_bound = left_result
+        .accumulated_bound
         .checked_add(right_result.accumulated_bound)?;
 
     debug!(

@@ -306,9 +306,16 @@ impl<'a> VerifierEnv<'a> {
             insn_aux_data: vec![InsnAuxData::default(); prog.instrs.len()],
             invalid_pc_set: prog.invalid_pc_set.clone(),
             addr_space_cast_to_arena_pcs: prog.addr_space_cast_to_arena_pcs.clone(),
-            tainted_cb_subprogs: crate::analysis::flow::callback_analysis::compute_tainted_cb_subprogs(prog, &ctx.btf),
-            cb_body_store_offsets: crate::analysis::flow::callback_analysis::compute_cb_body_store_offsets(prog),
-            cb_body_can_reinit_dynptr: crate::analysis::flow::callback_analysis::compute_cb_body_can_reinit_dynptr(prog, &ctx.btf),
+            tainted_cb_subprogs:
+                crate::analysis::flow::callback_analysis::compute_tainted_cb_subprogs(
+                    prog, &ctx.btf,
+                ),
+            cb_body_store_offsets:
+                crate::analysis::flow::callback_analysis::compute_cb_body_store_offsets(prog),
+            cb_body_can_reinit_dynptr:
+                crate::analysis::flow::callback_analysis::compute_cb_body_can_reinit_dynptr(
+                    prog, &ctx.btf,
+                ),
             insn_processed: 0,
             jmps_processed: 0,
             prev_jmps_processed: 0,
@@ -425,7 +432,9 @@ impl<'a> VerifierEnv<'a> {
                 .and_then(|v| v.get(idx))
                 .map(|s| (pc, s));
         }
-        self.retired_states.get(&cid).map(|(pc, s)| (*pc, s.as_ref()))
+        self.retired_states
+            .get(&cid)
+            .map(|(pc, s)| (*pc, s.as_ref()))
     }
 
     /// Mutable variant of [`Self::state_by_cache_id`].

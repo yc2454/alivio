@@ -342,7 +342,11 @@ impl Tnum {
             return Tnum::constant(min);
         }
         let bits = 64 - chi.leading_zeros();
-        let delta = if bits >= 64 { u64::MAX } else { (1u64 << bits) - 1 };
+        let delta = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
         Tnum {
             value: min & !delta,
             mask: delta,

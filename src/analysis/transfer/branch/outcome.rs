@@ -41,9 +41,10 @@ fn condition_outcome_inner(
     // generic pointer bail below, which conservatively returns None for all
     // pointer comparisons. See `test_tc_change_tail::change_tail`.
     if width == Width::W64
-        && let Some(outcome) = pkt_ptr_branch_taken(state, left, op, right) {
-            return Some(outcome);
-        }
+        && let Some(outcome) = pkt_ptr_branch_taken(state, left, op, right)
+    {
+        return Some(outcome);
+    }
 
     // Don't eliminate paths based on pointer comparisons
     if state.types.get(left).is_pointer() {
@@ -156,32 +157,47 @@ fn condition_outcome_inner(
                         // `get_s32_bounds` may not have tight bounds when the u64
                         // interval is in the "negative u32" quadrant (>= 0x8000_0000),
                         // so also derive bounds from the u64 combined range.
-                        let (s32_lo, s32_hi) = u64_combined_to_s32(min, max)
-                            .unwrap_or_else(|| {
-                                let (a, b) = state.domain.get_s32_bounds(left);
-                                (a as i64, b as i64)
-                            });
+                        let (s32_lo, s32_hi) = u64_combined_to_s32(min, max).unwrap_or_else(|| {
+                            let (a, b) = state.domain.get_s32_bounds(left);
+                            (a as i64, b as i64)
+                        });
                         let imm_s32 = imm_s as i32 as i64;
                         match op {
                             CmpOp::SGe => {
-                                if s32_lo >= imm_s32 { Some(true) }
-                                else if s32_hi < imm_s32 { Some(false) }
-                                else { None }
+                                if s32_lo >= imm_s32 {
+                                    Some(true)
+                                } else if s32_hi < imm_s32 {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             CmpOp::SGt => {
-                                if s32_lo > imm_s32 { Some(true) }
-                                else if s32_hi <= imm_s32 { Some(false) }
-                                else { None }
+                                if s32_lo > imm_s32 {
+                                    Some(true)
+                                } else if s32_hi <= imm_s32 {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             CmpOp::SLe => {
-                                if s32_hi <= imm_s32 { Some(true) }
-                                else if s32_lo > imm_s32 { Some(false) }
-                                else { None }
+                                if s32_hi <= imm_s32 {
+                                    Some(true)
+                                } else if s32_lo > imm_s32 {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             CmpOp::SLt => {
-                                if s32_hi < imm_s32 { Some(true) }
-                                else if s32_lo >= imm_s32 { Some(false) }
-                                else { None }
+                                if s32_hi < imm_s32 {
+                                    Some(true)
+                                } else if s32_lo >= imm_s32 {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             _ => unreachable!(),
                         }
@@ -199,24 +215,40 @@ fn condition_outcome_inner(
                         let (s64_lo, s64_hi) = get_combined_signed_bounds(state, left);
                         match op {
                             CmpOp::SGe => {
-                                if s64_lo >= imm_s { Some(true) }
-                                else if s64_hi < imm_s { Some(false) }
-                                else { None }
+                                if s64_lo >= imm_s {
+                                    Some(true)
+                                } else if s64_hi < imm_s {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             CmpOp::SGt => {
-                                if s64_lo > imm_s { Some(true) }
-                                else if s64_hi <= imm_s { Some(false) }
-                                else { None }
+                                if s64_lo > imm_s {
+                                    Some(true)
+                                } else if s64_hi <= imm_s {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             CmpOp::SLe => {
-                                if s64_hi <= imm_s { Some(true) }
-                                else if s64_lo > imm_s { Some(false) }
-                                else { None }
+                                if s64_hi <= imm_s {
+                                    Some(true)
+                                } else if s64_lo > imm_s {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             CmpOp::SLt => {
-                                if s64_hi < imm_s { Some(true) }
-                                else if s64_lo >= imm_s { Some(false) }
-                                else { None }
+                                if s64_hi < imm_s {
+                                    Some(true)
+                                } else if s64_lo >= imm_s {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
                             }
                             _ => unreachable!(),
                         }
@@ -251,7 +283,11 @@ fn condition_outcome_inner(
             // statically when r2=0 has been propagated to all linked
             // scalars (e.g. via spill/fill scalar_id fan-out).
             let rt = state.get_tnum(*r);
-            let rt = if width == Width::W32 { rt.trunc32() } else { rt };
+            let rt = if width == Width::W32 {
+                rt.trunc32()
+            } else {
+                rt
+            };
             if let Some(v) = rt.const_value() {
                 let imm_op = Operand::Imm(v as i64);
                 return condition_outcome(state, width, left, op, &imm_op);
@@ -267,7 +303,11 @@ fn condition_outcome_inner(
             // the unknown side. Pattern from `verifier_bounds_deduction_non_const::
             // deducing_bounds_from_non_const_9`: `r2 = 0; if r2 > r0 ...`.
             let lt = state.get_tnum(left);
-            let lt = if width == Width::W32 { lt.trunc32() } else { lt };
+            let lt = if width == Width::W32 {
+                lt.trunc32()
+            } else {
+                lt
+            };
             let left_const = lt.const_value().map(|v| v as i64).or_else(|| {
                 let (l_lo, l_hi) = state.domain.get_interval(left);
                 if l_lo == l_hi && l_lo != i64::MIN && l_hi != i64::MAX {
@@ -306,12 +346,7 @@ fn condition_outcome_inner(
 ///
 /// Returns `Some(true)` if the branch is always taken, `Some(false)` if
 /// never taken, `None` if undetermined.
-fn pkt_ptr_branch_taken(
-    state: &State,
-    left: Reg,
-    op: CmpOp,
-    right: &Operand,
-) -> Option<bool> {
+fn pkt_ptr_branch_taken(state: &State, left: Reg, op: CmpOp, right: &Operand) -> Option<bool> {
     use crate::analysis::machine::reg_types::RegType;
     use crate::domains::interval::PktEndRel;
     use crate::domains::numeric::NumericDomain;
@@ -330,8 +365,7 @@ fn pkt_ptr_branch_taken(
         && matches!(left_ty, RegType::PtrToPacket)
     {
         (left, op)
-    } else if matches!(left_ty, RegType::PtrToPacketEnd)
-        && matches!(right_ty, RegType::PtrToPacket)
+    } else if matches!(left_ty, RegType::PtrToPacketEnd) && matches!(right_ty, RegType::PtrToPacket)
     {
         (right_reg, flip_cmp_op(op))
     } else {
@@ -339,7 +373,9 @@ fn pkt_ptr_branch_taken(
     };
 
     let rel = match state.domain {
-        NumericDomain::Interval(ref ivl) => ivl.get_ptr_offset(pkt_reg).and_then(|po| po.pkt_end_rel),
+        NumericDomain::Interval(ref ivl) => {
+            ivl.get_ptr_offset(pkt_reg).and_then(|po| po.pkt_end_rel)
+        }
         _ => None,
     }?;
 

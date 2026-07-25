@@ -141,8 +141,8 @@ impl BtfContext {
             return 0;
         };
         match t.kind() {
-            BTF_KIND_INT | BTF_KIND_ENUM | BTF_KIND_ENUM64 | BTF_KIND_FLOAT
-            | BTF_KIND_STRUCT | BTF_KIND_UNION | BTF_KIND_DATASEC => t.size_or_type,
+            BTF_KIND_INT | BTF_KIND_ENUM | BTF_KIND_ENUM64 | BTF_KIND_FLOAT | BTF_KIND_STRUCT
+            | BTF_KIND_UNION | BTF_KIND_DATASEC => t.size_or_type,
             BTF_KIND_PTR => 8,
             BTF_KIND_ARRAY => {
                 if let Some(m) = t.members.first() {
@@ -171,10 +171,7 @@ impl BtfContext {
         }
         let id = self.peel_modifiers(type_id);
         match self.types.get(&id) {
-            Some(ty) => matches!(
-                ty.kind(),
-                BTF_KIND_INT | BTF_KIND_ENUM | BTF_KIND_ENUM64
-            ),
+            Some(ty) => matches!(ty.kind(), BTF_KIND_INT | BTF_KIND_ENUM | BTF_KIND_ENUM64),
             None => false,
         }
     }

@@ -18,19 +18,16 @@ pub fn load_data_section_maps<P: AsRef<Path>>(path: P) -> Result<Vec<BpfMapDef>>
     // SpecialField validation (spin_lock, rb_root, …) on `private(name)`
     // globals in `.bss.<name>` can't resolve any field because there's
     // no value-type BTF on the synthetic map.
-    let btf_ctx = elf
-        .section_headers
-        .iter()
-        .find_map(|sh| {
-            if elf.shdr_strtab.get_at(sh.sh_name) == Some(".BTF") {
-                let start = sh.sh_offset as usize;
-                let end = start + sh.sh_size as usize;
-                if end <= buf.len() {
-                    return btf::parse_btf(&buf[start..end]).ok();
-                }
+    let btf_ctx = elf.section_headers.iter().find_map(|sh| {
+        if elf.shdr_strtab.get_at(sh.sh_name) == Some(".BTF") {
+            let start = sh.sh_offset as usize;
+            let end = start + sh.sh_size as usize;
+            if end <= buf.len() {
+                return btf::parse_btf(&buf[start..end]).ok();
             }
-            None
-        });
+        }
+        None
+    });
 
     let mut maps = vec![];
 
@@ -66,9 +63,7 @@ pub fn load_data_section_maps<P: AsRef<Path>>(path: P) -> Result<Vec<BpfMapDef>>
                 0
             };
 
-            let btf_val_type_id = btf_ctx
-                .as_ref()
-                .and_then(|ctx| ctx.find_datasec(name));
+            let btf_val_type_id = btf_ctx.as_ref().and_then(|ctx| ctx.find_datasec(name));
 
             // `private(NAME) static struct foo __kptr * x` lives in a
             // synthetic `.data..NAME` (or `.bss..NAME`) datasec. Extract
@@ -76,7 +71,11 @@ pub fn load_data_section_maps<P: AsRef<Path>>(path: P) -> Result<Vec<BpfMapDef>>
             // so `bpf_kptr_xchg(&x, …)` and the kptr-load typing path
             // see the same metadata as explicit `.maps`-section maps.
             let kptr_fields = btf_val_type_id
-                .and_then(|id| btf_ctx.as_ref().map(|ctx| ctx.extract_datasec_kptr_fields(id)))
+                .and_then(|id| {
+                    btf_ctx
+                        .as_ref()
+                        .map(|ctx| ctx.extract_datasec_kptr_fields(id))
+                })
                 .unwrap_or_default();
 
             maps.push(BpfMapDef {
@@ -90,7 +89,7 @@ pub fn load_data_section_maps<P: AsRef<Path>>(path: P) -> Result<Vec<BpfMapDef>>
                 initial_data,
                 inner_map_idx: None,
                 kptr_fields,
-            extern_var_offsets: Vec::new(),
+                extern_var_offsets: Vec::new(),
             });
         }
     }
@@ -209,12 +208,18 @@ pub fn load_ksyms<P: AsRef<Path>>(path: P) -> Result<Vec<KsymInfo>> {
         None
     });
 
-    let Some(ctx) = btf_ctx else { return Ok(Vec::new()); };
-    let Some(datasec_id) = ctx.find_datasec(".ksyms") else { return Ok(Vec::new()); };
+    let Some(ctx) = btf_ctx else {
+        return Ok(Vec::new());
+    };
+    let Some(datasec_id) = ctx.find_datasec(".ksyms") else {
+        return Ok(Vec::new());
+    };
 
     let mut out = Vec::new();
     for entry in ctx.datasec_entries(datasec_id) {
-        let Some((name, var_type_id)) = ctx.var_info(entry.var_id) else { continue };
+        let Some((name, var_type_id)) = ctx.var_info(entry.var_id) else {
+            continue;
+        };
         let (struct_name, mut is_percpu) = ctx.classify_ksym_type(var_type_id);
         // Kernel `DECLARE_PER_CPU(...)` symbols carry the `__percpu`
         // TYPE_TAG only in vmlinux/module BTF — programs that import them
@@ -318,7 +323,7 @@ pub fn load_maps<P: AsRef<Path>>(path: P) -> Result<Vec<BpfMapDef>> {
                                 initial_data: None,
                                 inner_map_idx,
                                 kptr_fields: Vec::new(),
-            extern_var_offsets: Vec::new(),
+                                extern_var_offsets: Vec::new(),
                             });
                         }
                     }

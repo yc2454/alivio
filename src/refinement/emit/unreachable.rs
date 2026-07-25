@@ -1,18 +1,24 @@
 // Path-unreachable goal emission driver: natural goal + replay family +
 // ancestor/reg-filtered variants, bundle push, children_unsafe marking.
 
-
+use super::replay::try_prove_unreachable_via_replay;
+use super::{unreachable_base_pc, unreachable_target_regs};
 use crate::analysis::machine::env::VerifierEnv;
 use crate::analysis::machine::state::State;
-use super::{unreachable_base_pc, unreachable_target_regs};
-use super::replay::try_prove_unreachable_via_replay;
 
 /// Emission census (ZOVIA_BCF_CENSUS=1, diagnosis-only): one line per bundle
 /// push ATTEMPT, tagged with the emission-class that produced the goal, so the
 /// per-class hash sets can be intersected offline against a kernel load's
 /// queried set ([ZK try_discharge] dmesg lines). `depth` = ancestor-chain
 /// depth (-1 where n/a), `rung` = replay reset-ladder If pc (-1 = plain).
-pub(crate) fn census_log(class: &str, reject_pc: usize, depth: i32, rung: i32, hash: u64, dup: bool) {
+pub(crate) fn census_log(
+    class: &str,
+    reject_pc: usize,
+    depth: i32,
+    rung: i32,
+    hash: u64,
+    dup: bool,
+) {
     if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
         eprintln!(
             "[census] pc={} class={} depth={} rung={} hash={:016x} dup={}",
@@ -31,7 +37,7 @@ pub(crate) fn census_log(class: &str, reject_pc: usize, depth: i32, rung: i32, h
 /// rejection site (`memory::access`), mirroring the kernel's
 /// `bcf_prove_unreachable` at verifier.c:8224→8255.
 pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &State) -> bool {
-    use crate::refinement::bundle::{RefineEntry, BCF_BUNDLE_KIND_UNREACHABLE};
+    use crate::refinement::bundle::{BCF_BUNDLE_KIND_UNREACHABLE, RefineEntry};
     use crate::refinement::refine_unreachable::try_prove_unreachable;
     use log::info;
 
@@ -76,7 +82,12 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         let hidx = env.current_step_idx.or(state.history_idx);
         let targets = unreachable_target_regs(env, state, hidx);
         let landed = hidx.and_then(|hidx| {
-            crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(env, hidx, state.parent_cache_id, &targets)
+            crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(
+                env,
+                hidx,
+                state.parent_cache_id,
+                &targets,
+            )
         });
         // Use only the immediate cache the suffix walker landed on (no
         // chain-skip through parent_cache_id): the kernel-faithful
@@ -87,8 +98,10 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         (pp, cid)
     };
     if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
-        eprintln!("[disc] reject@pc={} base_pc={:?} prev_insn_pc={:?} parent_cid={:?} base_cid={:?}",
-                  state.pc, base_pc, prev_insn_pc, state.parent_cache_id, base_cid_dbg);
+        eprintln!(
+            "[disc] reject@pc={} base_pc={:?} prev_insn_pc={:?} parent_cid={:?} base_cid={:?}",
+            state.pc, base_pc, prev_insn_pc, state.parent_cache_id, base_cid_dbg
+        );
     }
     // LEAN EMISSION — THE DEFAULT: emit the replay family (replay_base all
     // rungs + ancestor replays depth 0-1) and fall through to the full
@@ -105,7 +118,10 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     let mut replay_goals_produced: usize = 0;
     {
         if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
-            eprintln!("[replay] CALL reject@pc={} base_cid={:?}", state.pc, base_cid_dbg);
+            eprintln!(
+                "[replay] CALL reject@pc={} base_cid={:?}",
+                state.pc, base_cid_dbg
+            );
         }
         if let Some(cid) = base_cid_dbg {
             for (rung, rok) in try_prove_unreachable_via_replay(env, state, cid) {
@@ -116,10 +132,16 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                     BCF_BUNDLE_KIND_UNREACHABLE,
                 );
                 if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
-                    eprintln!("[replay] HASH reject@pc={} hash={:016x}", state.pc, rentry.cond_hash);
+                    eprintln!(
+                        "[replay] HASH reject@pc={} hash={:016x}",
+                        state.pc, rentry.cond_hash
+                    );
                 }
                 replay_goals_produced += 1;
-                let dup = env.bcf_proofs.iter().any(|e| e.cond_hash == rentry.cond_hash);
+                let dup = env
+                    .bcf_proofs
+                    .iter()
+                    .any(|e| e.cond_hash == rentry.cond_hash);
                 census_log("replay_base", state.pc, -1, rung, rentry.cond_hash, dup);
                 if dup {
                     continue;
@@ -157,8 +179,14 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     );
     if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
         census_log(
-            "natural", state.pc, -1, -1, entry.cond_hash,
-            env.bcf_proofs.iter().any(|e| e.cond_hash == entry.cond_hash),
+            "natural",
+            state.pc,
+            -1,
+            -1,
+            entry.cond_hash,
+            env.bcf_proofs
+                .iter()
+                .any(|e| e.cond_hash == entry.cond_hash),
         );
     }
     if lean {
@@ -170,12 +198,23 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         // Aliased-VAR (no-rewrite) reconstruction twin at the natural
         // base: the kernel queries via the aliased form on some programs,
         // a shape the replay never produces.
-        if let Some(ok_no_rw) = crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(state, base_pc, prev_insn_pc) {
+        if let Some(ok_no_rw) =
+            crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(
+                state,
+                base_pc,
+                prev_insn_pc,
+            )
+        {
             let entry_no_rw = RefineEntry::new(
-                ok_no_rw.goal_root, ok_no_rw.sym.exprs, ok_no_rw.proof_bytes,
+                ok_no_rw.goal_root,
+                ok_no_rw.sym.exprs,
+                ok_no_rw.proof_bytes,
                 BCF_BUNDLE_KIND_UNREACHABLE,
             );
-            let nr_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == entry_no_rw.cond_hash);
+            let nr_dup = env
+                .bcf_proofs
+                .iter()
+                .any(|e| e.cond_hash == entry_no_rw.cond_hash);
             census_log("no_rw", state.pc, -1, -1, entry_no_rw.cond_hash, nr_dup);
             if !nr_dup {
                 env.bcf_proofs.push(entry_no_rw);
@@ -186,15 +225,29 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
             let Some(parent_cid) = cur
                 .and_then(|cid| env.state_by_cache_id(cid))
                 .and_then(|(_, s)| s.parent_cache_id)
-            else { break };
+            else {
+                break;
+            };
             for (rung, rok) in try_prove_unreachable_via_replay(env, state, parent_cid) {
                 let rentry = RefineEntry::new(
-                    rok.goal_root, rok.sym.exprs, rok.proof_bytes,
+                    rok.goal_root,
+                    rok.sym.exprs,
+                    rok.proof_bytes,
                     BCF_BUNDLE_KIND_UNREACHABLE,
                 );
                 replay_goals_produced += 1;
-                let ra_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == rentry.cond_hash);
-                census_log("replay_anc", state.pc, lean_depth, rung, rentry.cond_hash, ra_dup);
+                let ra_dup = env
+                    .bcf_proofs
+                    .iter()
+                    .any(|e| e.cond_hash == rentry.cond_hash);
+                census_log(
+                    "replay_anc",
+                    state.pc,
+                    lean_depth,
+                    rung,
+                    rentry.cond_hash,
+                    ra_dup,
+                );
                 if !ra_dup {
                     env.bcf_proofs.push(rentry);
                 }
@@ -204,13 +257,31 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
             let anc_pc = env.state_by_cache_id(parent_cid).map(|(pc, _)| pc);
             if let Some(anc_pc) = anc_pc {
                 let anc_prev = env.cached_prev_insn_pc(parent_cid);
-                if let Some(ok_an) = crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(state, Some(anc_pc), anc_prev) {
+                if let Some(ok_an) =
+                    crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(
+                        state,
+                        Some(anc_pc),
+                        anc_prev,
+                    )
+                {
                     let entry_an = RefineEntry::new(
-                        ok_an.goal_root, ok_an.sym.exprs, ok_an.proof_bytes,
+                        ok_an.goal_root,
+                        ok_an.sym.exprs,
+                        ok_an.proof_bytes,
                         BCF_BUNDLE_KIND_UNREACHABLE,
                     );
-                    let an_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == entry_an.cond_hash);
-                    census_log("anc_norw", state.pc, lean_depth, -1, entry_an.cond_hash, an_dup);
+                    let an_dup = env
+                        .bcf_proofs
+                        .iter()
+                        .any(|e| e.cond_hash == entry_an.cond_hash);
+                    census_log(
+                        "anc_norw",
+                        state.pc,
+                        lean_depth,
+                        -1,
+                        entry_an.cond_hash,
+                        an_dup,
+                    );
                     if !an_dup {
                         env.bcf_proofs.push(entry_an);
                     }
@@ -226,11 +297,20 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         if replay_goals_produced > 0 {
             if let Ok(flush_path) = std::env::var("ZOVIA_BCF_EAGER_FLUSH") {
                 let tmp = format!("{}.tmp", flush_path);
-                if crate::refinement::bundle::write_bundle(std::path::Path::new(&tmp), &env.bcf_proofs).is_ok() {
+                if crate::refinement::bundle::write_bundle(
+                    std::path::Path::new(&tmp),
+                    &env.bcf_proofs,
+                )
+                .is_ok()
+                {
                     let _ = std::fs::rename(&tmp, &flush_path);
                 }
             }
-            crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, base_cid_dbg);
+            crate::analysis::flow::pruning::cache::mark_path_children_unsafe(
+                env,
+                state,
+                base_cid_dbg,
+            );
             return true;
         }
     }
@@ -250,22 +330,38 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // Writes atomically (tmp+rename).
     if let Ok(flush_path) = std::env::var("ZOVIA_BCF_EAGER_FLUSH") {
         let tmp = format!("{}.tmp", flush_path);
-        if crate::refinement::bundle::write_bundle(std::path::Path::new(&tmp), &env.bcf_proofs).is_ok() {
+        if crate::refinement::bundle::write_bundle(std::path::Path::new(&tmp), &env.bcf_proofs)
+            .is_ok()
+        {
             let _ = std::fs::rename(&tmp, &flush_path);
         }
     }
     // Also push the un-rewritten (aliased-VAR) form: the kernel queries
     // some discharge hashes via the aliased shape, so both forms stay in
     // the bundle alongside the kernel-shape rewrites.
-    if let Some(ok_no_rw) = crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(state, base_pc, prev_insn_pc) {
+    if let Some(ok_no_rw) = crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(
+        state,
+        base_pc,
+        prev_insn_pc,
+    ) {
         let entry_no_rw = RefineEntry::new(
             ok_no_rw.goal_root,
             ok_no_rw.sym.exprs,
             ok_no_rw.proof_bytes,
             BCF_BUNDLE_KIND_UNREACHABLE,
         );
-        let already_have = env.bcf_proofs.iter().any(|e| e.cond_hash == entry_no_rw.cond_hash);
-        census_log("no_rw", state.pc, -1, -1, entry_no_rw.cond_hash, already_have);
+        let already_have = env
+            .bcf_proofs
+            .iter()
+            .any(|e| e.cond_hash == entry_no_rw.cond_hash);
+        census_log(
+            "no_rw",
+            state.pc,
+            -1,
+            -1,
+            entry_no_rw.cond_hash,
+            already_have,
+        );
         if !already_have {
             info!(
                 target: "app",
@@ -281,14 +377,23 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // the kernel folds per-site based on ITS state, so either form may
     // hash-match. ADDITIVE + deduped.
     {
-        if let Some(ok_lf) = crate::refinement::refine_unreachable::try_prove_unreachable_fold_legacy(
-            state, base_pc, prev_insn_pc,
-        ) {
+        if let Some(ok_lf) =
+            crate::refinement::refine_unreachable::try_prove_unreachable_fold_legacy(
+                state,
+                base_pc,
+                prev_insn_pc,
+            )
+        {
             let entry_lf = RefineEntry::new(
-                ok_lf.goal_root, ok_lf.sym.exprs, ok_lf.proof_bytes,
+                ok_lf.goal_root,
+                ok_lf.sym.exprs,
+                ok_lf.proof_bytes,
                 BCF_BUNDLE_KIND_UNREACHABLE,
             );
-            let lf_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == entry_lf.cond_hash);
+            let lf_dup = env
+                .bcf_proofs
+                .iter()
+                .any(|e| e.cond_hash == entry_lf.cond_hash);
             census_log("legacy_fold", state.pc, -1, -1, entry_lf.cond_hash, lf_dup);
             if !lf_dup {
                 info!(
@@ -307,22 +412,42 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // there — emit the traj-window forms at (base_pc, prev_insn_pc) too.
     if base_pc.is_some() {
         for (t_label, okv) in [
-            ("traj", crate::refinement::refine_unreachable::try_prove_unreachable_traj(
-                state, base_pc, prev_insn_pc,
-            )),
-            ("traj_lf", crate::refinement::refine_unreachable::try_prove_unreachable_traj_fold_legacy(
-                state, base_pc, prev_insn_pc,
-            )),
-            ("traj_no_rw", crate::refinement::refine_unreachable::try_prove_unreachable_traj_no_rewrite(
-                state, base_pc, prev_insn_pc,
-            )),
+            (
+                "traj",
+                crate::refinement::refine_unreachable::try_prove_unreachable_traj(
+                    state,
+                    base_pc,
+                    prev_insn_pc,
+                ),
+            ),
+            (
+                "traj_lf",
+                crate::refinement::refine_unreachable::try_prove_unreachable_traj_fold_legacy(
+                    state,
+                    base_pc,
+                    prev_insn_pc,
+                ),
+            ),
+            (
+                "traj_no_rw",
+                crate::refinement::refine_unreachable::try_prove_unreachable_traj_no_rewrite(
+                    state,
+                    base_pc,
+                    prev_insn_pc,
+                ),
+            ),
         ] {
             if let Some(ok_t) = okv {
                 let entry_t = RefineEntry::new(
-                    ok_t.goal_root, ok_t.sym.exprs, ok_t.proof_bytes,
+                    ok_t.goal_root,
+                    ok_t.sym.exprs,
+                    ok_t.proof_bytes,
                     BCF_BUNDLE_KIND_UNREACHABLE,
                 );
-                let t_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == entry_t.cond_hash);
+                let t_dup = env
+                    .bcf_proofs
+                    .iter()
+                    .any(|e| e.cond_hash == entry_t.cond_hash);
                 census_log(t_label, state.pc, -1, -1, entry_t.cond_hash, t_dup);
                 if !t_dup {
                     info!(
@@ -365,13 +490,26 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                 };
                 if let Some(ok) = ok_opt {
                     let rf_entry = RefineEntry::new(
-                        ok.goal_root, ok.sym.exprs, ok.proof_bytes,
+                        ok.goal_root,
+                        ok.sym.exprs,
+                        ok.proof_bytes,
                         BCF_BUNDLE_KIND_UNREACHABLE,
                     );
-                    let rf_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == rf_entry.cond_hash);
+                    let rf_dup = env
+                        .bcf_proofs
+                        .iter()
+                        .any(|e| e.cond_hash == rf_entry.cond_hash);
                     census_log(
-                        if use_rewrite { "regfilter_rw" } else { "regfilter_norw" },
-                        state.pc, hops as i32, -1, rf_entry.cond_hash, rf_dup,
+                        if use_rewrite {
+                            "regfilter_rw"
+                        } else {
+                            "regfilter_norw"
+                        },
+                        state.pc,
+                        hops as i32,
+                        -1,
+                        rf_entry.cond_hash,
+                        rf_dup,
                     );
                     if !rf_dup {
                         info!(target: "app",
@@ -409,8 +547,12 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
             let Some(parent_cid) = env
                 .state_by_cache_id(cur_cid)
                 .and_then(|(_, s)| s.parent_cache_id)
-            else { break };
-            let Some((ancestor_pc, _)) = env.state_by_cache_id(parent_cid) else { break };
+            else {
+                break;
+            };
+            let Some((ancestor_pc, _)) = env.state_by_cache_id(parent_cid) else {
+                break;
+            };
             let ancestor_prev_pc = env.cached_prev_insn_pc(parent_cid);
             // Per-ancestor PC-suffix discharges (rewrite + no-rewrite).
             // Register-filtered discharges are PC-independent and emitted
@@ -420,7 +562,10 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                     try_prove_unreachable(state, Some(ancestor_pc), ancestor_prev_pc)
                 } else {
                     crate::refinement::refine_unreachable::try_prove_unreachable_no_rewrite(
-                        state, Some(ancestor_pc), ancestor_prev_pc)
+                        state,
+                        Some(ancestor_pc),
+                        ancestor_prev_pc,
+                    )
                 };
                 if let Some(ok) = ok_opt {
                     let extra_entry = RefineEntry::new(
@@ -429,16 +574,28 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                         ok.proof_bytes,
                         BCF_BUNDLE_KIND_UNREACHABLE,
                     );
-                    let already_have = env.bcf_proofs.iter().any(|e| e.cond_hash == extra_entry.cond_hash);
+                    let already_have = env
+                        .bcf_proofs
+                        .iter()
+                        .any(|e| e.cond_hash == extra_entry.cond_hash);
                     census_log(
                         if use_rewrite { "anc_rw" } else { "anc_norw" },
-                        state.pc, depth as i32, -1, extra_entry.cond_hash, already_have,
+                        state.pc,
+                        depth as i32,
+                        -1,
+                        extra_entry.cond_hash,
+                        already_have,
                     );
                     if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
                         eprintln!(
                             "[disc-ancestor] depth={} anchor_pc={} anchor_cid={} prev_pc={:?} rw={} hash={:016x} dup={}",
-                            depth, ancestor_pc, parent_cid, ancestor_prev_pc, use_rewrite,
-                            extra_entry.cond_hash, already_have,
+                            depth,
+                            ancestor_pc,
+                            parent_cid,
+                            ancestor_prev_pc,
+                            use_rewrite,
+                            extra_entry.cond_hash,
+                            already_have,
                         );
                     }
                     if !already_have {
@@ -461,14 +618,28 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
             {
                 for (rung, rok) in try_prove_unreachable_via_replay(env, state, parent_cid) {
                     let rentry = RefineEntry::new(
-                        rok.goal_root, rok.sym.exprs, rok.proof_bytes,
+                        rok.goal_root,
+                        rok.sym.exprs,
+                        rok.proof_bytes,
                         BCF_BUNDLE_KIND_UNREACHABLE,
                     );
-                    let ra_dup = env.bcf_proofs.iter().any(|e| e.cond_hash == rentry.cond_hash);
-                    census_log("replay_anc", state.pc, depth as i32, rung, rentry.cond_hash, ra_dup);
+                    let ra_dup = env
+                        .bcf_proofs
+                        .iter()
+                        .any(|e| e.cond_hash == rentry.cond_hash);
+                    census_log(
+                        "replay_anc",
+                        state.pc,
+                        depth as i32,
+                        rung,
+                        rentry.cond_hash,
+                        ra_dup,
+                    );
                     if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
-                        eprintln!("[replay] ANCESTOR depth={} anchor_cid={} hash={:016x}",
-                            depth, parent_cid, rentry.cond_hash);
+                        eprintln!(
+                            "[replay] ANCESTOR depth={} anchor_cid={} hash={:016x}",
+                            depth, parent_cid, rentry.cond_hash
+                        );
                     }
                     if !ra_dup {
                         env.bcf_proofs.push(rentry);

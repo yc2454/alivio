@@ -199,10 +199,7 @@ pub fn with_selftest_caps(base: &VerifierConfig) -> VerifierConfig {
 /// (e.g. LLVM stride-pointer loops) get their `max_insn` and
 /// `max_states_per_pc` raised to kernel-equivalent values; other
 /// files behave identically to `with_selftest_caps`.
-pub fn with_selftest_caps_for_file(
-    base: &VerifierConfig,
-    file_basename: &str,
-) -> VerifierConfig {
+pub fn with_selftest_caps_for_file(base: &VerifierConfig, file_basename: &str) -> VerifierConfig {
     let mut c = with_selftest_caps(base);
     if let Some(ov) = override_for_file(file_basename) {
         if let Some(n) = ov.max_insn {
@@ -230,7 +227,10 @@ pub const PER_FILE_DEFINES: &[(&str, &[&str])] = &[
     // upstream tree gates behind cpuv4 + clang ≥18; surface the
     // payload functions by tripping those gates at compile time.
     ("verifier_load_acquire.c", &["CAN_USE_LOAD_ACQ_STORE_REL"]),
-    ("verifier_store_release.c", &["ENABLE_ATOMICS_TESTS", "__TARGET_ARCH_x86"]),
+    (
+        "verifier_store_release.c",
+        &["ENABLE_ATOMICS_TESTS", "__TARGET_ARCH_x86"],
+    ),
     // private-stack tests are gated on __TARGET_ARCH_x86 in the
     // upstream source. The `__jited(...)` annotations check actual x86
     // codegen which we don't validate; only `__success`/`__failure` is
@@ -341,7 +341,15 @@ pub fn run_file_with_dirs(
     // `run_file_with_dirs_inner` directly with a fingerprint computed
     // once at sweep start.
     let fp = clang::fingerprint_include_set(include_dirs, iquote_dirs);
-    run_file_with_dirs_inner(src, include_dirs, iquote_dirs, extra_defines, config, filter, fp)
+    run_file_with_dirs_inner(
+        src,
+        include_dirs,
+        iquote_dirs,
+        extra_defines,
+        config,
+        filter,
+        fp,
+    )
 }
 
 fn run_file_with_dirs_inner(
@@ -518,7 +526,14 @@ pub fn run_dir_upstream_filtered(
 ) -> Result<Vec<FileReport>> {
     let inc = clang::upstream_include_dirs(headers_root, upstream_root);
     let iq = clang::upstream_iquote_dirs(headers_root, upstream_root);
-    run_dir_with_dirs(dir, &inc, &iq, clang::UPSTREAM_GLOBAL_DEFINES, config, filter)
+    run_dir_with_dirs(
+        dir,
+        &inc,
+        &iq,
+        clang::UPSTREAM_GLOBAL_DEFINES,
+        config,
+        filter,
+    )
 }
 
 /// Core per-directory driver. `global_defines` are passed to every file
@@ -653,9 +668,11 @@ fn run_one(analyzer: &Analyzer, attrs: ProgAttrs, file_basename: &str) -> ProgRe
         .collect();
     let struct_ops_reuse = distinct_ops_structs.len() > 1;
     let result = if struct_ops_reuse {
-        AnalysisResult::Fail(crate::analysis::machine::error::VerificationError::StructOpsProgReuse {
-            prog: attrs.func_name.clone(),
-        })
+        AnalysisResult::Fail(
+            crate::analysis::machine::error::VerificationError::StructOpsProgReuse {
+                prog: attrs.func_name.clone(),
+            },
+        )
     } else {
         // Termination is bounded by the verifier's own complexity-limit
         // check — see `SELFTEST_MAX_INSN` and `with_selftest_caps` below.
@@ -740,16 +757,9 @@ mod tests {
         .expect("run_file should succeed");
 
         // We expect at least gotol_small_imm and gotol_large_imm.
-        assert!(
-            report.progs.len() >= 2,
-            "got {} progs",
-            report.progs.len()
-        );
+        assert!(report.progs.len() >= 2, "got {} progs", report.progs.len());
         for p in &report.progs {
-            eprintln!(
-                "  {} ({}): {:?}",
-                p.func_name, p.description, p.outcome
-            );
+            eprintln!("  {} ({}): {:?}", p.func_name, p.description, p.outcome);
         }
     }
 }

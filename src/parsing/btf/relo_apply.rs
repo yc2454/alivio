@@ -77,20 +77,20 @@ pub fn apply_core_relos(
             }
         };
         let new_val: Option<u64> = match relo.kind {
-            CoreReloKind::EnumvalExists => Some(
-                if check_enum_value_exists(program_btf, target_btf, relo) {
+            CoreReloKind::EnumvalExists => {
+                Some(if check_enum_value_exists(program_btf, target_btf, relo) {
                     1
                 } else {
                     0
-                },
-            ),
-            CoreReloKind::FieldExists => Some(
-                if check_field_exists(program_btf, target_btf, relo) {
+                })
+            }
+            CoreReloKind::FieldExists => {
+                Some(if check_field_exists(program_btf, target_btf, relo) {
                     1
                 } else {
                     0
-                },
-            ),
+                })
+            }
             _ => {
                 stats.unsupported_kind += 1;
                 None

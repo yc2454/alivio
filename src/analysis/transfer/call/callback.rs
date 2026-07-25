@@ -192,15 +192,14 @@ pub(super) fn transfer_callback_helper(
     // so the cb-arg typing block below can install
     // R1=PtrToMapObject{map_idx}, R2/R3=PtrToMapValue{map_idx} once
     // `state` has been moved into `cb_state`.
-    let caller_r1_for_timer_cb: Option<usize> =
-        if helper == constants::BPF_TIMER_SET_CALLBACK {
-            match state.types.get(Reg::R1) {
-                RegType::PtrToMapValue { map_idx, .. } => Some(map_idx),
-                _ => None,
-            }
-        } else {
-            None
-        };
+    let caller_r1_for_timer_cb: Option<usize> = if helper == constants::BPF_TIMER_SET_CALLBACK {
+        match state.types.get(Reg::R1) {
+            RegType::PtrToMapValue { map_idx, .. } => Some(map_idx),
+            _ => None,
+        }
+    } else {
+        None
+    };
     match helper {
         // bpf_loop(nr_loops, cb, ctx, flags) → cb(idx, ctx); R1=idx (scalar, set later), ctx → R2.
         constants::BPF_LOOP
@@ -247,8 +246,7 @@ pub(super) fn transfer_callback_helper(
 
     let mut cb_state = state;
     let caller_level_idx = cb_state.current_frame_level();
-    let caller_stack_snapshot =
-        cb_state.frames.get(caller_level_idx).stack.clone();
+    let caller_stack_snapshot = cb_state.frames.get(caller_level_idx).stack.clone();
     cb_state.push_callback_frame(pc + 1, helper);
     cb_state.frames.current_mut().set_cb_propagation(
         caller_stack_snapshot,

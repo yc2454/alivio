@@ -13,9 +13,7 @@ use crate::ast::Program;
 use crate::common::config::{DomainMode, VerifierConfig};
 use crate::domains::dbm::Dbm;
 use crate::domains::numeric::NumericDomain;
-use crate::pcc::{
-    program_hash, validate_certificate_for_program,
-};
+use crate::pcc::{program_hash, validate_certificate_for_program};
 use log::{error, info};
 use std::collections::HashMap;
 
@@ -33,7 +31,6 @@ pub struct AnalysisResult {
     /// still populated with all states collected before the failure point.
     pub error: Option<VerificationError>,
 }
-
 
 pub fn analyze_program(
     ctx: &ExecContext,
@@ -63,7 +60,10 @@ pub fn analyze_program_full(
         ctx,
         prog,
         config.certificate.clone(),
-        matches!(config.domain_mode, crate::common::config::DomainMode::Interval),
+        matches!(
+            config.domain_mode,
+            crate::common::config::DomainMode::Interval
+        ),
         config.bcf_enabled,
     );
     if let Some(ref cert) = env.certificate {
@@ -117,17 +117,15 @@ pub fn analyze_program_full(
         };
     }
 
-    if let Err(e) =
-        subprog::check_stack_overflow(
-            prog,
-            env.ctx.prog_kind,
-            config.enable_private_stack
-                && match env.ctx.prog_kind {
-                    crate::ast::ProgramKind::StructOps => env.ctx.priv_stack_requested,
-                    _ => true,
-                },
-        )
-    {
+    if let Err(e) = subprog::check_stack_overflow(
+        prog,
+        env.ctx.prog_kind,
+        config.enable_private_stack
+            && match env.ctx.prog_kind {
+                crate::ast::ProgramKind::StructOps => env.ctx.priv_stack_requested,
+                _ => true,
+            },
+    ) {
         error!(target: "app", "[Analysis] Stack Error: {}", e);
         return AnalysisResult {
             dbms: vec![],
@@ -341,10 +339,7 @@ pub fn analyze_program_full(
     if let Some(path) = config.bcf_bundle_out.as_deref()
         && !env.bcf_proofs.is_empty()
     {
-        match crate::refinement::bundle::write_bundle(
-            std::path::Path::new(path),
-            &env.bcf_proofs,
-        ) {
+        match crate::refinement::bundle::write_bundle(std::path::Path::new(path), &env.bcf_proofs) {
             Ok(bytes) => info!(
                 target: "app",
                 "[bcf] wrote bundle: {} ({} entries, {} bytes){}",
@@ -362,7 +357,12 @@ pub fn analyze_program_full(
     // cached at any single pc + total cached + cap evictions. Pegging the
     // cap (with evictions > 0) indicates a pruning-effectiveness gap.
     if config.verbosity >= 1 {
-        let max_per_insn = env.explored_states.values().map(|v| v.len()).max().unwrap_or(0);
+        let max_per_insn = env
+            .explored_states
+            .values()
+            .map(|v| v.len())
+            .max()
+            .unwrap_or(0);
         let total_states: usize = env.explored_states.values().map(|v| v.len()).sum();
         let n_at_cap = env
             .explored_states
@@ -448,7 +448,10 @@ pub fn analyze_exception_cb(
         ctx,
         prog,
         None,
-        matches!(config.domain_mode, crate::common::config::DomainMode::Interval),
+        matches!(
+            config.domain_mode,
+            crate::common::config::DomainMode::Interval
+        ),
         config.bcf_enabled,
     );
     env.analyzing_exception_cb = true;
@@ -460,17 +463,15 @@ pub fn analyze_exception_cb(
     if let Err(e) = subprog::check_subprogs(prog) {
         return Some(VerificationError::SubprogError { e });
     }
-    if let Err(e) =
-        subprog::check_stack_overflow(
-            prog,
-            env.ctx.prog_kind,
-            config.enable_private_stack
-                && match env.ctx.prog_kind {
-                    crate::ast::ProgramKind::StructOps => env.ctx.priv_stack_requested,
-                    _ => true,
-                },
-        )
-    {
+    if let Err(e) = subprog::check_stack_overflow(
+        prog,
+        env.ctx.prog_kind,
+        config.enable_private_stack
+            && match env.ctx.prog_kind {
+                crate::ast::ProgramKind::StructOps => env.ctx.priv_stack_requested,
+                _ => true,
+            },
+    ) {
         return Some(VerificationError::SubprogError { e });
     }
     if let Err(e) = cfg::check_cfg(prog, &mut env, config) {
@@ -551,8 +552,14 @@ fn check_map_prog_compatibility(env: &VerifierEnv) -> Option<VerificationError> 
     let flavor = env.ctx.attach_flavor.as_deref().unwrap_or("");
     let flavor_is_tracing = matches!(
         flavor,
-        "kprobe" | "kretprobe" | "tracepoint" | "tp" | "raw_tracepoint"
-            | "raw_tp" | "raw_tp.w" | "perf_event"
+        "kprobe"
+            | "kretprobe"
+            | "tracepoint"
+            | "tp"
+            | "raw_tracepoint"
+            | "raw_tp"
+            | "raw_tp.w"
+            | "perf_event"
     );
     let is_tracing = flavor_is_tracing
         || matches!(
@@ -576,8 +583,12 @@ fn check_map_prog_compatibility(env: &VerifierEnv) -> Option<VerificationError> 
     }
 
     for map_idx in used {
-        let Some(map_def) = env.ctx.map_defs.get(map_idx) else { continue };
-        let Some(btf_id) = map_def.btf_val_type_id else { continue };
+        let Some(map_def) = env.ctx.map_defs.get(map_idx) else {
+            continue;
+        };
+        let Some(btf_id) = map_def.btf_val_type_id else {
+            continue;
+        };
         for field in env.ctx.btf.find_special_fields(btf_id) {
             let (rejects_tracing, rejects_socket_filter, name): (bool, bool, &'static str) =
                 match field.kind {
@@ -599,4 +610,3 @@ fn check_map_prog_compatibility(env: &VerifierEnv) -> Option<VerificationError> 
     }
     None
 }
-

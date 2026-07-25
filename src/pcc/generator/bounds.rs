@@ -71,15 +71,16 @@ pub(super) fn interval_already_proves_access(
         }
         RegType::PtrToMapValue { map_idx, .. } => {
             if let NumericDomain::Interval(ref ivl) = state.domain
-                && let Some(po) = ivl.get_ptr_offset(base) {
-                    let min = po.min_offset() + off;
-                    let max = po.max_offset() + off + size;
-                    let limit = map_defs
-                        .get(map_idx)
-                        .map(|d| d.value_size as i64)
-                        .unwrap_or(0);
-                    return min >= 0 && max <= limit;
-                }
+                && let Some(po) = ivl.get_ptr_offset(base)
+            {
+                let min = po.min_offset() + off;
+                let max = po.max_offset() + off + size;
+                let limit = map_defs
+                    .get(map_idx)
+                    .map(|d| d.value_size as i64)
+                    .unwrap_or(0);
+                return min >= 0 && max <= limit;
+            }
             false
         }
         _ => false,
@@ -135,9 +136,10 @@ pub(super) fn find_same_map_anchor(
             // Check: zone_ub(base, k) + k_off <= required
             if let Some(ub) = zone_upper_bound(dbm, base, k)
                 && let Some(composed) = ub.checked_add(k_off)
-                    && composed <= required {
-                        return Some((k, ub));
-                    }
+                && composed <= required
+            {
+                return Some((k, ub));
+            }
         }
     }
     None

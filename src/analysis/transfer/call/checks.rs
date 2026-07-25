@@ -230,14 +230,10 @@ pub(crate) fn validate_single_arg(
 
         // ---- Map-related types ----
         ArgKind::ConstMapPtr => validators::validate_const_map_ptr(&mut ctx),
-        ArgKind::ConstMapPtrOfType(t) => {
-            validators::validate_const_map_ptr_of_type(&mut ctx, t)
-        }
+        ArgKind::ConstMapPtrOfType(t) => validators::validate_const_map_ptr_of_type(&mut ctx, t),
         ArgKind::PtrToMapKey => validators::validate_ptr_to_map_key(&mut ctx),
         ArgKind::PtrToMapValue => validators::validate_ptr_to_map_value(&mut ctx),
-        ArgKind::PtrToUninitMapValue => {
-            validators::map::validate_ptr_to_uninit_map_value(&mut ctx)
-        }
+        ArgKind::PtrToUninitMapValue => validators::map::validate_ptr_to_uninit_map_value(&mut ctx),
 
         // ---- Memory types ----
         ArgKind::PtrToMem => validators::validate_ptr_to_mem(&mut ctx),
@@ -246,9 +242,9 @@ pub(crate) fn validate_single_arg(
         ArgKind::PtrToConstStr => validate_ptr_to_const_str(&mut ctx),
 
         // ---- Socket types ----
-        ArgKind::PtrToSocket
-        | ArgKind::PtrToSockCommon
-        | ArgKind::PtrToBTFIdSockCommon => validators::validate_socket_arg(&mut ctx, expected),
+        ArgKind::PtrToSocket | ArgKind::PtrToSockCommon | ArgKind::PtrToBTFIdSockCommon => {
+            validators::validate_socket_arg(&mut ctx, expected)
+        }
 
         // ---- Scalar/size types ----
         ArgKind::ConstSize => validators::validate_const_size(&mut ctx),
@@ -259,9 +255,7 @@ pub(crate) fn validate_single_arg(
         // ---- Simple pointer types (inline validation) ----
         ArgKind::PtrToCtx => validate_ptr_to_ctx(&mut ctx),
         ArgKind::PtrToBtfId => validate_ptr_to_btf_id(&mut ctx),
-        ArgKind::PtrToBtfIdNamed { type_name } => {
-            validate_ptr_to_btf_id_named(&mut ctx, type_name)
-        }
+        ArgKind::PtrToBtfIdNamed { type_name } => validate_ptr_to_btf_id_named(&mut ctx, type_name),
         ArgKind::PtrToStack => validate_ptr_to_stack(&mut ctx),
         ArgKind::PtrToLong => validate_ptr_to_long(&mut ctx),
         ArgKind::PtrToCallback => validate_ptr_to_callback(&mut ctx),
@@ -275,9 +269,10 @@ pub(crate) fn validate_single_arg(
         ArgKind::IterArg { kind, expected } => validate_iter_arg(&mut ctx, kind, expected),
 
         // ---- IRQ flag ----
-        ArgKind::IrqFlagArg { uninit, kfunc_class } => {
-            validate_irq_flag_arg(&mut ctx, uninit, kfunc_class)
-        }
+        ArgKind::IrqFlagArg {
+            uninit,
+            kfunc_class,
+        } => validate_irq_flag_arg(&mut ctx, uninit, kfunc_class),
 
         ArgKind::ResSpinLockArg { is_irq: _ } => validate_res_spin_lock_arg(&mut ctx),
 
@@ -408,9 +403,7 @@ fn validate_ptr_to_btf_id(ctx: &mut ValidationContext) -> bool {
     // equivalence already wired in `validate_ptr_to_btf_id_named`.
     let is_specialized_btf = matches!(
         ctx.actual,
-        RegType::PtrToTask { .. }
-            | RegType::PtrToCgroup { .. }
-            | RegType::PtrToCpumask { .. }
+        RegType::PtrToTask { .. } | RegType::PtrToCgroup { .. } | RegType::PtrToCpumask { .. }
     );
     if !matches!(ctx.actual, RegType::PtrToBtfId { .. }) && !is_specialized_btf {
         return ctx.fail_with_log(
@@ -435,10 +428,7 @@ fn validate_ptr_to_btf_id(ctx: &mut ValidationContext) -> bool {
 /// `(struct path *)&file->f_task_work` (an interior pointer of type
 /// `callback_head` after our new field-arithmetic typing) to the
 /// kfunc.
-fn validate_ptr_to_btf_id_named(
-    ctx: &mut ValidationContext,
-    expected: &'static str,
-) -> bool {
+fn validate_ptr_to_btf_id_named(ctx: &mut ValidationContext, expected: &'static str) -> bool {
     // The specialized PtrTo<X> reg-types (PtrToCgroup, PtrToTask, …) are
     // semantically the same kernel struct as the generic
     // PtrToBtfId{type_name=<X>} produced by BTF-typed entry args. A caller
@@ -459,11 +449,15 @@ fn validate_ptr_to_btf_id_named(
     // cgrp_ls_attach_cgroup::set_cookie / update_cookie_sockops.
     let sleepable_no_rcu = ctx.env.ctx.is_sleepable && !ctx.state.in_rcu_read_section();
     let matches = match (expected, ctx.actual) {
-        (e, RegType::PtrToBtfId { type_name, flags, .. })
-            if type_name == e
-                && matches!(e, "cgroup" | "task_struct")
-                && flags.contains(crate::analysis::machine::reg_types::PtrFlags::UNTRUSTED)
-                && sleepable_no_rcu =>
+        (
+            e,
+            RegType::PtrToBtfId {
+                type_name, flags, ..
+            },
+        ) if type_name == e
+            && matches!(e, "cgroup" | "task_struct")
+            && flags.contains(crate::analysis::machine::reg_types::PtrFlags::UNTRUSTED)
+            && sleepable_no_rcu =>
         {
             false
         }
@@ -557,8 +551,12 @@ fn validate_ptr_to_cpumask_read(ctx: &mut ValidationContext) -> bool {
             if (type_name == "cpumask" || type_name == "bpf_cpumask")
                 && flags.contains(PtrFlags::TRUSTED)
     );
-    let is_map_kptr_cpumask = if let RegType::PtrToMapKptr { pointee_btf_id, ref_id, flags, .. } =
-        ctx.actual
+    let is_map_kptr_cpumask = if let RegType::PtrToMapKptr {
+        pointee_btf_id,
+        ref_id,
+        flags,
+        ..
+    } = ctx.actual
     {
         let name = ctx.env.ctx.btf.struct_or_fwd_name(pointee_btf_id);
         let name_ok = matches!(name, Some("cpumask") | Some("bpf_cpumask"));
@@ -1016,7 +1014,10 @@ fn validate_iter_arg(
 
     let RegType::PtrToStack { frame_level } = ctx.actual else {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
             &format!(
                 "[Verifier] pc {}: R{} expected &bpf_iter_* (PTR_TO_STACK), got {:?}",
                 ctx.pc,
@@ -1027,7 +1028,10 @@ fn validate_iter_arg(
     };
     let Some(off) = ctx.state.domain.get_distance_fixed(ctx.reg, Reg::R10) else {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
             &format!(
                 "[Verifier] pc {}: R{} iter arg has non-fixed stack offset",
                 ctx.pc,
@@ -1037,7 +1041,10 @@ fn validate_iter_arg(
     };
     let Ok(base_off) = i16::try_from(off) else {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
             &format!(
                 "[Verifier] pc {}: R{} iter arg offset {} out of i16 range",
                 ctx.pc,
@@ -1058,7 +1065,10 @@ fn validate_iter_arg(
     };
     if !ok {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
             &format!(
                 "[Verifier] pc {}: R{} iter arg kind/state mismatch (expected {:?} {:?}, got {:?})",
                 ctx.pc,
@@ -1085,7 +1095,10 @@ fn validate_irq_flag_arg(
 ) -> bool {
     let RegType::PtrToStack { frame_level } = ctx.actual else {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
             &format!(
                 "[Verifier] pc {}: R{} expected &irq_flag (PTR_TO_STACK), got {:?}",
                 ctx.pc,
@@ -1096,14 +1109,26 @@ fn validate_irq_flag_arg(
     };
     let Some(off) = ctx.state.domain.get_distance_fixed(ctx.reg, Reg::R10) else {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
-            &format!("[Verifier] pc {}: irq flag arg has non-fixed stack offset", ctx.pc),
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
+            &format!(
+                "[Verifier] pc {}: irq flag arg has non-fixed stack offset",
+                ctx.pc
+            ),
         );
     };
     let Ok(base_off) = i16::try_from(off) else {
         return ctx.fail_with_log(
-            VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
-            &format!("[Verifier] pc {}: irq flag arg offset {} out of i16 range", ctx.pc, off),
+            VerificationError::InvalidArgType {
+                pc: ctx.pc,
+                reg: ctx.reg,
+            },
+            &format!(
+                "[Verifier] pc {}: irq flag arg offset {} out of i16 range",
+                ctx.pc, off
+            ),
         );
     };
 
@@ -1187,10 +1212,15 @@ fn validate_map_value_special(
     // test that calls `bpf_spin_lock(&node->lock)` after `bpf_obj_new`
     // rejects.
     let (val_type_id, off) = match ctx.actual {
-        RegType::PtrToMapValue { offset, map_idx, .. } => {
+        RegType::PtrToMapValue {
+            offset, map_idx, ..
+        } => {
             let Some(off) = offset else {
                 return ctx.fail_with_log(
-                    VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
+                    VerificationError::InvalidArgType {
+                        pc: ctx.pc,
+                        reg: ctx.reg,
+                    },
                     &format!(
                         "[Verifier] pc {}: R{} {:?}-field arg has variable offset",
                         ctx.pc,
@@ -1201,7 +1231,10 @@ fn validate_map_value_special(
             };
             let Some(map_def) = ctx.env.ctx.map_defs.get(map_idx) else {
                 return ctx.fail_with_log(
-                    VerificationError::MapNotFound { pc: ctx.pc, map_idx },
+                    VerificationError::MapNotFound {
+                        pc: ctx.pc,
+                        map_idx,
+                    },
                     &format!(
                         "[Verifier] pc {}: R{} {:?}-field arg references unknown map idx {}",
                         ctx.pc,
@@ -1224,9 +1257,11 @@ fn validate_map_value_special(
             };
             (val_type_id, off)
         }
-        RegType::PtrToOwnedKptr { pointee_btf_id: Some(btf_id), offset, .. } => {
-            (btf_id, offset as i64)
-        }
+        RegType::PtrToOwnedKptr {
+            pointee_btf_id: Some(btf_id),
+            offset,
+            ..
+        } => (btf_id, offset as i64),
         _ => {
             return ctx.fail_with_log(
                 VerificationError::InvalidArgType { pc: ctx.pc, reg: ctx.reg },
@@ -1360,7 +1395,9 @@ fn validate_ptr_to_callback(ctx: &mut ValidationContext) -> bool {
 /// `selftests/expectations.json` note on `test_snprintf_single`.
 fn validate_ptr_to_const_str(ctx: &mut ValidationContext) -> bool {
     match ctx.actual {
-        RegType::PtrToMapValue { map_idx, offset, .. } => {
+        RegType::PtrToMapValue {
+            map_idx, offset, ..
+        } => {
             let map_def = ctx.env.ctx.map_defs.get(map_idx);
             let rdonly = map_def
                 .map(|md| md.map_flags & constants::BPF_F_RDONLY_PROG != 0)
@@ -1484,4 +1521,3 @@ fn validate_ptr_to_long(ctx: &mut ValidationContext) -> bool {
         ),
     }
 }
-

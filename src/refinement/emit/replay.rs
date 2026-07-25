@@ -2,11 +2,10 @@
 // suffix from a cached ancestor with a fresh bcf so path conds and refine
 // exprs rebuild exactly as the kernel's one-table replay would.
 
-
+use super::record::{cmp_op_to_bcf_pair, record_path_cond_for_side};
 use crate::analysis::machine::env::VerifierEnv;
 use crate::analysis::machine::state::State;
 use crate::ast::{Instr, Operand};
-use super::record::{cmp_op_to_bcf_pair, record_path_cond_for_side};
 
 /// Faithful discharge via base→reject replay (mirrors kernel `bcf_track`,
 /// verifier.c:24633). Instead of reconstructing the goal from the live
@@ -30,35 +29,63 @@ pub(crate) fn try_prove_unreachable_via_replay(
     // 1. Retrieve the cached base State (with its register/domain state).
     //    Live-then-retired: the kernel's bcf_track base (`st->parent`)
     //    may be an evicted (free_list) state.
-    let Some(base_state) = env.state_by_cache_id(base_cid).map(|(_, s)| s.clone())
-        else { return empty };
+    let Some(base_state) = env.state_by_cache_id(base_cid).map(|(_, s)| s.clone()) else {
+        return empty;
+    };
     let base_hidx = base_state.history_idx;
 
     // 2. Recover the forward base→reject instruction path by walking the
     //    Breadcrumb parent chain from the reject insn's breadcrumb.
-    let Some(reject_bc) = env.current_step_idx else { return empty };
+    let Some(reject_bc) = env.current_step_idx else {
+        return empty;
+    };
     let mut path: Vec<(usize, Instr)> = Vec::new();
     let mut cur = Some(reject_bc);
     let mut budget: usize = 200_000;
     while let Some(idx) = cur {
-        if Some(idx) == base_hidx { break; }
-        match budget.checked_sub(1) { Some(b) => budget = b, None => return empty }
-        let Some(bc) = env.history.get(idx) else { return empty };
+        if Some(idx) == base_hidx {
+            break;
+        }
+        match budget.checked_sub(1) {
+            Some(b) => budget = b,
+            None => return empty,
+        }
+        let Some(bc) = env.history.get(idx) else {
+            return empty;
+        };
         path.push((bc.pc, bc.instr));
         cur = bc.parent_idx;
     }
     let dbg = std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
-    if path.is_empty() { return empty; }
+    if path.is_empty() {
+        return empty;
+    }
     path.reverse(); // forward order: base_pc .. reject branch
 
     let dead_target = reject_state.pc;
-    let Some(reject_pc) = env.history.get(reject_bc).map(|b| b.pc) else { return empty };
+    let Some(reject_pc) = env.history.get(reject_bc).map(|b| b.pc) else {
+        return empty;
+    };
     let is_branch_reject = reject_state.pc != reject_pc;
-    let n_exec = if is_branch_reject { path.len() } else { path.len() - 1 };
-    if n_exec == 0 { return empty; }
+    let n_exec = if is_branch_reject {
+        path.len()
+    } else {
+        path.len() - 1
+    };
+    if n_exec == 0 {
+        return empty;
+    }
     if dbg {
-        eprintln!("[replay] STRUCT reject_pc={} reject_state.pc={} is_branch={} path[0]={} path[last]={} len={} n_exec={}",
-            reject_pc, reject_state.pc, is_branch_reject, path[0].0, path[path.len()-1].0, path.len(), n_exec);
+        eprintln!(
+            "[replay] STRUCT reject_pc={} reject_state.pc={} is_branch={} path[0]={} path[last]={} len={} n_exec={}",
+            reject_pc,
+            reject_state.pc,
+            is_branch_reject,
+            path[0].0,
+            path[path.len() - 1].0,
+            path.len(),
+            n_exec
+        );
     }
 
     // 3. Reset points: None = the plain replay (bcf reset at the suffix base).
@@ -125,7 +152,13 @@ pub(crate) fn try_prove_unreachable_via_replay(
         if let Some((_, cached)) = env.state_by_cache_id(base_cid)
             && let Some(hidx) = cached.history_idx
             && let Some(bc) = env.history.get(hidx)
-            && let Instr::If { width, left, op, right, target } = bc.instr
+            && let Instr::If {
+                width,
+                left,
+                op,
+                right,
+                target,
+            } = bc.instr
             && matches!(
                 base_state.types.get(left),
                 crate::analysis::machine::reg_types::RegType::ScalarValue
@@ -147,7 +180,15 @@ pub(crate) fn try_prove_unreachable_via_replay(
                 let pre_b =
                     crate::analysis::transfer::alu::helpers::bcf_reg_bounds(&base_state, left);
                 record_path_cond_for_side(
-                    &mut base_state, width, left, op, op_byte, &right, prev_pc, None, pre_b,
+                    &mut base_state,
+                    width,
+                    left,
+                    op,
+                    op_byte,
+                    &right,
+                    prev_pc,
+                    None,
+                    pre_b,
                 );
             }
         }
@@ -156,7 +197,10 @@ pub(crate) fn try_prove_unreachable_via_replay(
         for i in 0..n_exec {
             let pc = path[i].0;
             let instr = path[i].1;
-            let st = match holder.take() { Some(s) => s, None => break };
+            let st = match holder.take() {
+                Some(s) => s,
+                None => break,
+            };
             let mut st = st;
             st.pc = pc;
             if pre_reset && Some(i) == reset_after_idx {
@@ -165,30 +209,47 @@ pub(crate) fn try_prove_unreachable_via_replay(
                 st.reset_bcf_for_replay();
             }
             let succ = crate::analysis::transfer::transfer(env, st, &instr);
-            let next_pc = if i + 1 < path.len() { path[i + 1].0 } else { dead_target };
+            let next_pc = if i + 1 < path.len() {
+                path[i + 1].0
+            } else {
+                dead_target
+            };
             holder = succ.into_iter().find(|s| s.pc == next_pc);
             if holder.is_none() {
                 if dbg {
                     eprintln!(
                         "[replay] DIED rung={:?} pre={} i={} pc={} instr={:?} want_next={} env_err={:?}",
-                        reset_after_idx.map(|k| path[k].0), pre_reset, i, pc, instr, next_pc, env.error
+                        reset_after_idx.map(|k| path[k].0),
+                        pre_reset,
+                        i,
+                        pc,
+                        instr,
+                        next_pc,
+                        env.error
                     );
                 }
                 break;
             }
-            if !pre_reset && Some(i) == reset_after_idx
-                && let (Some(h), Instr::If { width, left, op, right, target }) =
-                    (holder.as_mut(), &instr)
-                    && let Some((op_then, op_else)) = cmp_op_to_bcf_pair(*op) {
-                        h.reset_bcf_for_replay();
-                        let taken = next_pc == *target;
-                        let op_byte = if taken { op_then } else { op_else };
-                        let pre_b =
-                            crate::analysis::transfer::alu::helpers::bcf_reg_bounds(h, *left);
-                        record_path_cond_for_side(
-                            h, *width, *left, *op, op_byte, right, pc, None, pre_b,
-                        );
-                    }
+            if !pre_reset
+                && Some(i) == reset_after_idx
+                && let (
+                    Some(h),
+                    Instr::If {
+                        width,
+                        left,
+                        op,
+                        right,
+                        target,
+                    },
+                ) = (holder.as_mut(), &instr)
+                && let Some((op_then, op_else)) = cmp_op_to_bcf_pair(*op)
+            {
+                h.reset_bcf_for_replay();
+                let taken = next_pc == *target;
+                let op_byte = if taken { op_then } else { op_else };
+                let pre_b = crate::analysis::transfer::alu::helpers::bcf_reg_bounds(h, *left);
+                record_path_cond_for_side(h, *width, *left, *op, op_byte, right, pc, None, pre_b);
+            }
         }
         env.replay_mode = false;
         if let Some(mut final_state) = holder {
@@ -197,7 +258,9 @@ pub(crate) fn try_prove_unreachable_via_replay(
                 if dbg {
                     eprintln!(
                         "[replay] END rung={:?} pre={} built={}",
-                        reset_after_idx.map(|k| path[k].0), pre_reset, g.is_some()
+                        reset_after_idx.map(|k| path[k].0),
+                        pre_reset,
+                        g.is_some()
                     );
                 }
                 if let Some(g) = g {
@@ -210,7 +273,8 @@ pub(crate) fn try_prove_unreachable_via_replay(
             } else if dbg {
                 eprintln!(
                     "[replay] END rung={:?} pre={} bcf=None",
-                    reset_after_idx.map(|k| path[k].0), pre_reset
+                    reset_after_idx.map(|k| path[k].0),
+                    pre_reset
                 );
             }
         }
@@ -334,7 +398,12 @@ pub(crate) fn replay_to_reject(
     if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
         eprintln!(
             "[replay-refine] STRUCT base_cid={} base_hidx={:?} stopped_at_base={} path[0]={} path[last]={} len={}",
-            base_cid, base_hidx, cur.is_some(), path[0].0, path[path.len() - 1].0, path.len()
+            base_cid,
+            base_hidx,
+            cur.is_some(),
+            path[0].0,
+            path[path.len() - 1].0,
+            path.len()
         );
     }
     let reject_pc = path[path.len() - 1].0;
@@ -367,11 +436,18 @@ pub(crate) fn replay_to_reject(
     // anchor_at_parent — the mid-path bcf reset defines the cond window
     // there, and the guard (the base's next insn) is executed and
     // recorded by the replay itself.
-    if !reset_suffix_from_base && !crossing_engaged
+    if !reset_suffix_from_base
+        && !crossing_engaged
         && let Some((_, cached)) = env.state_by_cache_id(base_cid)
         && let Some(hidx) = cached.history_idx
         && let Some(bc) = env.history.get(hidx)
-        && let Instr::If { width, left, op, right, target } = bc.instr
+        && let Instr::If {
+            width,
+            left,
+            op,
+            right,
+            target,
+        } = bc.instr
         && matches!(
             base_state.types.get(left),
             crate::analysis::machine::reg_types::RegType::ScalarValue
@@ -389,10 +465,17 @@ pub(crate) fn replay_to_reject(
             let taken = path[0].0 != prev_pc + 1;
             let _ = target;
             let op_byte = if taken { op_then } else { op_else };
-            let pre_b =
-                crate::analysis::transfer::alu::helpers::bcf_reg_bounds(&base_state, left);
+            let pre_b = crate::analysis::transfer::alu::helpers::bcf_reg_bounds(&base_state, left);
             record_path_cond_for_side(
-                &mut base_state, width, left, op, op_byte, &right, prev_pc, None, pre_b,
+                &mut base_state,
+                width,
+                left,
+                op,
+                op_byte,
+                &right,
+                prev_pc,
+                None,
+                pre_b,
             );
         }
     }
@@ -423,14 +506,19 @@ pub(crate) fn replay_to_reject(
             // record_path_cond_for_side itself skips non-scalar operands.
             if crossing_engaged
                 && i > 0
-                && let Instr::If { width, left, op, right, target: _ } = &path[i - 1].1
+                && let Instr::If {
+                    width,
+                    left,
+                    op,
+                    right,
+                    target: _,
+                } = &path[i - 1].1
                 && let Some((op_then, op_else)) = cmp_op_to_bcf_pair(*op)
             {
                 let prev_pc = path[i - 1].0;
                 let taken = pc != prev_pc + 1;
                 let op_byte = if taken { op_then } else { op_else };
-                let pre_b =
-                    crate::analysis::transfer::alu::helpers::bcf_reg_bounds(&st, *left);
+                let pre_b = crate::analysis::transfer::alu::helpers::bcf_reg_bounds(&st, *left);
                 record_path_cond_for_side(
                     &mut st, *width, *left, *op, op_byte, right, prev_pc, None, pre_b,
                 );
@@ -453,4 +541,3 @@ pub(crate) fn replay_to_reject(
     env.error = saved_error;
     holder
 }
-

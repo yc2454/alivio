@@ -327,10 +327,7 @@ pub enum GlobalFuncArg {
     /// arg is also `__arg_nullable`); callee receives the same.
     /// Mirrors kernel's `KF_ARG_PTR_TO_BTF_ID | KF_TRUSTED_ARGS`
     /// validation for global subprog args.
-    PtrToBtfIdTrusted {
-        type_name: String,
-        nullable: bool,
-    },
+    PtrToBtfIdTrusted { type_name: String, nullable: bool },
     /// Pointer to `struct bpf_dynptr`. Mirrors kernel
     /// `ARG_PTR_TO_DYNPTR | MEM_RDONLY` (btf.c:7784) — caller must
     /// pass a stack pointer to an initialized dynptr; callee body
@@ -385,10 +382,12 @@ pub(super) fn refine_global_arg_with_tags(
             nullable,
         };
     }
-    if nonnull
-        && let GlobalFuncArg::PtrToMem { mem_size, .. } = base {
-            return GlobalFuncArg::PtrToMem { mem_size, nonnull: true };
-        }
+    if nonnull && let GlobalFuncArg::PtrToMem { mem_size, .. } = base {
+        return GlobalFuncArg::PtrToMem {
+            mem_size,
+            nonnull: true,
+        };
+    }
     base
 }
 

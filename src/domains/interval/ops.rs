@@ -4,8 +4,8 @@
 // These mirror the zone/ops.rs interface but without relational constraints.
 
 use super::state::{IntervalState, PtrOffset, RegInterval, ScalarBounds};
-use crate::analysis::machine::reg_types::new_ptr_id;
 use crate::analysis::machine::reg::Reg;
+use crate::analysis::machine::reg_types::new_ptr_id;
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Query & Interval Analysis

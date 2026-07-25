@@ -298,9 +298,16 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
         use crate::parsing::elf::{KptrField, KptrFieldKind};
         let r1 = state.types.get(Reg::R1);
         let resolved: Option<(KptrFieldKind, u32)> = match r1 {
-            RegType::PtrToMapValue { offset: r1_off_opt, map_idx, .. } => {
+            RegType::PtrToMapValue {
+                offset: r1_off_opt,
+                map_idx,
+                ..
+            } => {
                 let final_off = crate::analysis::transfer::memory::map::resolve_const_map_off(
-                    &state, Reg::R1, r1_off_opt, 0,
+                    &state,
+                    Reg::R1,
+                    r1_off_opt,
+                    0,
                 );
                 let Some(off_val) = final_off else {
                     env.fail(VerificationError::KptrAccessVariableOffset { pc, map_idx });
@@ -316,10 +323,13 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
                 crate::analysis::transfer::memory::map::kptr_field_at(map_def, off_val, 8)
                     .map(|f| (f.kind, f.pointee_btf_id))
             }
-            RegType::PtrToOwnedKptr { pointee_btf_id: Some(struct_btf_id), offset: r1_off, .. } => {
+            RegType::PtrToOwnedKptr {
+                pointee_btf_id: Some(struct_btf_id),
+                offset: r1_off,
+                ..
+            } => {
                 let off_val = r1_off as i64;
-                let fields: Vec<KptrField> =
-                    env.ctx.btf.extract_value_kptr_fields(struct_btf_id);
+                let fields: Vec<KptrField> = env.ctx.btf.extract_value_kptr_fields(struct_btf_id);
                 fields
                     .into_iter()
                     .find(|f| f.offset as i64 == off_val)
@@ -332,12 +342,14 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
             // the inner kptr field. Mirror the PtrToOwnedKptr arm.
             // Kernel `process_kf_arg_ptr_to_kptr` accepts both shapes
             // uniformly via `reg_btf_record(reg)` (verifier.c v6.15).
-            RegType::PtrToMapKptr { pointee_btf_id: struct_btf_id, offset: r1_off, flags, .. }
-                if flags.contains(crate::analysis::machine::reg_types::PtrFlags::MEM_ALLOC) =>
-            {
+            RegType::PtrToMapKptr {
+                pointee_btf_id: struct_btf_id,
+                offset: r1_off,
+                flags,
+                ..
+            } if flags.contains(crate::analysis::machine::reg_types::PtrFlags::MEM_ALLOC) => {
                 let off_val = r1_off as i64;
-                let fields: Vec<KptrField> =
-                    env.ctx.btf.extract_value_kptr_fields(struct_btf_id);
+                let fields: Vec<KptrField> = env.ctx.btf.extract_value_kptr_fields(struct_btf_id);
                 fields
                     .into_iter()
                     .find(|f| f.offset as i64 == off_val)
@@ -653,10 +665,11 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
                 map_uid: Some(u2), ..
             },
         ) = (in_types.get(Reg::R1), in_types.get(Reg::R2))
-            && u1 != u2 {
-                env.fail(VerificationError::InvalidArgType { pc, reg: Reg::R2 });
-                return vec![];
-            }
+        && u1 != u2
+    {
+        env.fail(VerificationError::InvalidArgType { pc, reg: Reg::R2 });
+        return vec![];
+    }
 
     // bpf_get_local_storage doesn't not support type 1 map and flag must be 0
     if helper == constants::BPF_GET_LOCAL_STORAGE {
@@ -697,9 +710,7 @@ pub(crate) fn transfer_call(env: &mut VerifierEnv, mut state: State, helper: u32
     // be linked and refined together. Pointer or constant returns
     // don't need scalar linking.
     use crate::analysis::machine::reg_types::RegType;
-    if state.types.get(Reg::R0) == RegType::ScalarValue
-        && state.get_tnum(Reg::R0).is_unknown()
-    {
+    if state.types.get(Reg::R0) == RegType::ScalarValue && state.get_tnum(Reg::R0).is_unknown() {
         state.alloc_scalar_id(Reg::R0);
     } else {
         state.clear_scalar_id(Reg::R0);
@@ -857,8 +868,10 @@ pub(crate) fn apply_return_bounds_for_cb_helper(state: &mut State, helper: u32) 
 /// changing the canonical hash so the kernel's BCF refine_cond
 /// lookup misses.
 fn apply_mixed_sign_ret_bounds(state: &mut State, lo: i64, hi: i64) {
-    debug_assert!(lo < 0 && hi >= 0,
-        "apply_mixed_sign_ret_bounds requires lo<0<=hi; got lo={lo} hi={hi}");
+    debug_assert!(
+        lo < 0 && hi >= 0,
+        "apply_mixed_sign_ret_bounds requires lo<0<=hi; got lo={lo} hi={hi}"
+    );
     if hi != i64::MAX {
         state.domain.assume_le_imm(Reg::R0, hi);
     }
@@ -956,13 +969,10 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
     );
     if zovia_narrower_than_kernel
         && let Some(bcf) = state.bcf.as_mut()
-            && let Some(d) = Reg::R0.bcf_idx() {
-                let _ = bcf.reg_expr(
-                    d,
-                    &crate::refinement::symbolic::RegBounds::unknown(),
-                    false,
-                );
-            }
+        && let Some(d) = Reg::R0.bcf_idx()
+    {
+        let _ = bcf.reg_expr(d, &crate::refinement::symbolic::RegBounds::unknown(), false);
+    }
     // NOTE: the BCF R0 bcf_expr clear lives at the top of
     // `transfer_call` (before `update_call_types`) so it doesn't override
     // anchors set during type assignment. See the matching comment there.
@@ -1009,14 +1019,18 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             state.set_tnum(Reg::R0, Tnum::u32_unknown());
         }
         constants::BPF_GET_TASK_STACK => {
-            let pairs = get_helper_proto(helper).map(|p| p.mem_size_pairs).unwrap_or(&[]);
+            let pairs = get_helper_proto(helper)
+                .map(|p| p.mem_size_pairs)
+                .unwrap_or(&[]);
             let size_reg = pairs[0].size_reg;
             let (_, hi) = state.domain.get_interval(size_reg);
             state.domain.assume_le_imm(Reg::R0, hi);
         }
         constants::BPF_GET_STACK => {
             // Mixed-sign [-MAX_ERRNO, size_max].
-            let pairs = get_helper_proto(helper).map(|p| p.mem_size_pairs).unwrap_or(&[]);
+            let pairs = get_helper_proto(helper)
+                .map(|p| p.mem_size_pairs)
+                .unwrap_or(&[]);
             let size_reg = pairs[0].size_reg;
             let (_, hi) = state.domain.get_interval(size_reg);
             apply_mixed_sign_ret_bounds(state, -constants::MAX_ERRNO, hi);
@@ -1024,8 +1038,11 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
         constants::BPF_GET_BRANCH_SNAPSHOT => {
             // R0 = bytes written into the buffer (success) or -errno.
             // Bound by the size arg (R2). Mixed-sign.
-            let pairs = get_helper_proto(helper).map(|p| p.mem_size_pairs).unwrap_or(&[]);
-            let hi = pairs.first()
+            let pairs = get_helper_proto(helper)
+                .map(|p| p.mem_size_pairs)
+                .unwrap_or(&[]);
+            let hi = pairs
+                .first()
                 .map(|p| state.domain.get_interval(p.size_reg).1)
                 .unwrap_or(i64::MAX);
             apply_mixed_sign_ret_bounds(state, -constants::MAX_ERRNO, hi);
@@ -1083,9 +1100,10 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
     if kernel_narrows_r0_via_do_refine {
         let bounds = bcf_reg_bounds(state, Reg::R0);
         if let Some(bcf) = state.bcf.as_mut()
-            && let Some(d) = Reg::R0.bcf_idx() {
-                let _ = bcf.reg_expr(d, &bounds, false);
-            }
+            && let Some(d) = Reg::R0.bcf_idx()
+        {
+            let _ = bcf.reg_expr(d, &bounds, false);
+        }
     }
 }
 
@@ -1164,8 +1182,7 @@ pub(crate) fn transfer_call_rel(
         // (verifier.c v6.15 ~L10543). Path-independent: catches sleepable
         // calls that escape the per-call MIGHT_SLEEP gate when the
         // dataflow-pruned path dead-codes the inner sleepable call.
-        let explicit_rcu_baseline =
-            if state.implicit_rcu_at_entry { 1 } else { 0 };
+        let explicit_rcu_baseline = if state.implicit_rcu_at_entry { 1 } else { 0 };
         let rcu_active = state.rcu_read_depth > explicit_rcu_baseline;
         if env.ctx.may_sleep_subprogs.contains(&target)
             && (state.in_irq_disabled() || state.in_preempt_disabled() || rcu_active)
@@ -1379,8 +1396,7 @@ pub(crate) fn transfer_call_rel(
                     // path — bounded by the number of distinct kernel
                     // types referenced as `__arg_trusted` in any one
                     // verified ELF.
-                    let leaked: &'static str =
-                        Box::leak(type_name.clone().into_boxed_str());
+                    let leaked: &'static str = Box::leak(type_name.clone().into_boxed_str());
                     let flags = PtrFlags::TRUSTED;
                     let ty = if *nullable {
                         RegType::PtrToBtfIdOrNull {
@@ -1457,26 +1473,15 @@ fn caller_arg_compatible<F: Fn() -> bool>(
             // (`task_struct___local`) just renames the same kernel
             // type, so strip the trailing `___…` before matching.
             RegType::PtrToTask { .. } | RegType::PtrToTaskOrNull { .. } => {
-                let base = type_name
-                    .split("___")
-                    .next()
-                    .unwrap_or(type_name.as_str());
-                base == "task_struct"
-                    && (matches!(actual, RegType::PtrToTask { .. }) || *nullable)
+                let base = type_name.split("___").next().unwrap_or(type_name.as_str());
+                base == "task_struct" && (matches!(actual, RegType::PtrToTask { .. }) || *nullable)
             }
             RegType::PtrToSocket { .. } | RegType::PtrToSocketOrNull { .. } => {
-                let base = type_name
-                    .split("___")
-                    .next()
-                    .unwrap_or(type_name.as_str());
-                base == "sock"
-                    && (matches!(actual, RegType::PtrToSocket { .. }) || *nullable)
+                let base = type_name.split("___").next().unwrap_or(type_name.as_str());
+                base == "sock" && (matches!(actual, RegType::PtrToSocket { .. }) || *nullable)
             }
             RegType::PtrToCpumask { .. } | RegType::PtrToCpumaskOrNull { .. } => {
-                let base = type_name
-                    .split("___")
-                    .next()
-                    .unwrap_or(type_name.as_str());
+                let base = type_name.split("___").next().unwrap_or(type_name.as_str());
                 base == "bpf_cpumask"
                     && (matches!(actual, RegType::PtrToCpumask { .. }) || *nullable)
             }
@@ -1565,11 +1570,12 @@ pub(crate) fn apply_pre_call_lock_flags(
         // / rbtree test that takes `bpf_spin_lock(&f->lock)` rejects
         // the *_in_list family in linked_list.c).
         let (id, off) = match state.types.get(Reg::R1) {
-            RegType::PtrToMapValue { offset: Some(o), id, .. } => (id, o as u32),
-            RegType::PtrToOwnedKptr { ref_id, offset, .. } => (
-                ref_id.unwrap_or(0),
-                offset as u32,
-            ),
+            RegType::PtrToMapValue {
+                offset: Some(o),
+                id,
+                ..
+            } => (id, o as u32),
+            RegType::PtrToOwnedKptr { ref_id, offset, .. } => (ref_id.unwrap_or(0), offset as u32),
             _ => {
                 env.fail(VerificationError::InvalidArgType { pc, reg: Reg::R1 });
                 return false;
@@ -1658,10 +1664,8 @@ pub(crate) fn apply_pre_call_lock_flags(
     // (kprobe/tp/raw_tp/perf_event) is excluded so MIGHT_SLEEP calls
     // from those programs hit the (separate) "non-sleepable context"
     // gates instead.
-    let explicit_rcu_baseline =
-        if state.implicit_rcu_at_entry { 1 } else { 0 };
-    if proto.flags.contains(CallFlags::MIGHT_SLEEP)
-        && state.rcu_read_depth > explicit_rcu_baseline
+    let explicit_rcu_baseline = if state.implicit_rcu_at_entry { 1 } else { 0 };
+    if proto.flags.contains(CallFlags::MIGHT_SLEEP) && state.rcu_read_depth > explicit_rcu_baseline
     {
         env.fail(VerificationError::SleepableInRcuReadSection { pc, helper });
         return false;
@@ -1753,22 +1757,23 @@ pub(crate) fn restore_interval_ptr_offset_from_return(
         };
 
         if let Some(anchor) = anchor
-            && let NumericDomain::Interval(ivl) = domain {
-                let var_off = var_off_opt.unwrap_or(0);
-                let ptr_offset = PtrOffset {
-                    anchor,
-                    off,
-                    var_off,
-                    range,
-                    // id round-trips across subprog returns (kernel
-                    // keeps the full reg state incl. id).
-                    id,
-                    // mark_pkt_end relationship not round-tripped across
-                    // subprog returns; conservative None is sound.
-                    pkt_end_rel: None,
-                };
-                ivl.get_mut(Reg::R0).ptr_offset = Some(ptr_offset);
-            }
+            && let NumericDomain::Interval(ivl) = domain
+        {
+            let var_off = var_off_opt.unwrap_or(0);
+            let ptr_offset = PtrOffset {
+                anchor,
+                off,
+                var_off,
+                range,
+                // id round-trips across subprog returns (kernel
+                // keeps the full reg state incl. id).
+                id,
+                // mark_pkt_end relationship not round-tripped across
+                // subprog returns; conservative None is sound.
+                pkt_end_rel: None,
+            };
+            ivl.get_mut(Reg::R0).ptr_offset = Some(ptr_offset);
+        }
     }
 }
 
@@ -1794,19 +1799,19 @@ pub(crate) fn restore_callee_interval_packet_info(
                     caller_types.get(reg),
                     RegType::PtrToPacket | RegType::PtrToPacketMeta
                 )
-                    && let NumericDomain::Interval(ivl) = domain
-                        && let Some(caller_ptr_off) = ivl.get_ptr_offset(reg)
-                            && caller_ptr_off.anchor == anchor
-                                && caller_ptr_off.off == off
-                                && caller_ptr_off.var_off == var_off_opt.unwrap_or(0)
-                            {
-                                let caller_range = caller_ptr_off.range.unwrap_or(0);
-                                if range_val > caller_range {
-                                    let mut new_ptr_off = *caller_ptr_off;
-                                    new_ptr_off.range = Some(range_val);
-                                    ivl.get_mut(reg).ptr_offset = Some(new_ptr_off);
-                                }
-                            }
+                && let NumericDomain::Interval(ivl) = domain
+                && let Some(caller_ptr_off) = ivl.get_ptr_offset(reg)
+                && caller_ptr_off.anchor == anchor
+                && caller_ptr_off.off == off
+                && caller_ptr_off.var_off == var_off_opt.unwrap_or(0)
+            {
+                let caller_range = caller_ptr_off.range.unwrap_or(0);
+                if range_val > caller_range {
+                    let mut new_ptr_off = *caller_ptr_off;
+                    new_ptr_off.range = Some(range_val);
+                    ivl.get_mut(reg).ptr_offset = Some(new_ptr_off);
+                }
+            }
         }
     }
 }

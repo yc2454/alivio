@@ -17,7 +17,9 @@ use super::helpers::{bcf_reg_bounds, emit_bcf_alu_binop, sync_tnum_to_bounds};
 // canonical hash of any later path_cond involving dst diverges from
 // the kernel's runtime hash.
 fn emit_bcf_mov_w32_reg(state: &mut State, dst: Reg, src: Reg) {
-    let (Some(d), Some(s)) = (dst.bcf_idx(), src.bcf_idx()) else { return };
+    let (Some(d), Some(s)) = (dst.bcf_idx(), src.bcf_idx()) else {
+        return;
+    };
     let src_bounds = bcf_reg_bounds(state, src);
     if let Some(bcf) = state.bcf.as_mut() {
         let src_expr32 = bcf.reg_expr(s, &src_bounds, true);
@@ -57,8 +59,12 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
             {
                 eprintln!(
                     "[mov-r3] pc={} w={:?} src={:?} src_ty={:?} src_tn={:?} post_tn={:?}",
-                    state.pc, width, r, state.types.get(*r),
-                    state.get_tnum(*r), t
+                    state.pc,
+                    width,
+                    r,
+                    state.types.get(*r),
+                    state.get_tnum(*r),
+                    t
                 );
             }
             state.set_tnum(dst, t);
@@ -101,34 +107,36 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
     // no `ptr_const_off` entry for R10; that means K_dst = 0 (fresh
     // anchor at r10), which matches the kernel's initialization.
     if let Operand::Reg(r) = src
-        && state.types.get(*r).is_pointer() && dst != *r {
-            match state.ptr_const_off.get(r).copied() {
-                Some(k) => {
-                    state.ptr_const_off.insert(dst, k);
-                }
-                None => {
-                    // R10 (or other fresh anchor): K starts at 0.
-                    state.ptr_const_off.insert(dst, 0);
-                }
+        && state.types.get(*r).is_pointer()
+        && dst != *r
+    {
+        match state.ptr_const_off.get(r).copied() {
+            Some(k) => {
+                state.ptr_const_off.insert(dst, k);
             }
-            // Carry `var_off_contributor` alongside `ptr_const_off`. A
-            // ptr→ptr mov copies the variable-offset chain: if the src
-            // pointer had a scalar contributor recorded (from an earlier
-            // `ptr += scalar`), the dst pointer inherits it. Without this,
-            // refine_map's case classification at a later helper-mem
-            // access misreads dst as a constant-offset pointer (`ptr_is_var
-            // = false`) and falls into case (i), producing a refine_cond
-            // that uses the size reg directly instead of building
-            // `ADD(off_expr, size_expr)` for case (iii). cvc5's proof for
-            // the case-(i) shape on the trace_sys_enter_execve / similar
-            // `r6 += (r0 << 32 >> 32); r1 = r6` flow hits a 338-child
-            // FACTORING resolution step (the case-(iii) shape produces a
-            // narrow proof). transfer_alu's catch-all already removed
-            // dst's entry for !Add/Sub-Imm; re-insert here from src.
-            if let Some(&contributor) = state.var_off_contributor.get(r) {
-                state.var_off_contributor.insert(dst, contributor);
+            None => {
+                // R10 (or other fresh anchor): K starts at 0.
+                state.ptr_const_off.insert(dst, 0);
             }
         }
+        // Carry `var_off_contributor` alongside `ptr_const_off`. A
+        // ptr→ptr mov copies the variable-offset chain: if the src
+        // pointer had a scalar contributor recorded (from an earlier
+        // `ptr += scalar`), the dst pointer inherits it. Without this,
+        // refine_map's case classification at a later helper-mem
+        // access misreads dst as a constant-offset pointer (`ptr_is_var
+        // = false`) and falls into case (i), producing a refine_cond
+        // that uses the size reg directly instead of building
+        // `ADD(off_expr, size_expr)` for case (iii). cvc5's proof for
+        // the case-(i) shape on the trace_sys_enter_execve / similar
+        // `r6 += (r0 << 32 >> 32); r1 = r6` flow hits a 338-child
+        // FACTORING resolution step (the case-(iii) shape produces a
+        // narrow proof). transfer_alu's catch-all already removed
+        // dst's entry for !Add/Sub-Imm; re-insert here from src.
+        if let Some(&contributor) = state.var_off_contributor.get(r) {
+            state.var_off_contributor.insert(dst, contributor);
+        }
+    }
 
     match src {
         Operand::Reg(r) => {
@@ -286,7 +294,10 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
         Operand::Reg(_) => t.and(src_tnum),
     };
     let new_t = if width == Width::W32 {
-        Tnum { value: full_t.value & 0xFFFF_FFFF, mask: full_t.mask & 0xFFFF_FFFF }
+        Tnum {
+            value: full_t.value & 0xFFFF_FFFF,
+            mask: full_t.mask & 0xFFFF_FFFF,
+        }
     } else {
         full_t
     };
@@ -302,12 +313,16 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
     let src_sub_known = src_tnum.mask & 0xffff_ffff == 0;
     if src_sub_known && dst_sub_known {
         state.domain.set_u32_bounds(dst, sub_val, sub_val);
-        state.domain.set_s32_bounds(dst, sub_val as i32, sub_val as i32);
+        state
+            .domain
+            .set_s32_bounds(dst, sub_val as i32, sub_val as i32);
     } else {
         let u32_max_new = pre_u32_max.min(src_u32_max);
         state.domain.set_u32_bounds(dst, sub_val, u32_max_new);
         if (sub_val as i32) <= (u32_max_new as i32) {
-            state.domain.set_s32_bounds(dst, sub_val as i32, u32_max_new as i32);
+            state
+                .domain
+                .set_s32_bounds(dst, sub_val as i32, u32_max_new as i32);
         }
         // else: s32 stays unbounded (kernel sets S32_MIN/S32_MAX).
     }
@@ -323,7 +338,9 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
         let umax_new = pre_umax.min(src_umax);
         state.domain.set_u64_bounds(dst, new_t.value, umax_new);
         if (new_t.value as i64) <= (umax_new as i64) {
-            state.domain.assume_range(dst, new_t.value as i64, umax_new as i64);
+            state
+                .domain
+                .assume_range(dst, new_t.value as i64, umax_new as i64);
         }
         // else: s64 stays unbounded (kernel sets S64_MIN/S64_MAX).
     }
@@ -399,17 +416,16 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
         }
         // Extend the AND result back to the 64-bit cached reg slot. ZEXT
         // for alu32/op_u32 cases; SEXT for op_s32; no-op for true 64-bit.
-        let extend_back = |bcf: &mut crate::refinement::symbolic::SymbolicState,
-                           alu_result: u32|
-         -> u32 {
-            if alu32 || op_u32 {
-                bcf.add_extend(false, 32, 64, alu_result)
-            } else if op_s32 {
-                bcf.add_extend(true, 32, 64, alu_result)
-            } else {
-                alu_result
-            }
-        };
+        let extend_back =
+            |bcf: &mut crate::refinement::symbolic::SymbolicState, alu_result: u32| -> u32 {
+                if alu32 || op_u32 {
+                    bcf.add_extend(false, 32, 64, alu_result)
+                } else if op_s32 {
+                    bcf.add_extend(true, 32, 64, alu_result)
+                } else {
+                    alu_result
+                }
+            };
         match src {
             Operand::Imm(mask) => {
                 if let Some(bcf) = state.bcf.as_mut() {
@@ -439,11 +455,7 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
                 let si = r.bcf_idx();
                 if let (Some(bcf), Some(si)) = (state.bcf.as_mut(), si) {
                     let dst_expr = bcf.reg_expr(d, &dst_bounds_pre, alu32);
-                    let src_expr = bcf.reg_expr(
-                        si,
-                        src_bounds_pre.as_ref().unwrap(),
-                        alu32,
-                    );
+                    let src_expr = bcf.reg_expr(si, src_bounds_pre.as_ref().unwrap(), alu32);
                     let alu_result = bcf.add_alu(BPF_AND, dst_expr, src_expr, bits);
                     let final_idx = extend_back(bcf, alu_result);
                     bcf.bind_reg(d, final_idx);
@@ -504,7 +516,10 @@ pub(crate) fn handle_or(state: &mut State, width: Width, dst: Reg, src: &Operand
         Operand::Reg(_) => t.or(src_tnum),
     };
     let new_t = if width == Width::W32 {
-        Tnum { value: full_t.value & 0xFFFF_FFFF, mask: full_t.mask & 0xFFFF_FFFF }
+        Tnum {
+            value: full_t.value & 0xFFFF_FFFF,
+            mask: full_t.mask & 0xFFFF_FFFF,
+        }
     } else {
         full_t
     };
@@ -520,13 +535,17 @@ pub(crate) fn handle_or(state: &mut State, width: Width, dst: Reg, src: &Operand
     let src_sub_known = src_tnum.mask & 0xffff_ffff == 0;
     if src_sub_known && sub_mask == 0 {
         state.domain.set_u32_bounds(dst, sub_val, sub_val);
-        state.domain.set_s32_bounds(dst, sub_val as i32, sub_val as i32);
+        state
+            .domain
+            .set_s32_bounds(dst, sub_val as i32, sub_val as i32);
     } else {
         let u32_min_new = pre_u32_min.max(src_u32_min);
         let u32_max_new = sub_val | sub_mask;
         state.domain.set_u32_bounds(dst, u32_min_new, u32_max_new);
         if (u32_min_new as i32) <= (u32_max_new as i32) {
-            state.domain.set_s32_bounds(dst, u32_min_new as i32, u32_max_new as i32);
+            state
+                .domain
+                .set_s32_bounds(dst, u32_min_new as i32, u32_max_new as i32);
         }
         // else: s32 stays unbounded (kernel sets S32_MIN/S32_MAX).
     }
@@ -540,7 +559,9 @@ pub(crate) fn handle_or(state: &mut State, width: Width, dst: Reg, src: &Operand
         let umax_new = new_t.value | new_t.mask;
         state.domain.set_u64_bounds(dst, umin_new, umax_new);
         if (umin_new as i64) <= (umax_new as i64) {
-            state.domain.assume_range(dst, umin_new as i64, umax_new as i64);
+            state
+                .domain
+                .assume_range(dst, umin_new as i64, umax_new as i64);
         }
         // else: s64 stays unbounded (kernel sets S64_MIN/S64_MAX).
     }
@@ -603,7 +624,10 @@ pub(crate) fn handle_xor(state: &mut State, width: Width, dst: Reg, src: &Operan
         Operand::Reg(_) => t.xor(src_tnum),
     };
     let new_t = if width == Width::W32 {
-        Tnum { value: full_t.value & 0xFFFF_FFFF, mask: full_t.mask & 0xFFFF_FFFF }
+        Tnum {
+            value: full_t.value & 0xFFFF_FFFF,
+            mask: full_t.mask & 0xFFFF_FFFF,
+        }
     } else {
         full_t
     };
@@ -620,7 +644,9 @@ pub(crate) fn handle_xor(state: &mut State, width: Width, dst: Reg, src: &Operan
     let u32_max_new = sub_val | sub_mask;
     state.domain.set_u32_bounds(dst, sub_val, u32_max_new);
     if (sub_val as i32) <= (u32_max_new as i32) {
-        state.domain.set_s32_bounds(dst, sub_val as i32, u32_max_new as i32);
+        state
+            .domain
+            .set_s32_bounds(dst, sub_val as i32, u32_max_new as i32);
     }
     // else: s32 stays unbounded (kernel sets S32_MIN/S32_MAX).
 
@@ -634,7 +660,9 @@ pub(crate) fn handle_xor(state: &mut State, width: Width, dst: Reg, src: &Operan
         let umax_new = new_t.value | new_t.mask;
         state.domain.set_u64_bounds(dst, umin_new, umax_new);
         if (umin_new as i64) <= (umax_new as i64) {
-            state.domain.assume_range(dst, umin_new as i64, umax_new as i64);
+            state
+                .domain
+                .assume_range(dst, umin_new as i64, umax_new as i64);
         }
         // else: s64 stays unbounded (kernel sets S64_MIN/S64_MAX).
     }

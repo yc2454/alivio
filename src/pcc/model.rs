@@ -144,9 +144,7 @@ impl ProofStep {
             ProofStep::Fact { left_reg, .. } => *left_reg,
             ProofStep::Transfer { post_left_reg, .. } => *post_left_reg,
             ProofStep::Derive { target_reg, .. } => *target_reg,
-            ProofStep::Compose { left, .. } => {
-                left.last().map_or(0, |s| s.output_left_reg())
-            }
+            ProofStep::Compose { left, .. } => left.last().map_or(0, |s| s.output_left_reg()),
         }
     }
 
@@ -158,9 +156,7 @@ impl ProofStep {
             ProofStep::Fact { right_reg, .. } => *right_reg,
             ProofStep::Transfer { post_right_reg, .. } => *post_right_reg,
             ProofStep::Derive { .. } => 0, // Derive switches to target_reg - Zero
-            ProofStep::Compose { right, .. } => {
-                right.last().map_or(0, |s| s.output_right_reg())
-            }
+            ProofStep::Compose { right, .. } => right.last().map_or(0, |s| s.output_right_reg()),
         }
     }
 
@@ -187,7 +183,7 @@ impl ProofStep {
             ProofStep::Fact { .. } | ProofStep::Transfer { .. } | ProofStep::Derive { .. } => 1,
             ProofStep::Compose { left, right, .. } => {
                 1 + left.iter().map(|s| s.node_count()).sum::<usize>()
-                  + right.iter().map(|s| s.node_count()).sum::<usize>()
+                    + right.iter().map(|s| s.node_count()).sum::<usize>()
             }
         }
     }
@@ -317,11 +313,7 @@ fn display_proof_steps(
                     running,
                 )?;
             }
-            ProofStep::Compose {
-                left,
-                right,
-                via,
-            } => {
+            ProofStep::Compose { left, right, via } => {
                 let left_bound: i64 = left.iter().map(|s| s.bound_contribution()).sum();
                 let right_bound: i64 = right.iter().map(|s| s.bound_contribution()).sum();
                 let composed = left_bound + right_bound;
@@ -361,11 +353,7 @@ fn display_proof_steps(
                             reg_name(*post_right_reg),
                         )
                     } else {
-                        format!(
-                            "{}-{}",
-                            reg_name(*pre_left_reg),
-                            reg_name(*pre_right_reg),
-                        )
+                        format!("{}-{}", reg_name(*pre_left_reg), reg_name(*pre_right_reg),)
                     };
                 let desc = if let Some(h) = hint {
                     h.clone()
@@ -546,22 +534,18 @@ mod tests {
     #[test]
     fn proof_step_compose_json_round_trip() {
         let step = ProofStep::Compose {
-            left: vec![
-                ProofStep::Fact {
-                    pc: 7,
-                    left_reg: 5,
-                    right_reg: 2,
-                    c: 3,
-                },
-            ],
-            right: vec![
-                ProofStep::Fact {
-                    pc: 4,
-                    left_reg: 2,
-                    right_reg: 14,
-                    c: -8,
-                },
-            ],
+            left: vec![ProofStep::Fact {
+                pc: 7,
+                left_reg: 5,
+                right_reg: 2,
+                c: 3,
+            }],
+            right: vec![ProofStep::Fact {
+                pc: 4,
+                left_reg: 2,
+                right_reg: 14,
+                c: -8,
+            }],
             via: 2,
         };
         let json = serde_json::to_string(&step).unwrap();
@@ -575,26 +559,22 @@ mod tests {
     fn proof_step_compose_accessors() {
         // left proves r4 - r1 ≤ 3, right proves r1 - @end ≤ -8
         let compose = ProofStep::Compose {
-            left: vec![
-                ProofStep::Fact {
-                    pc: 7,
-                    left_reg: 5,  // r4
-                    right_reg: 2, // r1
-                    c: 3,
-                },
-            ],
-            right: vec![
-                ProofStep::Fact {
-                    pc: 4,
-                    left_reg: 2,   // r1
-                    right_reg: 14, // @data_end
-                    c: -8,
-                },
-            ],
+            left: vec![ProofStep::Fact {
+                pc: 7,
+                left_reg: 5,  // r4
+                right_reg: 2, // r1
+                c: 3,
+            }],
+            right: vec![ProofStep::Fact {
+                pc: 4,
+                left_reg: 2,   // r1
+                right_reg: 14, // @data_end
+                c: -8,
+            }],
             via: 2, // r1
         };
         assert_eq!(compose.pc(), 7); // max of sub-proof PCs
-        assert_eq!(compose.output_left_reg(), 5);  // r4 from left
+        assert_eq!(compose.output_left_reg(), 5); // r4 from left
         assert_eq!(compose.output_right_reg(), 14); // @data_end from right
         assert_eq!(compose.bound_contribution(), -5); // 3 + (-8)
         assert_eq!(compose.node_count(), 3); // 1 Compose + 1 Fact + 1 Fact

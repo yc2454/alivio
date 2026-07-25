@@ -112,9 +112,10 @@ fn can_apply_dbm_constraint(
     // to packet pointers with unknown absolute values incorrectly marks
     // branches as infeasible.
     if matches!(state.domain, NumericDomain::Interval(_))
-        && !interval_can_apply_constraint(state, left, right) {
-            return false;
-        }
+        && !interval_can_apply_constraint(state, left, right)
+    {
+        return false;
+    }
 
     let dominated_by_signed = matches!(op, CmpOp::SLt | CmpOp::SLe | CmpOp::SGt | CmpOp::SGe);
     let dominated_by_unsigned = matches!(op, CmpOp::ULt | CmpOp::ULe | CmpOp::UGt | CmpOp::UGe);
@@ -321,8 +322,16 @@ fn refine_ne_imm(domain: &mut NumericDomain, left: Reg, imm: i64) {
     // contradictory arm the kernel never visits.
     let uval = imm as u64;
     let (umin, umax) = domain.get_u64_bounds(left);
-    let new_umin = if umin == uval { umin.saturating_add(1) } else { umin };
-    let new_umax = if umax == uval { umax.saturating_sub(1) } else { umax };
+    let new_umin = if umin == uval {
+        umin.saturating_add(1)
+    } else {
+        umin
+    };
+    let new_umax = if umax == uval {
+        umax.saturating_sub(1)
+    } else {
+        umax
+    };
     if (new_umin, new_umax) != (umin, umax) && new_umin <= new_umax {
         domain.set_u64_bounds(left, new_umin, new_umax);
     }
@@ -573,7 +582,11 @@ fn apply_w32_unsigned_fallback(
     // `right`'s 32-bit bounds instead. Otherwise narrow `left`.
     let left_const = then_s.domain.get_fixed_value(left).or_else(|| {
         let t = then_s.get_tnum(left);
-        if t.is_const() { Some(t.value as i64) } else { None }
+        if t.is_const() {
+            Some(t.value as i64)
+        } else {
+            None
+        }
     });
 
     let (target, rv, op) = match (left_const, right) {
@@ -705,7 +718,11 @@ fn apply_w32_signed_fallback(
     // is constant, flip the op and narrow `right` instead.
     let left_const = then_s.domain.get_fixed_value(left).or_else(|| {
         let t = then_s.get_tnum(left);
-        if t.is_const() { Some(t.value as i64) } else { None }
+        if t.is_const() {
+            Some(t.value as i64)
+        } else {
+            None
+        }
     });
 
     let (target, rv, op) = match (left_const, right) {

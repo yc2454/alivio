@@ -1,7 +1,6 @@
 // BCF path-cond recording at branches — kernel record_path_cond mirror.
 // Called from transfer_if per resolved side; pure BCF, no core-state writes.
 
-
 use crate::analysis::machine::reg::Reg;
 use crate::analysis::machine::state::State;
 use crate::analysis::transfer::alu::helpers::bcf_reg_bounds;
@@ -14,8 +13,8 @@ use crate::refinement::symbolic::RegBounds;
 /// as `(x & y) ≠ 0`, special-cased in BCF; deferred to Phase 2).
 pub(crate) fn cmp_op_to_bcf_pair(op: CmpOp) -> Option<(u8, u8)> {
     use crate::refinement::bcf::{
-        BPF_JEQ, BPF_JGE, BPF_JGT, BPF_JLE, BPF_JLT, BPF_JNE, BPF_JSGE, BPF_JSGT,
-        BPF_JSLE, BPF_JSLT,
+        BPF_JEQ, BPF_JGE, BPF_JGT, BPF_JLE, BPF_JLT, BPF_JNE, BPF_JSGE, BPF_JSGT, BPF_JSLE,
+        BPF_JSLT,
     };
     Some(match op {
         CmpOp::Eq => (BPF_JEQ, BPF_JNE),
@@ -111,7 +110,9 @@ pub(crate) fn record_path_cond_for_side(
         Operand::Reg(r) => r.bcf_idx(),
         _ => None,
     };
-    let rhs_was_uncached = rhs_idx.map(|ri| bcf.get_reg_pc(ri).is_none()).unwrap_or(false);
+    let rhs_was_uncached = rhs_idx
+        .map(|ri| bcf.get_reg_pc(ri).is_none())
+        .unwrap_or(false);
     let cmp_r = match right {
         Operand::Imm(c) => {
             let v = if jmp32 { (*c as u32) as u64 } else { *c as u64 };
@@ -131,9 +132,16 @@ pub(crate) fn record_path_cond_for_side(
         };
         eprintln!(
             "[rpc] src_pc={} side_op={:#04x} l_idx={} was_cached_at={:?} lhs_bounds(const={:?} u=[{:#x},{:#x}]) pre_const={:?} narrow={} cmp_l({})",
-            src_pc, op_byte_for_side, l_idx, lhs_materialize_pc,
-            lhs_bounds.const_val, lhs_bounds.umin, lhs_bounds.umax,
-            pre_lhs_bounds.const_val, narrow_for_side.is_some(), cmp_l_kind,
+            src_pc,
+            op_byte_for_side,
+            l_idx,
+            lhs_materialize_pc,
+            lhs_bounds.const_val,
+            lhs_bounds.umin,
+            lhs_bounds.umax,
+            pre_lhs_bounds.const_val,
+            narrow_for_side.is_some(),
+            cmp_l_kind,
         );
     }
     // Operand bound conjuncts are emitted at first materialization in
@@ -153,7 +161,12 @@ pub(crate) fn record_path_cond_for_side(
     // freshly-captured pre-reg_expr value (per-side bcf may have a
     // different cached PC than the originator).
     let narrow_now = narrow_for_side.map(|(k, op_b, j32, _)| (k, op_b, j32, lhs_materialize_pc));
-    bcf.add_cond_at_narrowed(pred, src_pc, narrow_now, Some((l_idx, lhs_materialize_pc, jmp32, lhs_bounds, pre_lhs_bounds)));
+    bcf.add_cond_at_narrowed(
+        pred,
+        src_pc,
+        narrow_now,
+        Some((l_idx, lhs_materialize_pc, jmp32, lhs_bounds, pre_lhs_bounds)),
+    );
 
     // Share-replay demand-through-copy (kernel bcf_track): a reg freshly
     // materialized at this branch whose VALUE is a copy of a stack slot
@@ -192,15 +205,22 @@ pub(crate) fn record_path_cond_for_side(
                     rhs_was_uncached,
                     state.domain.get_fixed_value(*r),
                     state.scalar_id(*r),
-                    r.bcf_idx().and_then(|ri| state.bcf.as_ref().and_then(|b| b.get_reg(ri)))
+                    r.bcf_idx()
+                        .and_then(|ri| state.bcf.as_ref().and_then(|b| b.get_reg(ri)))
                 )
             } else {
                 "imm".into()
             };
             eprintln!(
                 "[prop] src_pc={} left={:?}(uncached={} const={:?} id={:?}) right={:?}({}) props={}",
-                src_pc, left, lhs_was_uncached, lhs_bounds.const_val,
-                state.scalar_id(left), right, rdiag, props.len()
+                src_pc,
+                left,
+                lhs_was_uncached,
+                lhs_bounds.const_val,
+                state.scalar_id(left),
+                right,
+                rdiag,
+                props.len()
             );
         }
         for (id, e) in props {
@@ -217,7 +237,10 @@ pub(crate) fn record_path_cond_for_side(
                     {
                         slot.bcf_expr = Some(e);
                         if dbg_ss {
-                            eprintln!("[prop] STAMP src_pc={} id={} expr={} off={}", src_pc, id, e, off);
+                            eprintln!(
+                                "[prop] STAMP src_pc={} id={} expr={} off={}",
+                                src_pc, id, e, off
+                            );
                         }
                     }
                 }
@@ -225,4 +248,3 @@ pub(crate) fn record_path_cond_for_side(
         }
     }
 }
-

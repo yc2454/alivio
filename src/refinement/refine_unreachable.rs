@@ -40,7 +40,17 @@ pub fn try_prove_unreachable(
     base_pc: Option<usize>,
     prev_insn_pc: Option<usize>,
 ) -> Option<UnreachableOk> {
-    try_prove_unreachable_inner(state, base_pc, prev_insn_pc, true, None, false, None, None, false)
+    try_prove_unreachable_inner(
+        state,
+        base_pc,
+        prev_insn_pc,
+        true,
+        None,
+        false,
+        None,
+        None,
+        false,
+    )
 }
 
 // Per-call fold-mode override so a caller can emit BOTH fold forms of the
@@ -67,7 +77,15 @@ pub fn try_prove_unreachable_traj(
 ) -> Option<UnreachableOk> {
     TRAJ_SUFFIX.with(|c| c.set(true));
     let r = try_prove_unreachable_inner(
-        state, base_pc, prev_insn_pc, true, None, false, None, None, false,
+        state,
+        base_pc,
+        prev_insn_pc,
+        true,
+        None,
+        false,
+        None,
+        None,
+        false,
     );
     TRAJ_SUFFIX.with(|c| c.set(false));
     r
@@ -81,7 +99,15 @@ pub fn try_prove_unreachable_traj_fold_legacy(
     TRAJ_SUFFIX.with(|c| c.set(true));
     FOLD_OVERRIDE.with(|c| c.set(Some(false)));
     let r = try_prove_unreachable_inner(
-        state, base_pc, prev_insn_pc, true, None, false, None, None, false,
+        state,
+        base_pc,
+        prev_insn_pc,
+        true,
+        None,
+        false,
+        None,
+        None,
+        false,
     );
     FOLD_OVERRIDE.with(|c| c.set(None));
     TRAJ_SUFFIX.with(|c| c.set(false));
@@ -95,7 +121,15 @@ pub fn try_prove_unreachable_traj_no_rewrite(
 ) -> Option<UnreachableOk> {
     TRAJ_SUFFIX.with(|c| c.set(true));
     let r = try_prove_unreachable_inner(
-        state, base_pc, prev_insn_pc, false, None, false, None, None, false,
+        state,
+        base_pc,
+        prev_insn_pc,
+        false,
+        None,
+        false,
+        None,
+        None,
+        false,
     );
     TRAJ_SUFFIX.with(|c| c.set(false));
     r
@@ -111,7 +145,15 @@ pub fn try_prove_unreachable_fold_legacy(
 ) -> Option<UnreachableOk> {
     FOLD_OVERRIDE.with(|c| c.set(Some(false)));
     let r = try_prove_unreachable_inner(
-        state, base_pc, prev_insn_pc, true, None, false, None, None, false,
+        state,
+        base_pc,
+        prev_insn_pc,
+        true,
+        None,
+        false,
+        None,
+        None,
+        false,
     );
     FOLD_OVERRIDE.with(|c| c.set(None));
     r
@@ -134,11 +176,18 @@ pub fn try_prove_unreachable_fold_legacy(
 /// the FULL trajectory, since the kernel's bcf_reg_expr materializes a
 /// register's recorded condition regardless of how far back it was
 /// emitted. Live default-on (see caller in branch/mod.rs).
-pub fn try_prove_unreachable_reg_filtered(
-    state: &State,
-    hops: usize,
-) -> Option<UnreachableOk> {
-    try_prove_unreachable_inner(state, None, None, true, Some(hops), false, None, None, false)
+pub fn try_prove_unreachable_reg_filtered(state: &State, hops: usize) -> Option<UnreachableOk> {
+    try_prove_unreachable_inner(
+        state,
+        None,
+        None,
+        true,
+        Some(hops),
+        false,
+        None,
+        None,
+        false,
+    )
 }
 
 /// Register-filtered discharge with the per-reg fresh-VAR rewrite
@@ -147,7 +196,17 @@ pub fn try_prove_unreachable_reg_filtered_no_rewrite(
     state: &State,
     hops: usize,
 ) -> Option<UnreachableOk> {
-    try_prove_unreachable_inner(state, None, None, false, Some(hops), false, None, None, false)
+    try_prove_unreachable_inner(
+        state,
+        None,
+        None,
+        false,
+        Some(hops),
+        false,
+        None,
+        None,
+        false,
+    )
 }
 
 /// Like [`try_prove_unreachable`] but with the per-reg fresh-VAR rewrite
@@ -162,7 +221,17 @@ pub fn try_prove_unreachable_no_rewrite(
     base_pc: Option<usize>,
     prev_insn_pc: Option<usize>,
 ) -> Option<UnreachableOk> {
-    try_prove_unreachable_inner(state, base_pc, prev_insn_pc, false, None, false, None, None, false)
+    try_prove_unreachable_inner(
+        state,
+        base_pc,
+        prev_insn_pc,
+        false,
+        None,
+        false,
+        None,
+        None,
+        false,
+    )
 }
 
 /// Kernel `bcf_track` replay-fold, shared by the unreachable-class and
@@ -265,19 +334,26 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
         // pre-window in the kernel but in-window under zovia's wider
         // replay window cannot be served by this per-branch rule — that
         // requires replay-base placement, not a pre/post toggle.
-        let use_pre = prenarrow_on
-            && base_pc.map(|bp| pc >= bp).unwrap_or(false);
+        let use_pre = prenarrow_on && base_pc.map(|bp| pc >= bp).unwrap_or(false);
         let mat_bounds = if use_pre { &pre_bounds } else { &lhs_bounds };
         // Re-mint cache key: under the flag, key by (reg, materialize_pc)
         // so a redefined reg (call/reload between references) gets a fresh
         // VAR per incarnation (kernel resets reg->bcf_expr on def). Flag
         // off → reg-only key (legacy behaviour).
-        let key = if prenarrow_on { (lhs_reg, lhs_pc) } else { (lhs_reg, None) };
+        let key = if prenarrow_on {
+            (lhs_reg, lhs_pc)
+        } else {
+            (lhs_reg, None)
+        };
         if let Some(&(fv, nat_is_64)) = fresh_var_for_reg.get(&key) {
             // CACHED: reuse the reg's already-materialized VAR. A 64-bit
             // natural form is EXTRACTed for a jmp32 compare (kernel
             // bcf_reg_expr → expr32 of the cached 64-bit expr).
-            let cmp = if nat_is_64 && jmp32 { sym.expr32(fv) } else { fv };
+            let cmp = if nat_is_64 && jmp32 {
+                sym.expr32(fv)
+            } else {
+                fv
+            };
             let new_pred = sym.add_pred(op, cmp, arg1);
             new_conds.push(new_pred);
         } else if let Some(kval) = mat_bounds.const_val {
@@ -422,7 +498,10 @@ fn try_prove_unreachable_inner(
                         g.sort_unstable();
                         eprintln!(
                             "[disc-regsel] hops={} goal={:?} path_conds {}→{}",
-                            hops, g, pre, sym.path_conds.len()
+                            hops,
+                            g,
+                            pre,
+                            sym.path_conds.len()
                         );
                     } else {
                         sym.filter_path_conds_by_regs(&goal);
@@ -539,157 +618,164 @@ fn try_prove_unreachable_inner(
     }
 
     if do_fresh_var_rewrite && !faithful_fold {
-    // Per-reg fresh-VAR rewrite: mirror kernel's bcf_track fresh-replay
-    // where bcf_reg_expr(R) materializes a fresh VAR (plus bound preds)
-    // for each reg whose bcf_pre=-1. Generalizes the K==K rewrite above
-    // to non-narrowing branches. Inserts bound preds for the fresh VAR
-    // immediately BEFORE the branch they materialize for — matches
-    // kernel order, since bcf_canonical_hash is position-sensitive
-    // within CONJ.
-    //
-    // ADDITIVE in safety: produces additional canonical-hash bytes
-    // for non-narrowing branches; rewritten goals are equi-unsat with
-    // the originals (fresh VARs are unconstrained symbolic substitutes
-    // for the bounds-narrowed cached exprs). Solver-fallback path
-    // below catches any cases where the rewrite weakens unsat.
-    {
-        use std::collections::HashMap;
-        let mut fresh_var_for_reg: HashMap<usize, u32> = HashMap::new();
-        let mut newly_orphaned: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        // New path_conds list, built in original index order with
-        // bound preds inserted at materialization sites.
-        let mut new_conds: Vec<u32> = Vec::with_capacity(sym.path_conds.len() + 8);
-        let mut new_pcs: Vec<usize> = Vec::with_capacity(sym.path_cond_pcs.len() + 8);
-        let mut new_is_branch: Vec<bool> = Vec::with_capacity(sym.path_cond_is_branch.len() + 8);
-        let mut new_narrowed: Vec<Option<(u64, u8, bool, Option<usize>)>> = Vec::with_capacity(sym.path_cond_narrowed_const.len() + 8);
-        let mut new_lhs_meta: Vec<Option<(usize, Option<usize>, bool, RegBounds, RegBounds)>> = Vec::with_capacity(sym.path_cond_lhs_meta.len() + 8);
-        let path_conds_snapshot = sym.path_conds.clone();
-        let pcs_snapshot = sym.path_cond_pcs.clone();
-        let is_branch_snapshot = sym.path_cond_is_branch.clone();
-        let narrowed_snapshot = sym.path_cond_narrowed_const.clone();
-        let lhs_meta_snapshot = sym.path_cond_lhs_meta.clone();
-        for i in 0..path_conds_snapshot.len() {
-            let pred_slot = path_conds_snapshot[i];
-            let pc = pcs_snapshot[i];
-            let is_branch = is_branch_snapshot[i];
-            let narrowed = narrowed_snapshot[i];
-            let lhs_meta = lhs_meta_snapshot[i];
-            // Decide whether to rewrite this entry.
-            let do_rewrite = is_branch
-                && narrowed.map(|n| {
-                    // K==K already handled (skip if it would have fired)
-                    !match (n.3, base_pc) {
+        // Per-reg fresh-VAR rewrite: mirror kernel's bcf_track fresh-replay
+        // where bcf_reg_expr(R) materializes a fresh VAR (plus bound preds)
+        // for each reg whose bcf_pre=-1. Generalizes the K==K rewrite above
+        // to non-narrowing branches. Inserts bound preds for the fresh VAR
+        // immediately BEFORE the branch they materialize for — matches
+        // kernel order, since bcf_canonical_hash is position-sensitive
+        // within CONJ.
+        //
+        // ADDITIVE in safety: produces additional canonical-hash bytes
+        // for non-narrowing branches; rewritten goals are equi-unsat with
+        // the originals (fresh VARs are unconstrained symbolic substitutes
+        // for the bounds-narrowed cached exprs). Solver-fallback path
+        // below catches any cases where the rewrite weakens unsat.
+        {
+            use std::collections::HashMap;
+            let mut fresh_var_for_reg: HashMap<usize, u32> = HashMap::new();
+            let mut newly_orphaned: std::collections::HashSet<u32> =
+                std::collections::HashSet::new();
+            // New path_conds list, built in original index order with
+            // bound preds inserted at materialization sites.
+            let mut new_conds: Vec<u32> = Vec::with_capacity(sym.path_conds.len() + 8);
+            let mut new_pcs: Vec<usize> = Vec::with_capacity(sym.path_cond_pcs.len() + 8);
+            let mut new_is_branch: Vec<bool> =
+                Vec::with_capacity(sym.path_cond_is_branch.len() + 8);
+            let mut new_narrowed: Vec<Option<(u64, u8, bool, Option<usize>)>> =
+                Vec::with_capacity(sym.path_cond_narrowed_const.len() + 8);
+            let mut new_lhs_meta: Vec<Option<(usize, Option<usize>, bool, RegBounds, RegBounds)>> =
+                Vec::with_capacity(sym.path_cond_lhs_meta.len() + 8);
+            let path_conds_snapshot = sym.path_conds.clone();
+            let pcs_snapshot = sym.path_cond_pcs.clone();
+            let is_branch_snapshot = sym.path_cond_is_branch.clone();
+            let narrowed_snapshot = sym.path_cond_narrowed_const.clone();
+            let lhs_meta_snapshot = sym.path_cond_lhs_meta.clone();
+            for i in 0..path_conds_snapshot.len() {
+                let pred_slot = path_conds_snapshot[i];
+                let pc = pcs_snapshot[i];
+                let is_branch = is_branch_snapshot[i];
+                let narrowed = narrowed_snapshot[i];
+                let lhs_meta = lhs_meta_snapshot[i];
+                // Decide whether to rewrite this entry.
+                let do_rewrite = is_branch
+                    && narrowed
+                        .map(|n| {
+                            // K==K already handled (skip if it would have fired)
+                            !match (n.3, base_pc) {
+                                (None, _) => true,
+                                (Some(_), None) => false,
+                                (Some(p), Some(bp)) => p < bp,
+                            }
+                        })
+                        .unwrap_or(true)
+                    && lhs_meta.is_some();
+                if do_rewrite {
+                    let (lhs_reg, lhs_pc, jmp32, lhs_bounds, _pre_bounds) = lhs_meta.unwrap();
+                    let lhs_uncached_in_fresh_replay = match (lhs_pc, base_pc) {
                         (None, _) => true,
                         (Some(_), None) => false,
                         (Some(p), Some(bp)) => p < bp,
-                    }
-                }).unwrap_or(true)
-                && lhs_meta.is_some();
-            if do_rewrite {
-                let (lhs_reg, lhs_pc, jmp32, lhs_bounds, _pre_bounds) = lhs_meta.unwrap();
-                let lhs_uncached_in_fresh_replay = match (lhs_pc, base_pc) {
-                    (None, _) => true,
-                    (Some(_), None) => false,
-                    (Some(p), Some(bp)) => p < bp,
-                };
-                if lhs_uncached_in_fresh_replay {
-                    let (op_with_class, arg0, arg1) = {
-                        let Some(e) = sym.expr_at(pred_slot) else {
-                            new_conds.push(pred_slot);
-                            new_pcs.push(pc);
-                            new_is_branch.push(is_branch);
-                            new_narrowed.push(narrowed);
-                            new_lhs_meta.push(lhs_meta);
-                            continue;
+                    };
+                    if lhs_uncached_in_fresh_replay {
+                        let (op_with_class, arg0, arg1) = {
+                            let Some(e) = sym.expr_at(pred_slot) else {
+                                new_conds.push(pred_slot);
+                                new_pcs.push(pc);
+                                new_is_branch.push(is_branch);
+                                new_narrowed.push(narrowed);
+                                new_lhs_meta.push(lhs_meta);
+                                continue;
+                            };
+                            if e.args.len() != 2 {
+                                new_conds.push(pred_slot);
+                                new_pcs.push(pc);
+                                new_is_branch.push(is_branch);
+                                new_narrowed.push(narrowed);
+                                new_lhs_meta.push(lhs_meta);
+                                continue;
+                            }
+                            (e.code, e.args[0], e.args[1])
                         };
-                        if e.args.len() != 2 {
-                            new_conds.push(pred_slot);
-                            new_pcs.push(pc);
-                            new_is_branch.push(is_branch);
-                            new_narrowed.push(narrowed);
-                            new_lhs_meta.push(lhs_meta);
-                            continue;
+                        for v in sym.collect_vars(arg0) {
+                            newly_orphaned.insert(v);
                         }
-                        (e.code, e.args[0], e.args[1])
-                    };
-                    for v in sym.collect_vars(arg0) {
-                        newly_orphaned.insert(v);
+                        // First time seeing this reg → allocate fresh VAR
+                        // AND emit its bound preds (mirroring kernel's
+                        // bcf_reg_expr → bcf_bound_reg sequence).
+                        let (fresh, emit_bounds) = match fresh_var_for_reg.get(&lhs_reg) {
+                            Some(&v) => (v, false),
+                            None => {
+                                let v = sym.add_var_bits(jmp32);
+                                fresh_var_for_reg.insert(lhs_reg, v);
+                                (v, true)
+                            }
+                        };
+                        if emit_bounds {
+                            // Use bound_reg_kernel_shape: routes to the
+                            // 32-bit or 64-bit emitter and returns the
+                            // emitted pred slots so we can splice them
+                            // into the new path_conds list at the right
+                            // position (BEFORE the branch).
+                            let bound_pred_slots =
+                                sym.bound_reg_emit_preds(fresh, &lhs_bounds, jmp32);
+                            for bp_slot in bound_pred_slots {
+                                new_conds.push(bp_slot);
+                                new_pcs.push(pc);
+                                new_is_branch.push(false);
+                                new_narrowed.push(None);
+                                new_lhs_meta.push(None);
+                            }
+                        }
+                        let op = op_with_class & crate::refinement::bcf::BCF_OP_MASK;
+                        let new_pred = sym.add_pred(op, fresh, arg1);
+                        new_conds.push(new_pred);
+                        new_pcs.push(pc);
+                        new_is_branch.push(true);
+                        new_narrowed.push(narrowed);
+                        new_lhs_meta.push(lhs_meta);
+                        continue;
                     }
-                    // First time seeing this reg → allocate fresh VAR
-                    // AND emit its bound preds (mirroring kernel's
-                    // bcf_reg_expr → bcf_bound_reg sequence).
-                    let (fresh, emit_bounds) = match fresh_var_for_reg.get(&lhs_reg) {
-                        Some(&v) => (v, false),
-                        None => {
-                            let v = sym.add_var_bits(jmp32);
-                            fresh_var_for_reg.insert(lhs_reg, v);
-                            (v, true)
-                        }
+                }
+                // Default: pass through unmodified.
+                new_conds.push(pred_slot);
+                new_pcs.push(pc);
+                new_is_branch.push(is_branch);
+                new_narrowed.push(narrowed);
+                new_lhs_meta.push(lhs_meta);
+            }
+            sym.path_conds = new_conds;
+            sym.path_cond_pcs = new_pcs;
+            sym.path_cond_is_branch = new_is_branch;
+            sym.path_cond_narrowed_const = new_narrowed;
+            sym.path_cond_lhs_meta = new_lhs_meta;
+            // Drop bound preds whose only-referenced VARs are now orphaned.
+            if !newly_orphaned.is_empty() {
+                let mut kept_conds = Vec::with_capacity(sym.path_conds.len());
+                let mut kept_pcs = Vec::with_capacity(sym.path_cond_pcs.len());
+                let mut kept_is_branch = Vec::with_capacity(sym.path_cond_is_branch.len());
+                let mut kept_narrowed = Vec::with_capacity(sym.path_cond_narrowed_const.len());
+                let mut kept_lhs_meta = Vec::with_capacity(sym.path_cond_lhs_meta.len());
+                for i in 0..sym.path_conds.len() {
+                    let drop = !sym.path_cond_is_branch[i] && {
+                        let vars = sym.collect_vars(sym.path_conds[i]);
+                        !vars.is_empty() && vars.is_subset(&newly_orphaned)
                     };
-                    if emit_bounds {
-                        // Use bound_reg_kernel_shape: routes to the
-                        // 32-bit or 64-bit emitter and returns the
-                        // emitted pred slots so we can splice them
-                        // into the new path_conds list at the right
-                        // position (BEFORE the branch).
-                        let bound_pred_slots = sym.bound_reg_emit_preds(fresh, &lhs_bounds, jmp32);
-                        for bp_slot in bound_pred_slots {
-                            new_conds.push(bp_slot);
-                            new_pcs.push(pc);
-                            new_is_branch.push(false);
-                            new_narrowed.push(None);
-                            new_lhs_meta.push(None);
-                        }
+                    if !drop {
+                        kept_conds.push(sym.path_conds[i]);
+                        kept_pcs.push(sym.path_cond_pcs[i]);
+                        kept_is_branch.push(sym.path_cond_is_branch[i]);
+                        kept_narrowed.push(sym.path_cond_narrowed_const[i]);
+                        kept_lhs_meta.push(sym.path_cond_lhs_meta[i]);
                     }
-                    let op = op_with_class & crate::refinement::bcf::BCF_OP_MASK;
-                    let new_pred = sym.add_pred(op, fresh, arg1);
-                    new_conds.push(new_pred);
-                    new_pcs.push(pc);
-                    new_is_branch.push(true);
-                    new_narrowed.push(narrowed);
-                    new_lhs_meta.push(lhs_meta);
-                    continue;
                 }
+                sym.path_conds = kept_conds;
+                sym.path_cond_pcs = kept_pcs;
+                sym.path_cond_is_branch = kept_is_branch;
+                sym.path_cond_narrowed_const = kept_narrowed;
+                sym.path_cond_lhs_meta = kept_lhs_meta;
             }
-            // Default: pass through unmodified.
-            new_conds.push(pred_slot);
-            new_pcs.push(pc);
-            new_is_branch.push(is_branch);
-            new_narrowed.push(narrowed);
-            new_lhs_meta.push(lhs_meta);
         }
-        sym.path_conds = new_conds;
-        sym.path_cond_pcs = new_pcs;
-        sym.path_cond_is_branch = new_is_branch;
-        sym.path_cond_narrowed_const = new_narrowed;
-        sym.path_cond_lhs_meta = new_lhs_meta;
-        // Drop bound preds whose only-referenced VARs are now orphaned.
-        if !newly_orphaned.is_empty() {
-            let mut kept_conds = Vec::with_capacity(sym.path_conds.len());
-            let mut kept_pcs = Vec::with_capacity(sym.path_cond_pcs.len());
-            let mut kept_is_branch = Vec::with_capacity(sym.path_cond_is_branch.len());
-            let mut kept_narrowed = Vec::with_capacity(sym.path_cond_narrowed_const.len());
-            let mut kept_lhs_meta = Vec::with_capacity(sym.path_cond_lhs_meta.len());
-            for i in 0..sym.path_conds.len() {
-                let drop = !sym.path_cond_is_branch[i] && {
-                    let vars = sym.collect_vars(sym.path_conds[i]);
-                    !vars.is_empty() && vars.is_subset(&newly_orphaned)
-                };
-                if !drop {
-                    kept_conds.push(sym.path_conds[i]);
-                    kept_pcs.push(sym.path_cond_pcs[i]);
-                    kept_is_branch.push(sym.path_cond_is_branch[i]);
-                    kept_narrowed.push(sym.path_cond_narrowed_const[i]);
-                    kept_lhs_meta.push(sym.path_cond_lhs_meta[i]);
-                }
-            }
-            sym.path_conds = kept_conds;
-            sym.path_cond_pcs = kept_pcs;
-            sym.path_cond_is_branch = kept_is_branch;
-            sym.path_cond_narrowed_const = kept_narrowed;
-            sym.path_cond_lhs_meta = kept_lhs_meta;
-        }
-    }
     } // end do_fresh_var_rewrite
 
     if do_fresh_var_rewrite && faithful_fold {
@@ -708,11 +794,16 @@ fn try_prove_unreachable_inner(
                 s += e.slot_len();
             }
         }
-        let get = |slot: u32| sym.exprs.get(*slot_to_idx.get(&slot).unwrap_or(&usize::MAX));
+        let get = |slot: u32| {
+            sym.exprs
+                .get(*slot_to_idx.get(&slot).unwrap_or(&usize::MAX))
+        };
         // Decode each path_cond predicate to (reg, op, const) + source_pc.
         let resolve = |mut slot: u32| -> String {
             for _ in 0..12 {
-                let Some(e) = get(slot) else { return format!("e{slot}") };
+                let Some(e) = get(slot) else {
+                    return format!("e{slot}");
+                };
                 let base = e.code & 0xf8;
                 if base == 0x18 {
                     return match sym.var_origin.get(&slot) {
@@ -734,12 +825,15 @@ fn try_prove_unreachable_inner(
             base_pc,
             sym.path_conds.len()
         );
-        for (i, (&cond, &pc)) in sym.path_conds.iter().zip(sym.path_cond_pcs.iter()).enumerate() {
+        for (i, (&cond, &pc)) in sym
+            .path_conds
+            .iter()
+            .zip(sym.path_cond_pcs.iter())
+            .enumerate()
+        {
             let isb = sym.path_cond_is_branch.get(i).copied().unwrap_or(false);
             let (lhs, op, rhs) = match get(cond) {
-                Some(e) if e.args.len() >= 2 => {
-                    (resolve(e.args[0]), e.code, resolve(e.args[1]))
-                }
+                Some(e) if e.args.len() >= 2 => (resolve(e.args[0]), e.code, resolve(e.args[1])),
                 Some(e) => ("?".into(), e.code, "?".into()),
                 None => ("?".into(), 0, "?".into()),
             };
@@ -804,7 +898,13 @@ fn try_prove_unreachable_inner(
                     return None; // filter changed nothing → no distinct variant
                 }
                 if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
-                    eprintln!("[loop-suffix-base] src={} exit={} conds {}->{}", src, exit, n, kc.len());
+                    eprintln!(
+                        "[loop-suffix-base] src={} exit={} conds {}->{}",
+                        src,
+                        exit,
+                        n,
+                        kc.len()
+                    );
                 }
                 sym.path_conds = kc;
                 sym.path_cond_pcs = kp;
@@ -878,8 +978,7 @@ fn try_prove_unreachable_inner(
         // field masked to <=0xffff at pc<anchor but compared in the proto
         // body after it). Re-add those bound preds so the goal matches the
         // kernel's re-materialized operand set.
-        let mut kept_branch_vars: std::collections::HashSet<u32> =
-            std::collections::HashSet::new();
+        let mut kept_branch_vars: std::collections::HashSet<u32> = std::collections::HashSet::new();
         for i in 0..n {
             if sym.path_cond_is_branch[i] && sym.path_cond_pcs[i] >= anchor_pc {
                 for v in sym.collect_vars(sym.path_conds[i]) {
@@ -916,7 +1015,10 @@ fn try_prove_unreachable_inner(
         if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
             eprintln!(
                 "[flag-skip-base] exit={} anchor_pc={} conds {}->{}",
-                exit, anchor_pc, n, kc.len()
+                exit,
+                anchor_pc,
+                n,
+                kc.len()
             );
         }
         sym.path_conds = kc;
@@ -968,7 +1070,11 @@ fn try_prove_unreachable_inner(
                 if e.code & 0xf8 == 0x08 {
                     let lo = *e.args.first()? as u64;
                     let hi = e.args.get(1).copied().unwrap_or(0) as u64;
-                    Some(if e.args.len() >= 2 { lo | (hi << 32) } else { lo })
+                    Some(if e.args.len() >= 2 {
+                        lo | (hi << 32)
+                    } else {
+                        lo
+                    })
                 } else {
                     None
                 }
@@ -994,8 +1100,7 @@ fn try_prove_unreachable_inner(
             }
         }
         let n = sym.path_conds.len();
-        let mut kept_branch_vars: std::collections::HashSet<u32> =
-            std::collections::HashSet::new();
+        let mut kept_branch_vars: std::collections::HashSet<u32> = std::collections::HashSet::new();
         for i in 0..n {
             if sym.path_cond_is_branch[i] && sym.path_cond_pcs[i] >= anchor_pc {
                 for v in sym.collect_vars(sym.path_conds[i]) {
@@ -1031,7 +1136,9 @@ fn try_prove_unreachable_inner(
         if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
             eprintln!(
                 "[loop-entry-base] anchor_pc={} conds {}->{}",
-                anchor_pc, n, kc.len()
+                anchor_pc,
+                n,
+                kc.len()
             );
         }
         sym.path_conds = kc;
@@ -1066,13 +1173,23 @@ fn try_prove_unreachable_inner(
         }
     };
     if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
-        eprintln!("---- [bcf] SMT-LIB to cvc5 (path-unreachable) ----\n{}\n---- end ----", smt);
+        eprintln!(
+            "---- [bcf] SMT-LIB to cvc5 (path-unreachable) ----\n{}\n---- end ----",
+            smt
+        );
     }
 
     match solver::solve(&smt) {
         Ok(bytes) => {
-            debug!("[bcf] path-unreachable: cvc5 accepted ({} bytes)", bytes.len());
-            Some(UnreachableOk { proof_bytes: bytes, goal_root, sym })
+            debug!(
+                "[bcf] path-unreachable: cvc5 accepted ({} bytes)",
+                bytes.len()
+            );
+            Some(UnreachableOk {
+                proof_bytes: bytes,
+                goal_root,
+                sym,
+            })
         }
         Err(e) => {
             debug!("[bcf] path-unreachable: cvc5 declined ({})", e);
@@ -1098,7 +1215,10 @@ fn try_prove_unreachable_inner(
                     Err(_) => return None,
                 };
                 if let Ok(bytes) = solver::solve(&smt2) {
-                    debug!("[bcf] path-unreachable: cvc5 accepted fallback ({} bytes)", bytes.len());
+                    debug!(
+                        "[bcf] path-unreachable: cvc5 accepted fallback ({} bytes)",
+                        bytes.len()
+                    );
                     return Some(UnreachableOk {
                         proof_bytes: bytes,
                         goal_root: fallback_goal,
@@ -1132,7 +1252,10 @@ pub fn build_unreachable_from_replay(mut sym: SymbolicState) -> Option<Unreachab
     };
     let smt = smtlib::encode(&sym).ok()?;
     if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
-        eprintln!("---- [bcf] SMT-LIB to cvc5 (replay) ----\n{}\n---- end ----", smt);
+        eprintln!(
+            "---- [bcf] SMT-LIB to cvc5 (replay) ----\n{}\n---- end ----",
+            smt
+        );
     }
     // Formation-time census (diagnosis): the post-prove [census] lines can't
     // distinguish never-formed from formed-but-prove-declined; log both the
@@ -1145,8 +1268,16 @@ pub fn build_unreachable_from_replay(mut sym: SymbolicState) -> Option<Unreachab
     };
     let solved = solver::solve(&smt);
     if let Some(h) = formed_hash {
-        eprintln!("[census-formed] hash={:016x} solve_ok={}", h, solved.is_ok());
+        eprintln!(
+            "[census-formed] hash={:016x} solve_ok={}",
+            h,
+            solved.is_ok()
+        );
     }
     let bytes = solved.ok()?;
-    Some(UnreachableOk { proof_bytes: bytes, goal_root, sym })
+    Some(UnreachableOk {
+        proof_bytes: bytes,
+        goal_root,
+        sym,
+    })
 }

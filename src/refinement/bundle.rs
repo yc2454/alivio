@@ -60,7 +60,13 @@ impl RefineEntry {
     /// Build an entry, computing `cond_hash` via the canonical hash spec.
     pub fn new(goal_root: u32, goal_exprs: Vec<BcfExpr>, proof_bytes: Vec<u8>, kind: u32) -> Self {
         let cond_hash = hash_expr(goal_root, &goal_exprs);
-        Self { cond_hash, goal_root, goal_exprs, proof_bytes, kind }
+        Self {
+            cond_hash,
+            goal_root,
+            goal_exprs,
+            proof_bytes,
+            kind,
+        }
     }
 }
 
@@ -97,22 +103,26 @@ fn align4(n: usize) -> usize {
 /// empty list (the caller treats it as "no prior entries" and just
 /// overwrites — never worse than the pre-merge behaviour).
 fn read_bundle_raw(path: &Path) -> Vec<(u64, u32, Vec<u8>, Vec<u8>)> {
-    let Ok(b) = std::fs::read(path) else { return Vec::new() };
+    let Ok(b) = std::fs::read(path) else {
+        return Vec::new();
+    };
     let rd_u32 = |o: usize| -> Option<u32> {
-        b.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap()))
+        b.get(o..o + 4)
+            .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
     };
     if b.len() < BUNDLE_HEADER_SIZE || rd_u32(0) != Some(BCF_BUNDLE_MAGIC) {
         return Vec::new();
     }
-    let Some(cnt) = rd_u32(4) else { return Vec::new() };
+    let Some(cnt) = rd_u32(4) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for i in 0..cnt as usize {
         let e = BUNDLE_HEADER_SIZE + i * BUNDLE_ENTRY_SIZE;
         if e + BUNDLE_ENTRY_SIZE > b.len() {
             return out;
         }
-        let cond_hash =
-            u64::from_le_bytes(b[e..e + 8].try_into().unwrap());
+        let cond_hash = u64::from_le_bytes(b[e..e + 8].try_into().unwrap());
         let goal_off = rd_u32(e + 8).unwrap_or(0) as usize;
         let goal_len = rd_u32(e + 12).unwrap_or(0) as usize;
         let proof_off = rd_u32(e + 16).unwrap_or(0) as usize;
@@ -176,8 +186,7 @@ pub fn write_bundle(path: &Path, entries: &[RefineEntry]) -> io::Result<usize> {
     let mut serialized: Vec<Serialized> = read_bundle_raw(path)
         .into_iter()
         .filter(|(_, _, goal, _)| {
-            goal.len() <= 24 * 1024
-                && parse_goal_var_count(goal).is_some_and(|n| n <= 128)
+            goal.len() <= 24 * 1024 && parse_goal_var_count(goal).is_some_and(|n| n <= 128)
         })
         .map(|(cond_hash, kind, goal, proof)| Serialized {
             cond_hash,
@@ -186,8 +195,7 @@ pub fn write_bundle(path: &Path, entries: &[RefineEntry]) -> io::Result<usize> {
             proof,
         })
         .collect();
-    let mut seen: std::collections::HashSet<u64> =
-        serialized.iter().map(|s| s.cond_hash).collect();
+    let mut seen: std::collections::HashSet<u64> = serialized.iter().map(|s| s.cond_hash).collect();
     // OVERSIZED-GOAL GUARD: the kernel's proof checker caps clause width
     // at U8_MAX literals (bcf_checker.c:434, resolvent `dst->vlen +
     // src->vlen > U8_MAX` → -EINVAL). cvc5 proofs over very large goals
@@ -214,8 +222,7 @@ pub fn write_bundle(path: &Path, entries: &[RefineEntry]) -> io::Result<usize> {
             .goal_exprs
             .iter()
             .filter(|x| {
-                (x.code & crate::refinement::bcf::BCF_OP_MASK)
-                    == crate::refinement::bcf::BCF_VAR
+                (x.code & crate::refinement::bcf::BCF_OP_MASK) == crate::refinement::bcf::BCF_VAR
             })
             .count();
         if goal.len() > MAX_GOAL_BYTES || nvars > 128 {
@@ -248,8 +255,7 @@ pub fn write_bundle(path: &Path, entries: &[RefineEntry]) -> io::Result<usize> {
     for s in &serialized {
         payload_total += align4(s.goal.len()) + align4(s.proof.len());
     }
-    let total_size =
-        BUNDLE_HEADER_SIZE + BUNDLE_ENTRY_SIZE * entries_len + payload_total;
+    let total_size = BUNDLE_HEADER_SIZE + BUNDLE_ENTRY_SIZE * entries_len + payload_total;
 
     let mut buf = Vec::with_capacity(total_size);
 
@@ -307,9 +313,21 @@ mod tests {
         //   c   at slot 1 (slot_len = 1 + 1 = 2)
         //   add at slot 3 (slot_len = 1 + 2 = 3); args = [0, 1]
         let mut exprs = vec![];
-        exprs.push(BcfExpr { code: BCF_VAR | BCF_BV, params: 64, args: vec![] });
-        exprs.push(BcfExpr { code: BCF_VAL | BCF_BV, params: 0,  args: vec![42] });
-        exprs.push(BcfExpr { code: BPF_ADD | BCF_BV, params: 0,  args: vec![0, 1] });
+        exprs.push(BcfExpr {
+            code: BCF_VAR | BCF_BV,
+            params: 64,
+            args: vec![],
+        });
+        exprs.push(BcfExpr {
+            code: BCF_VAL | BCF_BV,
+            params: 0,
+            args: vec![42],
+        });
+        exprs.push(BcfExpr {
+            code: BPF_ADD | BCF_BV,
+            params: 0,
+            args: vec![0, 1],
+        });
         let proof = vec![0xcf, 0x0b, 0x00, 0x00, 0xaa, 0xbb];
         RefineEntry::new(3, exprs, proof, BCF_BUNDLE_KIND_REFINE)
     }
@@ -319,8 +337,7 @@ mod tests {
         let entry = sample_entry();
         let expected_hash = entry.cond_hash;
         let expected_proof = entry.proof_bytes.clone();
-        let expected_goal_bytes =
-            serialize_goal(entry.goal_root, &entry.goal_exprs);
+        let expected_goal_bytes = serialize_goal(entry.goal_root, &entry.goal_exprs);
 
         let dir = std::env::temp_dir().join(format!("zovia-bundle-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
@@ -332,20 +349,29 @@ mod tests {
         // Header.
         assert_eq!(&bytes[0..4], &BCF_BUNDLE_MAGIC.to_le_bytes());
         assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 1);
-        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize, total);
+        assert_eq!(
+            u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize,
+            total
+        );
 
         // Entry at byte 16.
         let cond_hash = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
-        let goal_off  = u32::from_le_bytes(bytes[24..28].try_into().unwrap()) as usize;
+        let goal_off = u32::from_le_bytes(bytes[24..28].try_into().unwrap()) as usize;
         let goal_size = u32::from_le_bytes(bytes[28..32].try_into().unwrap()) as usize;
         let proof_off = u32::from_le_bytes(bytes[32..36].try_into().unwrap()) as usize;
         let proof_size = u32::from_le_bytes(bytes[36..40].try_into().unwrap()) as usize;
-        let kind      = u32::from_le_bytes(bytes[40..44].try_into().unwrap());
+        let kind = u32::from_le_bytes(bytes[40..44].try_into().unwrap());
 
         assert_eq!(cond_hash, expected_hash);
         assert_eq!(kind, BCF_BUNDLE_KIND_REFINE);
-        assert_eq!(&bytes[goal_off..goal_off + goal_size], &expected_goal_bytes[..]);
-        assert_eq!(&bytes[proof_off..proof_off + proof_size], &expected_proof[..]);
+        assert_eq!(
+            &bytes[goal_off..goal_off + goal_size],
+            &expected_goal_bytes[..]
+        );
+        assert_eq!(
+            &bytes[proof_off..proof_off + proof_size],
+            &expected_proof[..]
+        );
 
         // Offsets are u32-aligned.
         assert_eq!(goal_off % 4, 0);
@@ -378,12 +404,18 @@ mod tests {
         // Parse both entries' offsets and confirm non-overlap.
         let entry0_off = BUNDLE_HEADER_SIZE;
         let entry1_off = entry0_off + BUNDLE_ENTRY_SIZE;
-        let g0_off = u32::from_le_bytes(bytes[entry0_off + 8..entry0_off + 12].try_into().unwrap()) as usize;
-        let g0_sz  = u32::from_le_bytes(bytes[entry0_off + 12..entry0_off + 16].try_into().unwrap()) as usize;
-        let p0_off = u32::from_le_bytes(bytes[entry0_off + 16..entry0_off + 20].try_into().unwrap()) as usize;
-        let p0_sz  = u32::from_le_bytes(bytes[entry0_off + 20..entry0_off + 24].try_into().unwrap()) as usize;
-        let g1_off = u32::from_le_bytes(bytes[entry1_off + 8..entry1_off + 12].try_into().unwrap()) as usize;
-        let g1_sz  = u32::from_le_bytes(bytes[entry1_off + 12..entry1_off + 16].try_into().unwrap()) as usize;
+        let g0_off =
+            u32::from_le_bytes(bytes[entry0_off + 8..entry0_off + 12].try_into().unwrap()) as usize;
+        let g0_sz = u32::from_le_bytes(bytes[entry0_off + 12..entry0_off + 16].try_into().unwrap())
+            as usize;
+        let p0_off = u32::from_le_bytes(bytes[entry0_off + 16..entry0_off + 20].try_into().unwrap())
+            as usize;
+        let p0_sz = u32::from_le_bytes(bytes[entry0_off + 20..entry0_off + 24].try_into().unwrap())
+            as usize;
+        let g1_off =
+            u32::from_le_bytes(bytes[entry1_off + 8..entry1_off + 12].try_into().unwrap()) as usize;
+        let g1_sz = u32::from_le_bytes(bytes[entry1_off + 12..entry1_off + 16].try_into().unwrap())
+            as usize;
 
         assert!(g0_off + g0_sz <= p0_off, "goal 0 overruns proof 0");
         assert!(p0_off + p0_sz <= g1_off, "proof 0 overruns goal 1");

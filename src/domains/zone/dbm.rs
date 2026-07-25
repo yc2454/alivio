@@ -85,8 +85,9 @@ mod tests {
         dbm.add_constraint(Reg::R2, Reg::R3, 5);
         dbm.close();
 
-        let path =
-            dbm.reconstruct_path(Reg::R2, Reg::R3).expect("provenance should be active");
+        let path = dbm
+            .reconstruct_path(Reg::R2, Reg::R3)
+            .expect("provenance should be active");
         assert_eq!(path.len(), 1);
         let edge = &path[0];
         assert_eq!(edge.to, Reg::R2);
@@ -230,7 +231,9 @@ impl Dbm {
         if c < old {
             self.set(i, j, c);
             if let Some(prov) = &mut self.provenance {
-                prov.edges[i.idx()][j.idx()] = EdgeOrigin::Primitive { pc: prov.current_pc };
+                prov.edges[i.idx()][j.idx()] = EdgeOrigin::Primitive {
+                    pc: prov.current_pc,
+                };
             }
         }
     }
@@ -460,10 +463,12 @@ impl Dbm {
         for i in 0..n {
             let r = REG_ENV.all().get(i).copied();
             if let Some(reg) = r
-                && reg != Reg::Zero && !reg.is_anchor() {
-                    crate::domains::zone::ops::sync_bounds(&mut self_synced, reg);
-                    crate::domains::zone::ops::sync_bounds(&mut newer_synced, reg);
-                }
+                && reg != Reg::Zero
+                && !reg.is_anchor()
+            {
+                crate::domains::zone::ops::sync_bounds(&mut self_synced, reg);
+                crate::domains::zone::ops::sync_bounds(&mut newer_synced, reg);
+            }
         }
         for i in 0..n {
             for j in 0..n {

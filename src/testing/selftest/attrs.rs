@@ -59,8 +59,7 @@ impl ProgAttrs {
 /// Scrape every annotated program in a source file. Order matches source order.
 pub fn scrape<P: AsRef<Path>>(src: P) -> Result<Vec<ProgAttrs>> {
     let path = src.as_ref();
-    let text =
-        fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let text = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     Ok(scrape_str(&text))
 }
 
@@ -168,11 +167,9 @@ fn has_word(line: &str, kw: &str) -> bool {
     let mut start = 0;
     while let Some(idx) = line[start..].find(kw) {
         let abs = start + idx;
-        let before_ok = abs == 0
-            || !is_ident_char(line.as_bytes()[abs - 1] as char);
+        let before_ok = abs == 0 || !is_ident_char(line.as_bytes()[abs - 1] as char);
         let after = abs + kw.len();
-        let after_ok = after == line.len()
-            || !is_ident_char(line.as_bytes()[after] as char);
+        let after_ok = after == line.len() || !is_ident_char(line.as_bytes()[after] as char);
         if before_ok && after_ok {
             return true;
         }
@@ -198,8 +195,7 @@ fn extract_quoted_all(line: &str, macro_name: &str) -> Vec<String> {
     while let Some(idx) = line[start..].find(macro_name) {
         let abs = start + idx;
         // Must be a whole identifier match.
-        let before_ok = abs == 0
-            || !is_ident_char(line.as_bytes()[abs - 1] as char);
+        let before_ok = abs == 0 || !is_ident_char(line.as_bytes()[abs - 1] as char);
         let after = abs + macro_name.len();
         if !before_ok || after >= line.len() {
             start = abs + macro_name.len();
@@ -250,10 +246,7 @@ fn extract_macro_ident(line: &str, macro_name: &str) -> Option<String> {
         let inner = rest[1..].trim_start();
         let close = inner.find(')')?;
         let arg = inner[..close].trim();
-        if !arg.is_empty()
-            && !arg.starts_with('"')
-            && arg.chars().all(is_ident_char)
-        {
+        if !arg.is_empty() && !arg.starts_with('"') && arg.chars().all(is_ident_char) {
             return Some(arg.to_string());
         }
         start = abs + macro_name.len();
@@ -266,8 +259,7 @@ fn extract_int_arg(line: &str, macro_name: &str) -> Option<i64> {
     let mut start = 0;
     while let Some(idx) = line[start..].find(macro_name) {
         let abs = start + idx;
-        let before_ok = abs == 0
-            || !is_ident_char(line.as_bytes()[abs - 1] as char);
+        let before_ok = abs == 0 || !is_ident_char(line.as_bytes()[abs - 1] as char);
         let after = abs + macro_name.len();
         if !before_ok || after >= line.len() {
             start = abs + macro_name.len();
@@ -466,7 +458,10 @@ __naked void second(void) { ... }
         assert_eq!(progs[0].retval, Some(1));
         assert_eq!(progs[1].description.as_deref(), Some("second"));
         assert!(progs[1].failure);
-        assert_eq!(progs[1].msgs, vec!["invalid bpf_context access".to_string()]);
+        assert_eq!(
+            progs[1].msgs,
+            vec!["invalid bpf_context access".to_string()]
+        );
     }
 
     #[test]
@@ -491,8 +486,7 @@ __naked void opt(void) { ... }
 
     #[test]
     fn scrapes_real_verifier_gotol() {
-        let progs =
-            scrape("selftests/progs/verifier_gotol.c").expect("read verifier_gotol.c");
+        let progs = scrape("selftests/progs/verifier_gotol.c").expect("read verifier_gotol.c");
         let names: Vec<&str> = progs.iter().map(|p| p.func_name.as_str()).collect();
         // Three functions: gotol_small_imm, gotol_large_imm, dummy_test
         // (the last only compiled when CAN_USE_GOTOL is unset; the scraper

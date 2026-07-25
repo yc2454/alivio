@@ -173,11 +173,7 @@ fn parse_map_struct_members(ctx: &BtfContext, def_t: &BtfType) -> ParsedMapStruc
 /// Build a [`BpfMapDef`] from a parsed map struct, lifting kptr value
 /// fields. Returns `None` for non-maps / valueless structs that aren't a
 /// recognized valueless map kind.
-fn map_def_from_parsed(
-    ctx: &BtfContext,
-    name: String,
-    p: &ParsedMapStruct,
-) -> Option<BpfMapDef> {
+fn map_def_from_parsed(ctx: &BtfContext, name: String, p: &ParsedMapStruct) -> Option<BpfMapDef> {
     // Valueless maps (ARENA / RINGBUF / USER_RINGBUF / CGRP_STORAGE)
     // legitimately have value_size == 0; for everything else require
     // value_size > 0 to avoid picking up unrelated BTF structs that

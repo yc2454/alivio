@@ -6,10 +6,10 @@
 // BCF-discharge children-unsafe invalidation. Free functions over
 // `&mut VerifierEnv`, matching the flow/ convention.
 
-use std::collections::HashSet;
 use crate::analysis::machine::env::VerifierEnv;
 use crate::analysis::machine::reg::Reg;
 use crate::analysis::machine::state::State;
+use std::collections::HashSet;
 
 /// Kernel-aligned `clean_verifier_state` (verifier.c v6.15 L19482)
 /// + `clean_func_state` (L19433). Called when a cached state's
@@ -82,7 +82,11 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
                 }
             })
             .collect();
-        (ips, crate::analysis::flow::live_stack::callchain_of(st), st.pc)
+        (
+            ips,
+            crate::analysis::flow::live_stack::callchain_of(st),
+            st.pc,
+        )
     };
     // Registers stay on the STATIC live_regs (kernel `live_regs_before`,
     // compute_live_registers). Stack slots use the DYNAMIC live-stack
@@ -146,9 +150,7 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
             })
             .filter(|&off| {
                 if let Some(slot) = frame.stack.get_slot(off) {
-                    slot.iterator.is_none()
-                        && slot.dynptr.is_none()
-                        && slot.irq_flag.is_none()
+                    slot.iterator.is_none() && slot.dynptr.is_none() && slot.irq_flag.is_none()
                 } else {
                     true
                 }
@@ -229,11 +231,7 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
 /// "everything below pc146", causing the pc274 re-exploration blowup).
 /// `base_cache_id == None` ⇒ backtrack didn't find a base (bt never emptied)
 /// ⇒ kernel marks the whole chain to entry; we do the same.
-pub fn mark_path_children_unsafe(
-    env: &mut VerifierEnv,
-    cur: &State,
-    base_cache_id: Option<u32>,
-) {
+pub fn mark_path_children_unsafe(env: &mut VerifierEnv, cur: &State, base_cache_id: Option<u32>) {
     let mut id = cur.parent_cache_id;
     let mut budget: usize = 16_384;
     let dump = std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1");

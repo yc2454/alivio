@@ -30,11 +30,9 @@ mod tests {
     }
 
     fn cert_has_compose(cert: &ProgramCertificate) -> bool {
-        cert.pc_annotations.iter().any(|ann| {
-            ann.entries
-                .iter()
-                .any(|e| proof_has_compose(&e.proof))
-        })
+        cert.pc_annotations
+            .iter()
+            .any(|ann| ann.entries.iter().any(|e| proof_has_compose(&e.proof)))
     }
 
     #[test]
@@ -185,9 +183,10 @@ pub fn pcc_test_single(json_path: &str, test_name: &str, config: &VerifierConfig
     // Generate certs when zone passes (traditional PCC: zone ok, interval reject)
     // AND when zone has a precision issue (map PCC: zone's relational data is still
     // useful even though zone's own access check fails for variable map offsets).
-    let should_generate_cert =
-        matches!(result.outcome, TestOutcome::Pass | TestOutcome::FalsePositive)
-            && config.domain_mode == DomainMode::Zone;
+    let should_generate_cert = matches!(
+        result.outcome,
+        TestOutcome::Pass | TestOutcome::FalsePositive
+    ) && config.domain_mode == DomainMode::Zone;
     if should_generate_cert {
         pcc_generate_cert(test, json_path, test_name, config);
     }
@@ -196,14 +195,25 @@ pub fn pcc_test_single(json_path: &str, test_name: &str, config: &VerifierConfig
     match &result.outcome {
         TestOutcome::Pass => println!("========= PASS ========= ({}ms)", result.time_ms),
         TestOutcome::FalseNegative => {
-            println!("========= !!! SOUNDNESS ISSUE !!! ========= ({}ms)", result.time_ms)
+            println!(
+                "========= !!! SOUNDNESS ISSUE !!! ========= ({}ms)",
+                result.time_ms
+            )
         }
-        TestOutcome::FalsePositive => println!("========= PRECISION ISSUE ========= ({}ms)", result.time_ms),
+        TestOutcome::FalsePositive => {
+            println!("========= PRECISION ISSUE ========= ({}ms)", result.time_ms)
+        }
         TestOutcome::Skipped { reason } => {
-            println!("========= SKIPPED ========= ({}ms) {}", result.time_ms, reason)
+            println!(
+                "========= SKIPPED ========= ({}ms) {}",
+                result.time_ms, reason
+            )
         }
         TestOutcome::Error { message } => {
-            println!("========= ERROR ========= ({}ms) {}", result.time_ms, message)
+            println!(
+                "========= ERROR ========= ({}ms) {}",
+                result.time_ms, message
+            )
         }
     }
 }
@@ -280,9 +290,10 @@ fn pcc_generate_cert(
     // Stage 4: combine DBMs + interval states to produce and persist the cert.
     println!("\n========= Stage 4: Certificate generation =========");
     let cert = generate_certificate(&program, &zone_dbms, &interval_states, &ctx.map_defs);
-    let output_path = config.certificate_output.clone().unwrap_or_else(|| {
-        default_generated_cert_path(json_path, test_name, &cert.program_hash)
-    });
+    let output_path = config
+        .certificate_output
+        .clone()
+        .unwrap_or_else(|| default_generated_cert_path(json_path, test_name, &cert.program_hash));
     if let Some(parent) = Path::new(&output_path).parent()
         && let Err(e) = fs::create_dir_all(parent)
     {

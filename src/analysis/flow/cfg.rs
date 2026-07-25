@@ -62,20 +62,30 @@ fn find_pseudo_func_for_call(prog: &Program, call_pc: usize, cb_reg: Reg) -> Opt
             // backward for the producer of `src`. Any other write to
             // `tracked` (immediate Mov, arithmetic, load, foreign LoadMap)
             // breaks the direct feed.
-            Instr::Alu { dst, op: crate::ast::AluOp::Mov, src: crate::ast::Operand::Reg(src), .. }
-                if *dst == tracked =>
-            {
+            Instr::Alu {
+                dst,
+                op: crate::ast::AluOp::Mov,
+                src: crate::ast::Operand::Reg(src),
+                ..
+            } if *dst == tracked => {
                 tracked = *src;
             }
-            Instr::Alu { dst, .. } | Instr::MovSx { dst, .. } | Instr::Load { dst, .. }
-            | Instr::LoadSx { dst, .. } | Instr::LoadMap { dst, .. }
+            Instr::Alu { dst, .. }
+            | Instr::MovSx { dst, .. }
+            | Instr::Load { dst, .. }
+            | Instr::LoadSx { dst, .. }
+            | Instr::LoadMap { dst, .. }
                 if *dst == tracked =>
             {
                 return None;
             }
             // Leave the basic block: stop scanning.
-            Instr::Jmp { .. } | Instr::If { .. } | Instr::Exit
-            | Instr::Call { .. } | Instr::CallRel { .. } | Instr::MayGoto { .. } => return None,
+            Instr::Jmp { .. }
+            | Instr::If { .. }
+            | Instr::Exit
+            | Instr::Call { .. }
+            | Instr::CallRel { .. }
+            | Instr::MayGoto { .. } => return None,
             _ => {}
         }
     }
@@ -463,9 +473,10 @@ pub fn check_cfg(
     // The kernel's bounded loop support requires single-entry loops (dominator tree).
     // Code that jumps into the middle of a loop cannot be verified.
     if config.require_single_loop_entry
-        && let Some((from_pc, to_pc)) = check_jump_into_loop_middle(prog) {
-            return Err(format!("back-edge from insn {} to {}", from_pc, to_pc));
-        }
+        && let Some((from_pc, to_pc)) = check_jump_into_loop_middle(prog)
+    {
+        return Err(format!("back-edge from insn {} to {}", from_pc, to_pc));
+    }
 
     let mut state = vec![VisitState::Unvisited; n];
     let mut stack = Vec::new();
@@ -535,7 +546,10 @@ pub fn check_cfg(
     // For programs without CallRel, dead code after a statically-eliminated
     // branch is a normal compiler artefact accepted by kernel ≥ 6.6; the
     // abstract interpreter simply never visits those PCs.
-    let has_callrel = prog.instrs.iter().any(|i| matches!(i, Instr::CallRel { .. }));
+    let has_callrel = prog
+        .instrs
+        .iter()
+        .any(|i| matches!(i, Instr::CallRel { .. }));
     if has_callrel {
         for (pc, &s) in state.iter().enumerate() {
             if s == VisitState::Unvisited {

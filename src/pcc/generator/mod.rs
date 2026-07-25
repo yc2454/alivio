@@ -77,8 +77,7 @@ pub fn generate_certificate(
         // typically returns Some but too large (255 from AND mask, not buffer-relative).
         // Fall through to the transitive path: find a same-map register k where zone
         // tracks base-k and k has a known type-level offset from the map buffer start.
-        let direct_ok = zone_upper_bound(dbm, base, anchor_end)
-            .filter(|&ub| ub <= required);
+        let direct_ok = zone_upper_bound(dbm, base, anchor_end).filter(|&ub| ub <= required);
         let (effective_anchor, zone_ub) = if let Some(ub) = direct_ok {
             (anchor_end, ub)
         } else if let RegType::PtrToMapValue { map_idx, .. } = state.types.get(base) {

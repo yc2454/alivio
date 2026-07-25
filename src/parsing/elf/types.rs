@@ -70,8 +70,7 @@ pub struct RawBpfProgram {
     pub file_offset: u64, // Absolute offset in the file
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum RelocKind {
     MapPtr,
     MapValue,
@@ -101,7 +100,6 @@ pub enum RelocKind {
     /// `MapLoadKind::PseudoBtfId` branch to materialize the right reg type.
     Ksym,
 }
-
 
 /// Target information for a BPF-to-BPF function call
 #[derive(Clone, Debug)]

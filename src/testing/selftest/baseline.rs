@@ -19,7 +19,9 @@ use std::fs;
 use std::path::Path;
 
 use super::runner::{FileReport, Outcome, ProgFilter};
-use crate::testing::legacy_selftest::{FileResult as LegacyFileResult, TestOutcome as LegacyOutcome};
+use crate::testing::legacy_selftest::{
+    FileResult as LegacyFileResult, TestOutcome as LegacyOutcome,
+};
 
 /// Compact stringly-typed verdicts. Strings rather than enum tags so
 /// the JSON stays diff-friendly and human-grokkable.

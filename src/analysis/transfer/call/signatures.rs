@@ -74,7 +74,9 @@ pub enum ArgKind {
     /// per-field BTF arithmetic in `update_ptr_arithmetic_type`
     /// produces correctly-typed interior pointers so this name
     /// match becomes meaningful.
-    PtrToBtfIdNamed { type_name: &'static str },
+    PtrToBtfIdNamed {
+        type_name: &'static str,
+    },
 
     // ---- Stack ----
     PtrToStack,
@@ -109,7 +111,10 @@ pub enum ArgKind {
     ///
     /// `rdwr_only = true` rejects rdonly dynptrs (e.g. `bpf_dynptr_write`,
     /// `bpf_dynptr_slice_rdwr`). `false` accepts both rdonly and rdwr.
-    DynptrArg { uninit: bool, rdwr_only: bool },
+    DynptrArg {
+        uninit: bool,
+        rdwr_only: bool,
+    },
 
     // ---- Iterator ----
     /// `&bpf_iter_*` on the stack. The iterator's kind and lifecycle
@@ -119,7 +124,10 @@ pub enum ArgKind {
     /// - `Uninit`            — no prior annotation (constructor sink).
     /// - `Active`            — slot must be live (consumer: `*_next`).
     /// - `ActiveOrDrained`   — accept either (destructor sink).
-    IterArg { kind: IterKind, expected: IterArgExpect },
+    IterArg {
+        kind: IterKind,
+        expected: IterArgExpect,
+    },
 
     // ---- IRQ flag ----
     /// `unsigned long *` on the stack pointing at an 8-byte slot used
@@ -128,7 +136,10 @@ pub enum ArgKind {
     /// and not carry an outstanding ref). `uninit = false` is the
     /// destructor (slot must carry an IRQ_FLAG annotation whose
     /// `kfunc_class` matches and whose `id` equals `active_irq_id`).
-    IrqFlagArg { uninit: bool, kfunc_class: IrqKfuncClass },
+    IrqFlagArg {
+        uninit: bool,
+        kfunc_class: IrqKfuncClass,
+    },
 
     /// `bpf_res_spin_lock{,_irqsave}` / `_unlock{,_irqrestore}` arg.
     /// Mirrors kernel `KF_ARG_PTR_TO_RES_SPIN_LOCK` (verifier.c v6.15
@@ -139,7 +150,9 @@ pub enum ArgKind {
     /// `is_irq` distinguishes the irqsave variant — used at the
     /// acquire/release transfer to flag the entry's `is_irq` field
     /// for the LIFO-match check.
-    ResSpinLockArg { is_irq: bool },
+    ResSpinLockArg {
+        is_irq: bool,
+    },
 
     // ---- Cpumask ----
     /// `struct bpf_cpumask *` argument — mutating consumers only
@@ -199,7 +212,9 @@ pub enum ArgKind {
     /// the map's value BTF carries a `SpecialField` of `kind` at exactly
     /// `offset`. Drives `bpf_timer_*` arg validation; future use will
     /// cover real `bpf_spin_lock` pointer args and rbtree/list
-    MapValueSpecial { kind: SpecialFieldKind },
+    MapValueSpecial {
+        kind: SpecialFieldKind,
+    },
 }
 
 /// Required slot state for an `IterArg`.
@@ -710,7 +725,8 @@ pub(crate) mod pairs {
     // bpf_store_hdr_opt(skops, from, len, flags): R2=from / R3=len.
     pub static STORE_HDR_OPT: [MemSizePair; 1] = [MemSizePair::new(Reg::R2, Reg::R3)];
     // bpf_sysctl_get_current_value(ctx, buf, buf_len): R2=buf(uninit) / R3=len.
-    pub static SYSCTL_GET_CURRENT_VALUE: [MemSizePair; 1] = [MemSizePair::new_nullable(Reg::R2, Reg::R3)];
+    pub static SYSCTL_GET_CURRENT_VALUE: [MemSizePair; 1] =
+        [MemSizePair::new_nullable(Reg::R2, Reg::R3)];
     // bpf_ima_file_hash(file, dst, size): R2=dst(uninit) / R3=size.
     pub static IMA_FILE_HASH: [MemSizePair; 1] = [MemSizePair::new_nullable(Reg::R2, Reg::R3)];
     // bpf_tcp_{check,gen}_syncookie(sk, iph, iph_len, th, th_len):

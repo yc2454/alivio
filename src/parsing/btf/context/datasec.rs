@@ -24,10 +24,7 @@ impl BtfContext {
             .types
             .values()
             .filter(|t| t.kind() == BTF_KIND_VAR)
-            .filter_map(|t| {
-                self.get_string(t.name_off)
-                    .map(|n| (t.id, n.to_string()))
-            })
+            .filter_map(|t| self.get_string(t.name_off).map(|n| (t.id, n.to_string())))
             .collect();
         for ty in self.types.values_mut() {
             if ty.kind() != BTF_KIND_DATASEC {
@@ -105,10 +102,7 @@ impl BtfContext {
         for _ in 0..16 {
             let Some(t) = self.types.get(&id) else { break };
             match t.kind() {
-                BTF_KIND_TYPEDEF
-                | BTF_KIND_CONST
-                | BTF_KIND_VOLATILE
-                | BTF_KIND_RESTRICT => {
+                BTF_KIND_TYPEDEF | BTF_KIND_CONST | BTF_KIND_VOLATILE | BTF_KIND_RESTRICT => {
                     id = t.size_or_type;
                 }
                 BTF_KIND_TYPE_TAG => {

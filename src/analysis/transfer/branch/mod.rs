@@ -25,7 +25,6 @@ use self::outcome::condition_outcome;
 use self::refinement::{propagate_scalar_links, refine_branch};
 use super::common::check_operand_readable;
 
-
 /// Transfer function for conditional branch instructions.
 pub(crate) fn transfer_if(
     env: &mut VerifierEnv,
@@ -36,12 +35,7 @@ pub(crate) fn transfer_if(
     right: Operand,
     target: usize,
 ) -> Vec<State> {
-    if !crate::analysis::transfer::common::check_reg_readable_ex(
-        env,
-        &mut state,
-        left,
-        true,
-    ) {
+    if !crate::analysis::transfer::common::check_reg_readable_ex(env, &mut state, left, true) {
         return vec![];
     }
     if !check_operand_readable(env, &mut state, &right) {
@@ -176,21 +170,49 @@ pub(crate) fn transfer_if(
             _ => (None, None),
         };
         record_path_cond_for_side(
-            &mut state_then, width, left, op, op_then, &right, state.pc, narrow_then,
+            &mut state_then,
+            width,
+            left,
+            op,
+            op_then,
+            &right,
+            state.pc,
+            narrow_then,
             pre_lhs_bounds,
         );
         record_path_cond_for_side(
-            &mut state_else, width, left, op, op_else, &right, state.pc, narrow_else,
+            &mut state_else,
+            width,
+            left,
+            op,
+            op_else,
+            &right,
+            state.pc,
+            narrow_else,
             pre_lhs_bounds,
         );
     } else if matches!(op, CmpOp::Test) {
         // JSET — per-side wrap into AND(dst,src) JNE/JEQ 0.
         record_path_cond_for_side(
-            &mut state_then, width, left, op, BPF_JNE, &right, state.pc, None,
+            &mut state_then,
+            width,
+            left,
+            op,
+            BPF_JNE,
+            &right,
+            state.pc,
+            None,
             pre_lhs_bounds,
         );
         record_path_cond_for_side(
-            &mut state_else, width, left, op, BPF_JEQ, &right, state.pc, None,
+            &mut state_else,
+            width,
+            left,
+            op,
+            BPF_JEQ,
+            &right,
+            state.pc,
+            None,
             pre_lhs_bounds,
         );
     }
@@ -314,4 +336,3 @@ pub(crate) fn transfer_if(
     }
     out
 }
-

@@ -221,7 +221,10 @@ fn collect_header_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let p = e.path();
         if p.is_dir() {
             collect_header_files(&p, out);
-        } else if matches!(p.extension().and_then(|s| s.to_str()), Some("h") | Some("inc")) {
+        } else if matches!(
+            p.extension().and_then(|s| s.to_str()),
+            Some("h") | Some("inc")
+        ) {
             out.push(p);
         }
     }

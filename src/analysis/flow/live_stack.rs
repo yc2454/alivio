@@ -171,10 +171,7 @@ pub fn callchain_of(state: &State) -> Vec<usize> {
 }
 
 fn subprog_of(subprogs: &[(usize, usize)], pc: usize) -> Option<(usize, usize)> {
-    subprogs
-        .iter()
-        .find(|&&(s, e)| pc >= s && pc < e)
-        .copied()
+    subprogs.iter().find(|&&(s, e)| pc >= s && pc < e).copied()
 }
 
 /// Build the module's CFG data. Called once per analyzed function, next
@@ -289,7 +286,10 @@ pub fn mark_stack_read(
     let Some(inst) = get_or_create(ls, &key, insn_idx) else {
         return;
     };
-    let live_before = inst.masks(frameno, insn_idx).map(|m| m.live_before).unwrap_or(0);
+    let live_before = inst
+        .masks(frameno, insn_idx)
+        .map(|m| m.live_before)
+        .unwrap_or(0);
     let Some(m) = inst.alloc_masks(frameno, insn_idx) else {
         return;
     };
@@ -475,19 +475,20 @@ fn update_instance(env: &mut VerifierEnv, key: &[usize]) {
                 let mut set_updated = false;
                 let mut set_dropped = false;
                 if (mask != 0 || was_set)
-                    && let Some(m) = outer.alloc_masks(frame, callsite) {
-                        let old = m.must_write;
-                        if was_set {
-                            mask &= old;
-                        }
-                        if old != mask {
-                            m.must_write = mask;
-                            set_updated = true;
-                        }
-                        if old & !mask != 0 {
-                            set_dropped = true;
-                        }
+                    && let Some(m) = outer.alloc_masks(frame, callsite)
+                {
+                    let old = m.must_write;
+                    if was_set {
+                        mask &= old;
                     }
+                    if old != mask {
+                        m.must_write = mask;
+                        set_updated = true;
+                    }
+                    if old & !mask != 0 {
+                        set_dropped = true;
+                    }
+                }
                 // may_read at the callsite.
                 if lb != 0 {
                     let live_before = outer
@@ -496,8 +497,7 @@ fn update_instance(env: &mut VerifierEnv, key: &[usize]) {
                         .unwrap_or(0);
                     if let Some(m) = outer.alloc_masks(frame, callsite) {
                         let new_may_read = m.may_read | lb;
-                        if new_may_read != m.may_read
-                            && (new_may_read | live_before) != live_before
+                        if new_may_read != m.may_read && (new_may_read | live_before) != live_before
                         {
                             set_updated = true;
                         }
@@ -582,4 +582,3 @@ pub fn frame_alive_mask(ls: &LiveStack, key: &[usize], q_insn: usize, frameno: u
     }
     alive
 }
-

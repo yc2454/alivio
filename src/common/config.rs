@@ -129,7 +129,6 @@ pub struct VerifierConfig {
     /// PCs and uses the kernel's `add_new_state` heuristic; when false,
     /// the original dense per-popped-state caching is used.
     pub kernel_engine: bool,
-
 }
 
 impl Default for VerifierConfig {
@@ -162,4 +161,3 @@ impl Default for VerifierConfig {
         }
     }
 }
-

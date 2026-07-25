@@ -21,7 +21,6 @@ use crate::parsing::elf::{
     program_kind_for_object, try_load_combined_program_from_elf, try_load_function_from_elf,
     try_load_program_from_elf,
 };
-use std::path::Path;
 use crate::testing::attach_rules::{
     GPL_ONLY_STRUCT_OPS, is_noreturn_kernel_fn, is_sleepable_allowed_struct_ops_member,
     is_struct_ops_arg_maybe_null, is_struct_ops_arg_refcounted, is_struct_ops_sleepable_sec,
@@ -29,6 +28,7 @@ use crate::testing::attach_rules::{
     lsm_hook_is_disabled, lsm_int_hook_pointer_prefix, lsm_int_hook_trailing_args,
     struct_ops_member_priv_stack_requested, struct_ops_refcounted_arg_count,
 };
+use std::path::Path;
 
 /// Result of analyzing a single section
 #[derive(Debug)]
@@ -71,22 +71,15 @@ pub(crate) fn out_of_scope_reason(path: &str) -> Option<&'static str> {
         .unwrap_or("");
     // `dev selftest-baseline-write-upstream` compiles each `.c` into a
     // tempfile like `/tmp/zovia_selftest_<name>.o`. Strip the prefix.
-    let test_name = stem
-        .strip_prefix("zovia_selftest_")
-        .unwrap_or(stem);
+    let test_name = stem.strip_prefix("zovia_selftest_").unwrap_or(stem);
     match test_name {
         // libbpf static linking — these tests are designed to be
         // `bpf_linker`-merged from multiple `.o` before kernel
         // verification (extern function definitions split across
         // sibling `.o` files, cross-`.o` map references, cross-`.o`
         // global variables).
-        "linked_funcs1"
-        | "linked_funcs2"
-        | "linked_maps1"
-        | "linked_maps2"
-        | "linked_vars1"
-        | "linked_vars2"
-        | "test_subskeleton" => Some("needs libbpf static linker"),
+        "linked_funcs1" | "linked_funcs2" | "linked_maps1" | "linked_maps2" | "linked_vars1"
+        | "linked_vars2" | "test_subskeleton" => Some("needs libbpf static linker"),
         // CO-RE relocation — `__kconfig`-style integer extern that
         // libbpf resolves against the running kernel's config + BTF
         // and patches as a literal at load time.
@@ -98,9 +91,7 @@ pub(crate) fn out_of_scope_reason(path: &str) -> Option<&'static str> {
         // Likewise null-check tests rely on BPF_PROBE_MEM safe-deref
         // which is a runtime fault-handler behavior, not a static
         // property we can model without widening the FA surface.
-        "test_ksyms_btf_null_check" | "test_ksyms_weak" => {
-            Some("needs weak-ksym address folding")
-        }
+        "test_ksyms_btf_null_check" | "test_ksyms_weak" => Some("needs weak-ksym address folding"),
         _ => None,
     }
 }
@@ -115,9 +106,7 @@ pub(crate) fn out_of_scope_reason_per_func(path: &str, func_name: &str) -> Optio
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("");
-    let test_name = stem
-        .strip_prefix("zovia_selftest_")
-        .unwrap_or(stem);
+    let test_name = stem.strip_prefix("zovia_selftest_").unwrap_or(stem);
     match (test_name, func_name) {
         // libbpf bpf_map__set_value_size grows `int array[1]` to a
         // userspace-chosen size before kernel load. Without the resize
@@ -141,23 +130,18 @@ pub(crate) fn out_of_scope_reason_per_func(path: &str, func_name: &str) -> Optio
         // bpf_program__set_attach_target. Without that target's BTF we
         // can't resolve the program's ctx args (they come from the
         // attach target's signature, not the SEC string).
-        ("test_xdp_bpf2bpf", "trace_on_entry")
-        | ("test_xdp_bpf2bpf", "trace_on_exit") => {
+        ("test_xdp_bpf2bpf", "trace_on_entry") | ("test_xdp_bpf2bpf", "trace_on_exit") => {
             Some("needs runtime attach-target resolution (fentry/fexit FUNC placeholder)")
         }
         // USDT relocation: `r1 = 0; r1 = *(u32*)(r1+0)` is a placeholder
         // that libbpf rewrites at load time to a real address from the
         // USDT spec array. We don't ship the USDT spec relocation pass.
-        ("test_usdt_multispec", "usdt_100") => {
-            Some("needs USDT spec-array relocation")
-        }
+        ("test_usdt_multispec", "usdt_100") => Some("needs USDT spec-array relocation"),
         // CO-RE downsize: `__type(value, struct foo)` where struct foo
         // shrinks at runtime via CO-RE relocation. The static struct
         // size mismatches the at-runtime size; kernel sees the relocated
         // version and accepts.
-        ("test_core_autosize", "handle_downsize") => {
-            Some("needs CO-RE relocation pass")
-        }
+        ("test_core_autosize", "handle_downsize") => Some("needs CO-RE relocation pass"),
         // bpf_map metadata read via CO-RE: program declares its own
         // `struct bpf_map { ... } __attribute__((preserve_access_index))`
         // and casts `(struct bpf_map *)&map_decl` to read fields like
@@ -243,11 +227,7 @@ impl Analyzer {
     /// `from_section("freplace/...")` returns Unknown and the ctx
     /// model + kfunc allowlists treat the program as having no
     /// recognizable attach class.
-    fn derive_program_kind_with_func(
-        &self,
-        section: &str,
-        func_name: Option<&str>,
-    ) -> ProgramKind {
+    fn derive_program_kind_with_func(&self, section: &str, func_name: Option<&str>) -> ProgramKind {
         if let Ok(kind) = program_kind_for_object(Path::new(&self.path)) {
             return kind;
         }
@@ -424,29 +404,31 @@ impl Analyzer {
         // Load optional target BTF (for CO-RE relocation application).
         // Path is taken from config; on failure we log and proceed with
         // None (relos stay unapplied, preserving prior unrelocated behavior).
-        let target_btf = config.target_btf_path.as_deref().and_then(|tbtf_path| {
-            match std::fs::read(tbtf_path) {
-                Ok(bytes) => match btf::parse_btf(&bytes) {
-                    Ok(ctx) => {
-                        if config.verbosity > 0 {
-                            println!(
-                                "[co-re] loaded target BTF: {} ({} types)",
-                                tbtf_path, ctx.types.len()
-                            );
+        let target_btf =
+            config.target_btf_path.as_deref().and_then(|tbtf_path| {
+                match std::fs::read(tbtf_path) {
+                    Ok(bytes) => match btf::parse_btf(&bytes) {
+                        Ok(ctx) => {
+                            if config.verbosity > 0 {
+                                println!(
+                                    "[co-re] loaded target BTF: {} ({} types)",
+                                    tbtf_path,
+                                    ctx.types.len()
+                                );
+                            }
+                            Some(ctx)
                         }
-                        Some(ctx)
-                    }
+                        Err(e) => {
+                            eprintln!("[co-re] target BTF parse failed ({}): {}", tbtf_path, e);
+                            None
+                        }
+                    },
                     Err(e) => {
-                        eprintln!("[co-re] target BTF parse failed ({}): {}", tbtf_path, e);
+                        eprintln!("[co-re] target BTF read failed ({}): {}", tbtf_path, e);
                         None
                     }
-                },
-                Err(e) => {
-                    eprintln!("[co-re] target BTF read failed ({}): {}", tbtf_path, e);
-                    None
                 }
-            }
-        });
+            });
 
         Analyzer {
             path: path.to_string(),
@@ -520,17 +502,14 @@ impl Analyzer {
                             type_name: "struct",
                             nullable,
                         },
-                        StructOpsArg::TrustedPtr(name)
-                            if refcounted && name == "task_struct" =>
-                        {
+                        StructOpsArg::TrustedPtr(name) if refcounted && name == "task_struct" => {
                             // Refcounted task arg: allocate a ref_id at
                             // entry-args build time. mod.rs seeds the
                             // initial state's active_refs from this.
                             // The ctx-array load at offset 8*idx
                             // produces PtrToTask{ref_id: Some(ref_id)}
                             // so bpf_task_release consumes the ref.
-                            let ref_id =
-                                crate::analysis::machine::reg_types::new_ref_id();
+                            let ref_id = crate::analysis::machine::reg_types::new_ref_id();
                             EntryArg::TrustedRefcountedTask { ref_id }
                         }
                         StructOpsArg::TrustedPtr(name) => {
@@ -545,14 +524,16 @@ impl Analyzer {
                             // kernel-guaranteed runtime type. All other names
                             // keep the lax "unknown" widening so no-layout
                             // field access stays permissive.
-                            let type_name = if binding.ops_struct == "tcp_congestion_ops"
-                                && name == "sock"
-                            {
-                                "tcp_sock"
-                            } else {
-                                intern_btf_type_name(&name)
-                            };
-                            EntryArg::TrustedPtrBtfId { type_name, nullable }
+                            let type_name =
+                                if binding.ops_struct == "tcp_congestion_ops" && name == "sock" {
+                                    "tcp_sock"
+                                } else {
+                                    intern_btf_type_name(&name)
+                                };
+                            EntryArg::TrustedPtrBtfId {
+                                type_name,
+                                nullable,
+                            }
                         }
                     }
                 })
@@ -708,48 +689,45 @@ impl Analyzer {
             .into_iter()
             .next()
             .and_then(|cb_name| {
-                find_section_for_func(&self.path, &cb_name)
-                    .map(|cb_section| (cb_section, cb_name))
+                find_section_for_func(&self.path, &cb_name).map(|cb_section| (cb_section, cb_name))
             })
             .into_iter()
             .collect();
-        let core_relo_ctx = self
-            .target_btf
-            .as_ref()
-            .map(|tbtf| (&self.btf, tbtf));
-        let (prog, pc_to_reloc, func_offsets) = match crate::parsing::elf::try_load_function_with_subprogs_from_elf_with_relo(
-            &self.path,
-            section,
-            &func.name,
-            &self.maps,
-            &cb_extra_roots,
-            core_relo_ctx,
-        ) {
-            Ok(t) => t,
-            Err(e) => {
-                // Fall back to per-function load on combiner failure
-                // (e.g. cross-section reloc errors). Preserves prior
-                // behavior for files where the new path can't apply.
-                let pc_to_reloc = load_relocations_for_function(
-                    &self.path,
-                    &self.maps,
-                    section,
-                    func.offset,
-                    func.size,
-                )
-                .unwrap_or_default();
-                let prog = match try_load_function_from_elf(
-                    &self.path,
-                    section,
-                    &func.name,
-                    Some(&pc_to_reloc),
-                ) {
-                    Ok(p) => p,
-                    Err(_) => return AnalysisResult::LoadError(e),
-                };
-                (prog, pc_to_reloc, std::collections::HashMap::new())
-            }
-        };
+        let core_relo_ctx = self.target_btf.as_ref().map(|tbtf| (&self.btf, tbtf));
+        let (prog, pc_to_reloc, func_offsets) =
+            match crate::parsing::elf::try_load_function_with_subprogs_from_elf_with_relo(
+                &self.path,
+                section,
+                &func.name,
+                &self.maps,
+                &cb_extra_roots,
+                core_relo_ctx,
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    // Fall back to per-function load on combiner failure
+                    // (e.g. cross-section reloc errors). Preserves prior
+                    // behavior for files where the new path can't apply.
+                    let pc_to_reloc = load_relocations_for_function(
+                        &self.path,
+                        &self.maps,
+                        section,
+                        func.offset,
+                        func.size,
+                    )
+                    .unwrap_or_default();
+                    let prog = match try_load_function_from_elf(
+                        &self.path,
+                        section,
+                        &func.name,
+                        Some(&pc_to_reloc),
+                    ) {
+                        Ok(p) => p,
+                        Err(_) => return AnalysisResult::LoadError(e),
+                    };
+                    (prog, pc_to_reloc, std::collections::HashMap::new())
+                }
+            };
         if prog.instrs.is_empty() {
             return AnalysisResult::LoadError(format!("Empty function '{}'", func.name));
         }
@@ -1093,8 +1071,7 @@ impl Analyzer {
                 .resolve_func_args(&bpf_prog_inner)
                 .or_else(|| self.btf.resolve_func_args(&func.name));
             ctx.entry_args = resolved.and_then(|args| {
-                let bare_void_ctx = args.len() == 1
-                    && matches!(args[0], StructOpsArg::OpaquePtr);
+                let bare_void_ctx = args.len() == 1 && matches!(args[0], StructOpsArg::OpaquePtr);
                 if bare_void_ctx {
                     return None;
                 }
@@ -1133,164 +1110,151 @@ impl Analyzer {
             // resolves these from the attach target's vmlinux BTF — we
             // mirror only the hooks our test corpus actually attaches to.
             if ctx.entry_args.is_none()
-                && let Some(target) = ctx.attach_subtype.as_deref() {
-                    let flavor = ctx.attach_flavor.as_deref();
-                    let table_args = match (ctx.prog_kind, flavor, target) {
-                        // LSM hooks. Args from include/linux/lsm_hooks.h's
-                        // `LSM_HOOK(...)` declarations. Trailing scalar
-                        // args (int, unsigned, etc.) are dropped — only
-                        // the BTF-typed pointer prefix matters; the
-                        // ctx-array load typing only fires for 8-byte
-                        // pointer fields, scalars fall through to
-                        // ScalarValue and pose no soundness issue.
-                        (ProgramKind::Lsm, _, "file_open") => {
-                            Some(vec![("file", false)])
-                        }
-                        // kernel_read_file(struct file *file,
-                        //   enum kernel_read_file_id id, bool contents)
-                        // — drives ima.c::kernel_read_file. Only the leading
-                        // `struct file *` pointer needs typing; the trailing
-                        // enum/bool scalars fall through to ScalarValue.
-                        (ProgramKind::Lsm, _, "kernel_read_file") => {
-                            Some(vec![("file", false)])
-                        }
-                        (ProgramKind::Lsm, _, "task_alloc") => {
-                            Some(vec![("task_struct", false)])
-                        }
-                        (ProgramKind::Lsm, _, "inode_getattr") => {
-                            Some(vec![("path", false)])
-                        }
-                        (ProgramKind::Lsm, _, "inode_unlink") => {
-                            Some(vec![("inode", false), ("dentry", false)])
-                        }
-                        (ProgramKind::Lsm, _, "inode_rename") => Some(vec![
-                            ("inode", false),
-                            ("dentry", false),
-                            ("inode", false),
-                            ("dentry", false),
-                        ]),
-                        (ProgramKind::Lsm, _, "socket_bind") => Some(vec![
-                            ("socket", false),
-                            ("sockaddr", false),
-                        ]),
-                        (ProgramKind::Lsm, _, "socket_post_create") => {
-                            Some(vec![("socket", false)])
-                        }
-                        (ProgramKind::Lsm, _, "bprm_committed_creds") => {
-                            Some(vec![("linux_binprm", false)])
-                        }
-                        // file_mprotect(struct vm_area_struct *vma,
-                        //               unsigned long reqprot,
-                        //               unsigned long prot, int ret)
-                        // Trailing scalar args (reqprot/prot/ret) get
-                        // their override via ATTACH_TARGET_ARG_KINDS.
-                        (ProgramKind::Lsm, _, "file_mprotect") => {
-                            Some(vec![("vm_area_struct", false)])
-                        }
-                        // bprm_creds_for_exec(struct linux_binprm *bprm)
-                        // — drives ima.c::bprm_creds_for_exec.
-                        (ProgramKind::Lsm, _, "bprm_creds_for_exec") => {
-                            Some(vec![("linux_binprm", false)])
-                        }
-                        // tp_btf raw-tracepoint targets. Args from
-                        // include/trace/events/<sub>.h's TRACE_EVENT
-                        // declarations. clang `__always_inline`s the
-                        // BPF_PROG inner so we mirror the kernel's
-                        // attach-time vmlinux-BTF resolution with a
-                        // static table for hooks our corpus exercises.
-                        (ProgramKind::Tracing, Some("tp_btf"), "task_newtask") => {
-                            Some(vec![("task_struct", false)])
-                        }
-                        (ProgramKind::Tracing, Some("tp_btf"), "tcp_probe") => {
-                            Some(vec![("sock", false), ("sk_buff", false)])
-                        }
-                        // kfree_skb: TRACE_EVENT(kfree_skb,
-                        //   TP_PROTO(struct sk_buff *skb, void *location, ...))
-                        // dynptr_success::test_dynptr_skb_tp_btf calls
-                        // bpf_dynptr_from_skb on the skb arg.
-                        (ProgramKind::Tracing, Some("tp_btf"), "kfree_skb") => {
-                            Some(vec![("sk_buff", false)])
-                        }
-                        // tcp_retransmit_synack: TRACE_EVENT(tcp_retransmit_synack,
-                        //   TP_PROTO(const struct sock *sk, const struct request_sock *req))
-                        (ProgramKind::Tracing, Some("tp_btf"), "tcp_retransmit_synack") => {
-                            Some(vec![("sock", false), ("request_sock", false)])
-                        }
-                        // tcp_bad_csum: TRACE_EVENT(tcp_bad_csum,
-                        //   TP_PROTO(const struct sk_buff *skb))
-                        (ProgramKind::Tracing, Some("tp_btf"), "tcp_bad_csum") => {
-                            Some(vec![("sk_buff", false)])
-                        }
-                        // cgroup_mkdir: TRACE_EVENT(cgroup_mkdir,
-                        //   TP_PROTO(struct cgroup *cgrp, const char *path))
-                        // const char* trailing scalar is dropped.
-                        (ProgramKind::Tracing, Some("tp_btf"), "cgroup_mkdir") => {
-                            Some(vec![("cgroup", false)])
-                        }
-                        // sched_switch: TRACE_EVENT(sched_switch,
-                        //   TP_PROTO(bool preempt, struct task_struct *prev,
-                        //            struct task_struct *next, ...))
-                        // First scalar arg dropped.
-                        (ProgramKind::Tracing, Some("tp_btf"), "sched_switch") => {
-                            Some(vec![("task_struct", false), ("task_struct", false)])
-                        }
-                        // sched_process_fork: TRACE_EVENT(sched_process_fork,
-                        //   TP_PROTO(struct task_struct *parent,
-                        //            struct task_struct *child))
-                        (ProgramKind::Tracing, Some("tp_btf"), "sched_process_fork") => {
-                            Some(vec![("task_struct", false), ("task_struct", false)])
-                        }
-                        // exit_creds(struct task_struct *tsk) — fentry hook
-                        // closes task_local_storage_exit_creds::trace_exit_creds
-                        // (lax-fallback typed task arg as PtrToBtfId{unknown},
-                        // bpf_task_storage_get rejected as not-PTR_TO_TASK).
-                        (ProgramKind::Tracing, Some("fentry"), "exit_creds")
-                        | (ProgramKind::Tracing, Some("fexit"), "exit_creds") => {
-                            Some(vec![("task_struct", false)])
-                        }
-                        // ── A3 cgroup-related fentry/fexit targets ──────
-                        // cgroup_attach_task(struct cgroup *dst_cgrp,
-                        //                    struct task_struct *leader,
-                        //                    bool threadgroup)
-                        (ProgramKind::Tracing, Some("fentry"), "cgroup_attach_task")
-                        | (ProgramKind::Tracing, Some("fexit"), "cgroup_attach_task") => {
-                            Some(vec![("cgroup", false), ("task_struct", false)])
-                        }
-                        // bpf_rstat_flush(struct cgroup *cgrp,
-                        //                 struct cgroup *parent, int cpu)
-                        (ProgramKind::Tracing, Some("fentry"), "bpf_rstat_flush")
-                        | (ProgramKind::Tracing, Some("fexit"), "bpf_rstat_flush") => {
-                            Some(vec![("cgroup", false), ("cgroup", false)])
-                        }
-                        // inet_stream_connect(struct socket *sock,
-                        //                     struct sockaddr *uaddr,
-                        //                     int addr_len, int flags)
-                        (ProgramKind::Tracing, Some("fentry"), "inet_stream_connect")
-                        | (ProgramKind::Tracing, Some("fexit"), "inet_stream_connect") => {
-                            Some(vec![("socket", false), ("sockaddr", false)])
-                        }
-                        // unix_listen(struct socket *sock, int backlog) —
-                        // closes test_skc_to_unix_sock::unix_listen
-                        // (sock arg needed for `sock->sk` field load).
-                        (ProgramKind::Tracing, Some("fentry"), "unix_listen")
-                        | (ProgramKind::Tracing, Some("fexit"), "unix_listen") => {
-                            Some(vec![("socket", false)])
-                        }
-                        _ => None,
-                    };
-                    if let Some(arg_specs) = table_args {
-                        ctx.entry_args = Some(
-                            arg_specs
-                                .into_iter()
-                                .map(|(name, nullable)| EntryArg::TrustedPtrBtfId {
-                                    type_name: intern_btf_type_name_strict(name),
-                                    nullable,
-                                })
-                                .collect(),
-                        );
+                && let Some(target) = ctx.attach_subtype.as_deref()
+            {
+                let flavor = ctx.attach_flavor.as_deref();
+                let table_args = match (ctx.prog_kind, flavor, target) {
+                    // LSM hooks. Args from include/linux/lsm_hooks.h's
+                    // `LSM_HOOK(...)` declarations. Trailing scalar
+                    // args (int, unsigned, etc.) are dropped — only
+                    // the BTF-typed pointer prefix matters; the
+                    // ctx-array load typing only fires for 8-byte
+                    // pointer fields, scalars fall through to
+                    // ScalarValue and pose no soundness issue.
+                    (ProgramKind::Lsm, _, "file_open") => Some(vec![("file", false)]),
+                    // kernel_read_file(struct file *file,
+                    //   enum kernel_read_file_id id, bool contents)
+                    // — drives ima.c::kernel_read_file. Only the leading
+                    // `struct file *` pointer needs typing; the trailing
+                    // enum/bool scalars fall through to ScalarValue.
+                    (ProgramKind::Lsm, _, "kernel_read_file") => Some(vec![("file", false)]),
+                    (ProgramKind::Lsm, _, "task_alloc") => Some(vec![("task_struct", false)]),
+                    (ProgramKind::Lsm, _, "inode_getattr") => Some(vec![("path", false)]),
+                    (ProgramKind::Lsm, _, "inode_unlink") => {
+                        Some(vec![("inode", false), ("dentry", false)])
                     }
-
+                    (ProgramKind::Lsm, _, "inode_rename") => Some(vec![
+                        ("inode", false),
+                        ("dentry", false),
+                        ("inode", false),
+                        ("dentry", false),
+                    ]),
+                    (ProgramKind::Lsm, _, "socket_bind") => {
+                        Some(vec![("socket", false), ("sockaddr", false)])
+                    }
+                    (ProgramKind::Lsm, _, "socket_post_create") => Some(vec![("socket", false)]),
+                    (ProgramKind::Lsm, _, "bprm_committed_creds") => {
+                        Some(vec![("linux_binprm", false)])
+                    }
+                    // file_mprotect(struct vm_area_struct *vma,
+                    //               unsigned long reqprot,
+                    //               unsigned long prot, int ret)
+                    // Trailing scalar args (reqprot/prot/ret) get
+                    // their override via ATTACH_TARGET_ARG_KINDS.
+                    (ProgramKind::Lsm, _, "file_mprotect") => Some(vec![("vm_area_struct", false)]),
+                    // bprm_creds_for_exec(struct linux_binprm *bprm)
+                    // — drives ima.c::bprm_creds_for_exec.
+                    (ProgramKind::Lsm, _, "bprm_creds_for_exec") => {
+                        Some(vec![("linux_binprm", false)])
+                    }
+                    // tp_btf raw-tracepoint targets. Args from
+                    // include/trace/events/<sub>.h's TRACE_EVENT
+                    // declarations. clang `__always_inline`s the
+                    // BPF_PROG inner so we mirror the kernel's
+                    // attach-time vmlinux-BTF resolution with a
+                    // static table for hooks our corpus exercises.
+                    (ProgramKind::Tracing, Some("tp_btf"), "task_newtask") => {
+                        Some(vec![("task_struct", false)])
+                    }
+                    (ProgramKind::Tracing, Some("tp_btf"), "tcp_probe") => {
+                        Some(vec![("sock", false), ("sk_buff", false)])
+                    }
+                    // kfree_skb: TRACE_EVENT(kfree_skb,
+                    //   TP_PROTO(struct sk_buff *skb, void *location, ...))
+                    // dynptr_success::test_dynptr_skb_tp_btf calls
+                    // bpf_dynptr_from_skb on the skb arg.
+                    (ProgramKind::Tracing, Some("tp_btf"), "kfree_skb") => {
+                        Some(vec![("sk_buff", false)])
+                    }
+                    // tcp_retransmit_synack: TRACE_EVENT(tcp_retransmit_synack,
+                    //   TP_PROTO(const struct sock *sk, const struct request_sock *req))
+                    (ProgramKind::Tracing, Some("tp_btf"), "tcp_retransmit_synack") => {
+                        Some(vec![("sock", false), ("request_sock", false)])
+                    }
+                    // tcp_bad_csum: TRACE_EVENT(tcp_bad_csum,
+                    //   TP_PROTO(const struct sk_buff *skb))
+                    (ProgramKind::Tracing, Some("tp_btf"), "tcp_bad_csum") => {
+                        Some(vec![("sk_buff", false)])
+                    }
+                    // cgroup_mkdir: TRACE_EVENT(cgroup_mkdir,
+                    //   TP_PROTO(struct cgroup *cgrp, const char *path))
+                    // const char* trailing scalar is dropped.
+                    (ProgramKind::Tracing, Some("tp_btf"), "cgroup_mkdir") => {
+                        Some(vec![("cgroup", false)])
+                    }
+                    // sched_switch: TRACE_EVENT(sched_switch,
+                    //   TP_PROTO(bool preempt, struct task_struct *prev,
+                    //            struct task_struct *next, ...))
+                    // First scalar arg dropped.
+                    (ProgramKind::Tracing, Some("tp_btf"), "sched_switch") => {
+                        Some(vec![("task_struct", false), ("task_struct", false)])
+                    }
+                    // sched_process_fork: TRACE_EVENT(sched_process_fork,
+                    //   TP_PROTO(struct task_struct *parent,
+                    //            struct task_struct *child))
+                    (ProgramKind::Tracing, Some("tp_btf"), "sched_process_fork") => {
+                        Some(vec![("task_struct", false), ("task_struct", false)])
+                    }
+                    // exit_creds(struct task_struct *tsk) — fentry hook
+                    // closes task_local_storage_exit_creds::trace_exit_creds
+                    // (lax-fallback typed task arg as PtrToBtfId{unknown},
+                    // bpf_task_storage_get rejected as not-PTR_TO_TASK).
+                    (ProgramKind::Tracing, Some("fentry"), "exit_creds")
+                    | (ProgramKind::Tracing, Some("fexit"), "exit_creds") => {
+                        Some(vec![("task_struct", false)])
+                    }
+                    // ── A3 cgroup-related fentry/fexit targets ──────
+                    // cgroup_attach_task(struct cgroup *dst_cgrp,
+                    //                    struct task_struct *leader,
+                    //                    bool threadgroup)
+                    (ProgramKind::Tracing, Some("fentry"), "cgroup_attach_task")
+                    | (ProgramKind::Tracing, Some("fexit"), "cgroup_attach_task") => {
+                        Some(vec![("cgroup", false), ("task_struct", false)])
+                    }
+                    // bpf_rstat_flush(struct cgroup *cgrp,
+                    //                 struct cgroup *parent, int cpu)
+                    (ProgramKind::Tracing, Some("fentry"), "bpf_rstat_flush")
+                    | (ProgramKind::Tracing, Some("fexit"), "bpf_rstat_flush") => {
+                        Some(vec![("cgroup", false), ("cgroup", false)])
+                    }
+                    // inet_stream_connect(struct socket *sock,
+                    //                     struct sockaddr *uaddr,
+                    //                     int addr_len, int flags)
+                    (ProgramKind::Tracing, Some("fentry"), "inet_stream_connect")
+                    | (ProgramKind::Tracing, Some("fexit"), "inet_stream_connect") => {
+                        Some(vec![("socket", false), ("sockaddr", false)])
+                    }
+                    // unix_listen(struct socket *sock, int backlog) —
+                    // closes test_skc_to_unix_sock::unix_listen
+                    // (sock arg needed for `sock->sk` field load).
+                    (ProgramKind::Tracing, Some("fentry"), "unix_listen")
+                    | (ProgramKind::Tracing, Some("fexit"), "unix_listen") => {
+                        Some(vec![("socket", false)])
+                    }
+                    _ => None,
+                };
+                if let Some(arg_specs) = table_args {
+                    ctx.entry_args = Some(
+                        arg_specs
+                            .into_iter()
+                            .map(|(name, nullable)| EntryArg::TrustedPtrBtfId {
+                                type_name: intern_btf_type_name_strict(name),
+                                nullable,
+                            })
+                            .collect(),
+                    );
                 }
+            }
 
             // Mixed-arg-kind static override for fexit programs attached
             // to subprogs of OTHER (already-loaded) BPF objects. Two
@@ -1332,44 +1296,38 @@ impl Analyzer {
             // BTF's outer-signature resolution.
             if let Some(target) = ctx.attach_subtype.as_deref() {
                 let flavor = ctx.attach_flavor.as_deref();
-                let mixed_args: Option<Vec<EntryArg>> = match (
-                    ctx.prog_kind,
-                    flavor,
-                    target,
-                ) {
+                let mixed_args: Option<Vec<EntryArg>> = match (ctx.prog_kind, flavor, target) {
                     // test_pkt_access_subprog2(int val,
                     //   volatile struct __sk_buff *skb)
                     // The selftest program declares ctx as
                     // `args_subprog2 { __u64 args[5]; __u64 ret; }`,
                     // so we pad to 5 args + the ret slot at offset 40
                     // (= entry_args[5]).
-                    (
-                        ProgramKind::Tracing,
-                        Some("fexit"),
-                        "test_pkt_access_subprog2",
-                    ) => Some(vec![
-                        EntryArg::Scalar,
-                        EntryArg::TrustedPtrBtfId {
-                            type_name: intern_btf_type_name_strict("__sk_buff"),
-                            nullable: false,
-                        },
-                        EntryArg::Scalar, EntryArg::Scalar,
-                        EntryArg::Scalar, EntryArg::Scalar,
-                    ]),
+                    (ProgramKind::Tracing, Some("fexit"), "test_pkt_access_subprog2") => {
+                        Some(vec![
+                            EntryArg::Scalar,
+                            EntryArg::TrustedPtrBtfId {
+                                type_name: intern_btf_type_name_strict("__sk_buff"),
+                                nullable: false,
+                            },
+                            EntryArg::Scalar,
+                            EntryArg::Scalar,
+                            EntryArg::Scalar,
+                            EntryArg::Scalar,
+                        ])
+                    }
                     // test_pkt_access_subprog3(int val,
                     //   struct __sk_buff *skb)
-                    (
-                        ProgramKind::Tracing,
-                        Some("fexit"),
-                        "test_pkt_access_subprog3",
-                    ) => Some(vec![
-                        EntryArg::Scalar,
-                        EntryArg::TrustedPtrBtfId {
-                            type_name: intern_btf_type_name_strict("__sk_buff"),
-                            nullable: false,
-                        },
-                        EntryArg::Scalar,
-                    ]),
+                    (ProgramKind::Tracing, Some("fexit"), "test_pkt_access_subprog3") => {
+                        Some(vec![
+                            EntryArg::Scalar,
+                            EntryArg::TrustedPtrBtfId {
+                                type_name: intern_btf_type_name_strict("__sk_buff"),
+                                nullable: false,
+                            },
+                            EntryArg::Scalar,
+                        ])
+                    }
                     _ => None,
                 };
                 if let Some(args) = mixed_args {

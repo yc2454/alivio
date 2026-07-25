@@ -312,14 +312,12 @@ impl SymbolicState {
     /// operand_width + ext_sz. params = `(ext_sz << 8) | result_width`.
     /// The kernel's `is_zext_32_to_64` / `is_sext_32_to_64` recognize the
     /// specific (32, 64) form to enable the `bcf_expr32` peel-optimization.
-    pub fn add_extend(
-        &mut self,
-        sign_ext: bool,
-        ext_sz: u16,
-        result_width: u16,
-        arg: u32,
-    ) -> u32 {
-        let op = if sign_ext { BCF_SIGN_EXTEND } else { BCF_ZERO_EXTEND };
+    pub fn add_extend(&mut self, sign_ext: bool, ext_sz: u16, result_width: u16, arg: u32) -> u32 {
+        let op = if sign_ext {
+            BCF_SIGN_EXTEND
+        } else {
+            BCF_ZERO_EXTEND
+        };
         self.push_expr(BcfExpr {
             code: op | BCF_BV,
             params: (ext_sz << 8) | result_width,
@@ -375,8 +373,13 @@ impl SymbolicState {
         // Inspect under immutable borrow first, drop it before mutating.
         let (code, params, first_arg) = {
             if self.expr_at(slot).is_none() && std::env::var("ZOVIA_BCF_REPLAY_DEBUG").is_ok() {
-                eprintln!("[expr32-BAD] slot={} next_slot={} n_exprs={} reg_expr={:?}",
-                    slot, self.next_slot, self.exprs.len(), self.reg_expr);
+                eprintln!(
+                    "[expr32-BAD] slot={} next_slot={} n_exprs={} reg_expr={:?}",
+                    slot,
+                    self.next_slot,
+                    self.exprs.len(),
+                    self.reg_expr
+                );
             }
             let e = self
                 .expr_at(slot)
@@ -508,11 +511,7 @@ impl SymbolicState {
     /// Without this, MISS-side emissions drop the upstream conds the
     /// kernel re-pushes at replay-start, so the canonical hash misses
     /// the kernel's expected entry.
-    pub fn filter_path_conds_from_pc(
-        &mut self,
-        base_pc: usize,
-        prev_insn_pc: Option<usize>,
-    ) {
+    pub fn filter_path_conds_from_pc(&mut self, base_pc: usize, prev_insn_pc: Option<usize>) {
         if base_pc == 0 {
             return;
         }
@@ -531,7 +530,9 @@ impl SymbolicState {
         // bound preds the kernel re-emits via `bcf_reg_expr`'s lazy
         // `bcf_bound_reg` at the same site (verifier.c:894-926).
         let l_idx_opt = prev_insn_pc.and_then(|pp| {
-            self.path_cond_pcs.iter().enumerate()
+            self.path_cond_pcs
+                .iter()
+                .enumerate()
                 .find(|&(idx, &pc)| pc == pp && self.path_cond_is_branch[idx])
                 .map(|(idx, _)| idx)
         });
@@ -601,11 +602,7 @@ impl SymbolicState {
     /// numeric filter wrongly keeps those carried conds and every emitted
     /// form is polluted. Retention of L (prev-push) + its bound preds
     /// mirrors the numeric filter.
-    pub fn filter_path_conds_traj_suffix(
-        &mut self,
-        base_pc: usize,
-        prev_insn_pc: Option<usize>,
-    ) {
+    pub fn filter_path_conds_traj_suffix(&mut self, base_pc: usize, prev_insn_pc: Option<usize>) {
         if base_pc == 0 {
             return;
         }
@@ -615,7 +612,9 @@ impl SymbolicState {
             start -= 1;
         }
         let l_idx_opt = prev_insn_pc.and_then(|pp| {
-            self.path_cond_pcs.iter().enumerate()
+            self.path_cond_pcs
+                .iter()
+                .enumerate()
                 .find(|&(idx, &pc)| pc == pp && self.path_cond_is_branch[idx])
                 .map(|(idx, _)| idx)
         });
@@ -689,8 +688,7 @@ impl SymbolicState {
         // Pass 1: decide which branches to keep, and accumulate the VAR
         // set those kept branches reference.
         let mut keep_branch = vec![false; self.path_conds.len()];
-        let mut kept_branch_vars: std::collections::HashSet<u32> =
-            std::collections::HashSet::new();
+        let mut kept_branch_vars: std::collections::HashSet<u32> = std::collections::HashSet::new();
         for i in 0..self.path_conds.len() {
             if self.path_cond_pcs[i] == 0 {
                 continue; // handled as always-keep in pass 2
@@ -787,9 +785,10 @@ impl SymbolicState {
                 if let Some(expr) = self.reg_expr.get(r).copied().flatten() {
                     for v in self.collect_vars(expr) {
                         if let Some(&orig) = self.var_origin.get(&v)
-                            && goal.insert(orig) {
-                                next.push(orig);
-                            }
+                            && goal.insert(orig)
+                        {
+                            next.push(orig);
+                        }
                     }
                 }
             }
@@ -837,7 +836,6 @@ pub fn build_goal_root(sym: &mut SymbolicState, refine_cond: u32) -> u32 {
 }
 
 impl SymbolicState {
-
     // ---------- per-register bindings ----------
 
     /// Bind register `reg` to symbolic expression `idx`. Records the
@@ -854,7 +852,10 @@ impl SymbolicState {
             use std::sync::atomic::{AtomicU32, Ordering};
             static B: AtomicU32 = AtomicU32::new(0);
             if B.fetch_add(1, Ordering::Relaxed) < 2 {
-                eprintln!("[bind-bt-661] {}", std::backtrace::Backtrace::force_capture());
+                eprintln!(
+                    "[bind-bt-661] {}",
+                    std::backtrace::Backtrace::force_capture()
+                );
             }
         }
         self.reg_expr[reg] = Some(idx);
@@ -1057,9 +1058,17 @@ impl SymbolicState {
                 if std::env::var("ZOVIA_DBG_MAT").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[mat] reg=r{} pc={} const={:?} smin={:#x} smax={:#x} umin={:#x} umax={:#x} s32=[{},{}] u32=[{:#x},{:#x}]",
-                        reg, self.current_pc, bounds.const_val,
-                        bounds.smin, bounds.smax, bounds.umin, bounds.umax,
-                        bounds.s32_min, bounds.s32_max, bounds.u32_min, bounds.u32_max
+                        reg,
+                        self.current_pc,
+                        bounds.const_val,
+                        bounds.smin,
+                        bounds.smax,
+                        bounds.umin,
+                        bounds.umax,
+                        bounds.s32_min,
+                        bounds.s32_max,
+                        bounds.u32_min,
+                        bounds.u32_max
                     );
                     // One-shot caller identification: print a backtrace
                     // for the first few matching materializations.
@@ -1067,7 +1076,10 @@ impl SymbolicState {
                         use std::sync::atomic::{AtomicU32, Ordering};
                         static M: AtomicU32 = AtomicU32::new(0);
                         if M.fetch_add(1, Ordering::Relaxed) < 2 {
-                            eprintln!("[mat-bt-661] {}", std::backtrace::Backtrace::force_capture());
+                            eprintln!(
+                                "[mat-bt-661] {}",
+                                std::backtrace::Backtrace::force_capture()
+                            );
                         }
                     }
                     if reg == 0 && bounds.smin == -4095 {
@@ -1083,11 +1095,7 @@ impl SymbolicState {
                 idx
             }
         };
-        if subreg {
-            self.expr32(cached)
-        } else {
-            cached
-        }
+        if subreg { self.expr32(cached) } else { cached }
     }
 
     /// Build the initial 64-bit cached expression for `reg` according to
@@ -1251,7 +1259,10 @@ mod tests {
         let z = s.add_extend(false, 32, 64, v);
         let e = s.expr_at(z).unwrap();
         assert_eq!(e.code, BCF_ZERO_EXTEND | BCF_BV);
-        assert_eq!(e.params, 0x2040, "ZEXT 32→64 must encode (ext_sz=32)<<8 | (width=64)");
+        assert_eq!(
+            e.params, 0x2040,
+            "ZEXT 32→64 must encode (ext_sz=32)<<8 | (width=64)"
+        );
         let v2 = s.add_var(32);
         let sx = s.add_extend(true, 32, 64, v2);
         let e2 = s.expr_at(sx).unwrap();
@@ -1316,7 +1327,10 @@ mod tests {
         let lo32 = s.expr32(and64);
         let e = s.expr_at(lo32).unwrap();
         assert_eq!(e.code, BCF_EXTRACT | BCF_BV);
-        assert_eq!(e.params, 0x1f00, "EXTRACT[31:0] params = (start=31)<<8 | end=0");
+        assert_eq!(
+            e.params, 0x1f00,
+            "EXTRACT[31:0] params = (start=31)<<8 | end=0"
+        );
         assert_eq!(e.args, vec![and64]);
     }
 

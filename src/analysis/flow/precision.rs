@@ -203,12 +203,7 @@ pub fn mark_chain_precision_backward_seeded(
             // remove(dst) be a harmless no-op reproduces that. Store is
             // `_ => {}` in update_frontier, so a spill adding src to the
             // reg frontier here is not disturbed by the later call.
-            update_stack_frontier(
-                &mut fr_d,
-                &mut sf_d,
-                &instr_copy,
-                step_stack_access,
-            );
+            update_stack_frontier(&mut fr_d, &mut sf_d, &instr_copy, step_stack_access);
             update_frontier(&mut fr_d, &instr_copy, &caller_saved);
             // Kernel `bt_sync_linked_regs` is invoked AGAIN after
             // `backtrack_insn` (L4440) — the conditional-jump BPF_X
@@ -274,9 +269,7 @@ pub fn mark_chain_precision_backward_seeded(
             // id-class propagation; collect the resulting set so the
             // eviction-resistant `precise_pcs` mirror stays consistent.
             let mut marked: Vec<Reg> = Vec::new();
-            if let Some((_, s)) =
-                current_parent_id.and_then(|id| env.state_by_cache_id_mut(id))
-            {
+            if let Some((_, s)) = current_parent_id.and_then(|id| env.state_by_cache_id_mut(id)) {
                 for &(_, r) in &frontier {
                     // Kernel parent-chain apply (verifier.c:5156-5170) marks
                     // EXACTLY the bt frame regs — no scalar-id fan-out on the
@@ -370,18 +363,17 @@ pub fn propagate_precision(env: &mut VerifierEnv, cur: &State, old: &State) {
                         s.kind,
                         crate::analysis::machine::stack_state::StackSlotKind::Spill
                     )
-                    && matches!(s.reg_type, crate::analysis::machine::reg_types::RegType::ScalarValue)
+                    && matches!(
+                        s.reg_type,
+                        crate::analysis::machine::reg_types::RegType::ScalarValue
+                    )
             })
         })
         .collect();
-    let Some(history_idx) = cur.history_idx else { return };
-    mark_chain_precision_backward_seeded(
-        env,
-        history_idx,
-        cur.parent_cache_id,
-        &regs,
-        &slots,
-    );
+    let Some(history_idx) = cur.history_idx else {
+        return;
+    };
+    mark_chain_precision_backward_seeded(env, history_idx, cur.parent_cache_id, &regs, &slots);
 }
 
 /// Companion to `bcf_suffix_base_pc`: same walk, but returns
@@ -445,7 +437,8 @@ pub fn bcf_suffix_base_pc_and_cache_id(
             let step_depth = step.depth;
             let step_stack_access = step.stack_access;
             if !skip_first {
-                if backtrack_insn_step(&mut bt, &instr_copy, step_depth, step_stack_access).is_err() {
+                if backtrack_insn_step(&mut bt, &instr_copy, step_depth, step_stack_access).is_err()
+                {
                     return None;
                 }
                 if bt.is_empty() {
@@ -485,10 +478,18 @@ pub fn bcf_suffix_base_pc(
             .is_none_or(|p| env.history.get(history_idx).map(|s| s.pc) == Some(p));
     let probe = std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1");
     if probe {
-        eprintln!("[bcf-track-start] history_idx={} targets={:?}", history_idx, target_regs);
+        eprintln!(
+            "[bcf-track-start] history_idx={} targets={:?}",
+            history_idx, target_regs
+        );
     }
     if target_regs.is_empty() {
-        if probe { eprintln!("[bcf-track-none] reason=EMPTY_TARGETS history_idx={}", history_idx); }
+        if probe {
+            eprintln!(
+                "[bcf-track-none] reason=EMPTY_TARGETS history_idx={}",
+                history_idx
+            );
+        }
         return None;
     }
     // Initial precision lives in the reject state's call frame. zovia
@@ -501,7 +502,9 @@ pub fn bcf_suffix_base_pc(
         bt.set_reg(start_depth, r);
     }
     if bt.is_empty() {
-        if probe { eprintln!("[bcf-track-none] reason=BT_INIT_EMPTY"); }
+        if probe {
+            eprintln!("[bcf-track-none] reason=BT_INIT_EMPTY");
+        }
         return None;
     }
     if debug {
@@ -549,11 +552,14 @@ pub fn bcf_suffix_base_pc(
             let step_pc = step.pc;
             let step_depth = step.depth;
             let step_stack_access = step.stack_access;
-            if first_pc_walked.is_none() { first_pc_walked = Some(step_pc); }
+            if first_pc_walked.is_none() {
+                first_pc_walked = Some(step_pc);
+            }
             last_pc_walked = Some(step_pc);
 
             if !skip_first {
-                if backtrack_insn_step(&mut bt, &instr_copy, step_depth, step_stack_access).is_err() {
+                if backtrack_insn_step(&mut bt, &instr_copy, step_depth, step_stack_access).is_err()
+                {
                     // Kernel `backtrack_insn` returned a negative errno
                     // (-ENOTSUPP / -EFAULT): `backtrack_states` aborts
                     // with `base = NULL`, which on the zovia side means
@@ -565,7 +571,12 @@ pub fn bcf_suffix_base_pc(
                             step_pc, instr_copy
                         );
                     }
-                    if probe { eprintln!("[bcf-track-none] reason=BACKTRACK_INSN_ERR pc={} instr={:?} regs={:?} stack={:?}", step_pc, instr_copy, bt.reg_masks, bt.stack_masks); }
+                    if probe {
+                        eprintln!(
+                            "[bcf-track-none] reason=BACKTRACK_INSN_ERR pc={} instr={:?} regs={:?} stack={:?}",
+                            step_pc, instr_copy, bt.reg_masks, bt.stack_masks
+                        );
+                    }
                     return None;
                 }
                 if debug {
@@ -639,7 +650,11 @@ pub fn bcf_suffix_base_pc(
     if probe {
         eprintln!(
             "[bcf-track-none] reason=WALKED_WHOLE_HISTORY budget_used={} first_pc={:?} last_pc={:?} regs_still_in_bt={:?} stack_still_in_bt={:?}",
-            16_384 - budget, first_pc_walked, last_pc_walked, bt.reg_masks, bt.stack_masks
+            16_384 - budget,
+            first_pc_walked,
+            last_pc_walked,
+            bt.reg_masks,
+            bt.stack_masks
         );
     }
     None
@@ -666,11 +681,7 @@ fn bt_sync_linked_regs(frontier: &mut HashSet<Reg>, linked: &[Reg]) {
 /// propagate further back) given that we are *un-doing* `instr`.
 /// Pure free function so the walker can call it without re-borrowing
 /// `self`.
-fn update_frontier(
-    frontier: &mut HashSet<Reg>,
-    instr: &crate::ast::Instr,
-    caller_saved: &[Reg],
-) {
+fn update_frontier(frontier: &mut HashSet<Reg>, instr: &crate::ast::Instr, caller_saved: &[Reg]) {
     use crate::ast::{AluOp, Instr, Operand};
     match instr {
         Instr::Alu { op, dst, src, .. } => {
@@ -804,10 +815,12 @@ fn update_stack_frontier(
         // (BPF_ST const-spill carries no source reg ⇒ nothing to add back);
         // `StoreRel.src` is a Reg.
         Instr::Store { src, base, off, .. } => {
-            if *base == Reg::R10 && stack_frontier.remove(off)
-                && let Operand::Reg(s) = src {
-                    reg_frontier.insert(*s);
-                }
+            if *base == Reg::R10
+                && stack_frontier.remove(off)
+                && let Operand::Reg(s) = src
+            {
+                reg_frontier.insert(*s);
+            }
         }
         Instr::StoreRel { src, base, off, .. } => {
             if *base == Reg::R10 && stack_frontier.remove(off) {
@@ -832,7 +845,10 @@ struct BacktrackState {
 
 impl BacktrackState {
     fn new() -> Self {
-        Self { reg_masks: Vec::new(), stack_masks: Vec::new() }
+        Self {
+            reg_masks: Vec::new(),
+            stack_masks: Vec::new(),
+        }
     }
 
     #[inline]
@@ -994,9 +1010,24 @@ fn backtrack_insn_step(
         // BPF_END: like BPF_NEG — dreg stays precise, nothing new.
         Instr::Endian { .. } => {}
         // ── BPF_LDX (incl. atomic load-acquire) ──────────────────────
-        Instr::Load { size, dst, base, off }
-        | Instr::LoadSx { size, dst, base, off }
-        | Instr::LoadAcq { size, dst, base, off } => {
+        Instr::Load {
+            size,
+            dst,
+            base,
+            off,
+        }
+        | Instr::LoadSx {
+            size,
+            dst,
+            base,
+            off,
+        }
+        | Instr::LoadAcq {
+            size,
+            dst,
+            base,
+            off,
+        } => {
             if !bt.is_reg_set(frame, *dst) {
                 return Ok(());
             }
@@ -1010,9 +1041,7 @@ fn backtrack_insn_step(
             // (verifier.c:4612). zovia's `stack_access` breadcrumb flag
             // is that bit; the slot index comes from the insn's fixed
             // offset (kernel `insn_stack_access_spi`).
-            if stack_access
-                && let Some(spi) = spi_of(*off)
-            {
+            if stack_access && let Some(spi) = spi_of(*off) {
                 bt.set_slot(frame, spi);
             }
         }

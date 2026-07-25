@@ -158,9 +158,7 @@ fn collect_vars(
         return Ok(());
     }
     visited.insert(idx, ());
-    let e = state
-        .expr_at(idx)
-        .ok_or(SmtlibError::DanglingRef(idx))?;
+    let e = state.expr_at(idx).ok_or(SmtlibError::DanglingRef(idx))?;
     let (ty, op) = (expr_type(e.code), expr_op(e.code));
     if ty == BCF_BV && op == BCF_VAR {
         let name = format!("sym{}", decls.len());
@@ -186,20 +184,16 @@ fn render(
     names: &HashMap<u32, String>,
     out: &mut String,
 ) -> Result<()> {
-    let e = state
-        .expr_at(idx)
-        .ok_or(SmtlibError::DanglingRef(idx))?;
+    let e = state.expr_at(idx).ok_or(SmtlibError::DanglingRef(idx))?;
     let ty = expr_type(e.code);
     let op = expr_op(e.code);
 
     match (ty, op) {
         // ---------- BV variable ----------
         (BCF_BV, BCF_VAR) => {
-            let name = names
-                .get(&idx)
-                .ok_or_else(|| SmtlibError::Malformed(format!(
-                    "variable at slot {} missing from name table", idx
-                )))?;
+            let name = names.get(&idx).ok_or_else(|| {
+                SmtlibError::Malformed(format!("variable at slot {} missing from name table", idx))
+            })?;
             out.push_str(name);
         }
 
@@ -208,24 +202,36 @@ fn render(
             let width = bv_width(e.params) as u32;
             if width == 0 || width > 64 {
                 return Err(SmtlibError::Malformed(format!(
-                    "BV val at slot {} has unsupported width {}", idx, width
+                    "BV val at slot {} has unsupported width {}",
+                    idx, width
                 )));
             }
             let val: u64 = match e.args.len() {
                 1 => e.args[0] as u64,
                 2 => (e.args[0] as u64) | ((e.args[1] as u64) << 32),
-                n => return Err(SmtlibError::Malformed(format!(
-                    "BV val at slot {} has unsupported vlen {}", idx, n
-                ))),
+                n => {
+                    return Err(SmtlibError::Malformed(format!(
+                        "BV val at slot {} has unsupported vlen {}",
+                        idx, n
+                    )));
+                }
             };
             // SMT-LIB hex literal: `#x<hex>` requires width divisible by 4.
             // Use `(_ bv<value> <width>)` form for arbitrary widths.
             if width.is_multiple_of(4) {
                 let hex_digits = (width / 4) as usize;
-                let mask: u64 = if width >= 64 { u64::MAX } else { (1u64 << width) - 1 };
+                let mask: u64 = if width >= 64 {
+                    u64::MAX
+                } else {
+                    (1u64 << width) - 1
+                };
                 write!(out, "#x{:0width$x}", val & mask, width = hex_digits).unwrap();
             } else {
-                let mask: u64 = if width >= 64 { u64::MAX } else { (1u64 << width) - 1 };
+                let mask: u64 = if width >= 64 {
+                    u64::MAX
+                } else {
+                    (1u64 << width) - 1
+                };
                 write!(out, "(_ bv{} {})", val & mask, width).unwrap();
             }
         }
@@ -233,7 +239,11 @@ fn render(
         // ---------- BV zero/sign-extend ----------
         (BCF_BV, BCF_ZERO_EXTEND) | (BCF_BV, BCF_SIGN_EXTEND) => {
             let ext = ext_len(e.params);
-            let kw = if op == BCF_ZERO_EXTEND { "zero_extend" } else { "sign_extend" };
+            let kw = if op == BCF_ZERO_EXTEND {
+                "zero_extend"
+            } else {
+                "sign_extend"
+            };
             ensure_vlen(idx, e, 1)?;
             write!(out, "((_ {} {}) ", kw, ext).unwrap();
             render(state, e.args[0], names, out)?;
@@ -296,9 +306,12 @@ fn render(
 
         // ---------- Boolean variable (rare; we mostly use BV vars) ----------
         (BCF_BOOL, BCF_VAR) => {
-            let name = names.get(&idx).ok_or_else(|| SmtlibError::Malformed(format!(
-                "bool variable at slot {} missing from name table", idx
-            )))?;
+            let name = names.get(&idx).ok_or_else(|| {
+                SmtlibError::Malformed(format!(
+                    "bool variable at slot {} missing from name table",
+                    idx
+                ))
+            })?;
             out.push_str(name);
         }
 
@@ -327,7 +340,12 @@ fn render(
             out.push(')');
         }
 
-        _ => return Err(SmtlibError::UnsupportedCode { code: e.code, slot: idx }),
+        _ => {
+            return Err(SmtlibError::UnsupportedCode {
+                code: e.code,
+                slot: idx,
+            });
+        }
     }
     Ok(())
 }
@@ -341,7 +359,8 @@ fn render_nary(
 ) -> Result<()> {
     if e.args.is_empty() {
         return Err(SmtlibError::Malformed(format!(
-            "{}-ary expression must have ≥ 1 args", op_name
+            "{}-ary expression must have ≥ 1 args",
+            op_name
         )));
     }
     write!(out, "({}", op_name).unwrap();
@@ -443,7 +462,11 @@ mod tests {
         let smt = encode(&state).expect("encode failed");
 
         assert!(smt.starts_with("(set-logic QF_BV)"), "got:\n{}", smt);
-        assert!(smt.contains("(declare-const sym0 (_ BitVec 32))"), "got:\n{}", smt);
+        assert!(
+            smt.contains("(declare-const sym0 (_ BitVec 32))"),
+            "got:\n{}",
+            smt
+        );
         assert!(smt.contains("(bvand sym0 #x000000ff)"), "got:\n{}", smt);
         assert!(smt.contains("((_ zero_extend 32)"), "got:\n{}", smt);
         // Mask 0xff: literal renders as 8-hex-digit constant since width 32.

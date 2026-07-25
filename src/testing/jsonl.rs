@@ -77,7 +77,11 @@ pub fn emit_corpus_jsonl(
 
     for path in &files {
         let rel = match strip_root {
-            Some(r) => path.strip_prefix(r).unwrap_or(path).to_string_lossy().into_owned(),
+            Some(r) => path
+                .strip_prefix(r)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .into_owned(),
             None => path.to_string_lossy().into_owned(),
         };
         if let Some(w) = file_writer.as_mut() {

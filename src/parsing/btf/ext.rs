@@ -168,9 +168,9 @@ fn parse_core_relos(bytes: &[u8], btf_strings: &[u8]) -> Result<BtfExt, String> 
             u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap()) as usize;
         cursor += 8;
 
-        let records_byte_len = num_records.checked_mul(record_size).ok_or_else(|| {
-            "core_relo num_records * record_size overflow".to_string()
-        })?;
+        let records_byte_len = num_records
+            .checked_mul(record_size)
+            .ok_or_else(|| "core_relo num_records * record_size overflow".to_string())?;
         if cursor + records_byte_len > bytes.len() {
             return Err("core_relo records truncated".into());
         }
@@ -180,10 +180,8 @@ fn parse_core_relos(bytes: &[u8], btf_strings: &[u8]) -> Result<BtfExt, String> 
         let mut relos = Vec::with_capacity(num_records);
         for i in 0..num_records {
             let r_start = cursor + i * record_size;
-            let insn_off =
-                u32::from_le_bytes(bytes[r_start..r_start + 4].try_into().unwrap());
-            let type_id =
-                u32::from_le_bytes(bytes[r_start + 4..r_start + 8].try_into().unwrap());
+            let insn_off = u32::from_le_bytes(bytes[r_start..r_start + 4].try_into().unwrap());
+            let type_id = u32::from_le_bytes(bytes[r_start + 4..r_start + 8].try_into().unwrap());
             let access_str_off =
                 u32::from_le_bytes(bytes[r_start + 8..r_start + 12].try_into().unwrap());
             let kind_raw =

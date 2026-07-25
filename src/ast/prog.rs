@@ -448,20 +448,36 @@ pub fn expected_retval_rule(prog_kind: ProgramKind, subtype: Option<&str>) -> Op
                 || sub.starts_with("getpeername")
                 || sub.starts_with("getsockname")
             {
-                return Some(RetvalRule { lo: 1, hi: 1, require_known: false });
+                return Some(RetvalRule {
+                    lo: 1,
+                    hi: 1,
+                    require_known: false,
+                });
             }
             // bind4 / bind6: [0, 3].
             if sub.starts_with("bind") {
-                return Some(RetvalRule { lo: 0, hi: 3, require_known: false });
+                return Some(RetvalRule {
+                    lo: 0,
+                    hi: 3,
+                    require_known: false,
+                });
             }
             // sendmsg / connect: [0, 1] (default for cgroup/sock_addr hooks).
-            Some(RetvalRule { lo: 0, hi: 1, require_known: false })
+            Some(RetvalRule {
+                lo: 0,
+                hi: 1,
+                require_known: false,
+            })
         }
         ProgramKind::Lsm => {
             let sub = subtype?;
             // bool retval hooks.
             if sub == "audit_rule_known" {
-                return Some(RetvalRule { lo: 0, hi: 1, require_known: false });
+                return Some(RetvalRule {
+                    lo: 0,
+                    hi: 1,
+                    require_known: false,
+                });
             }
             // void retval hooks: no constraint.
             if sub == "file_free_security" || sub == "task_free" || sub == "inode_free_security" {
@@ -472,14 +488,22 @@ pub fn expected_retval_rule(prog_kind: ProgramKind, subtype: Option<&str>) -> Op
             // currently accept but where the kernel's per-hook policy is
             // looser than [-4095, 0]).
             if sub == "file_mprotect" {
-                return Some(RetvalRule { lo: -4095, hi: 0, require_known: false });
+                return Some(RetvalRule {
+                    lo: -4095,
+                    hi: 0,
+                    require_known: false,
+                });
             }
             None
         }
         ProgramKind::Netfilter => {
             // NF_DROP=0, NF_ACCEPT=1; kernel additionally requires the value
             // to be a known constant (rejects "R0 is not a known value").
-            Some(RetvalRule { lo: 0, hi: 1, require_known: true })
+            Some(RetvalRule {
+                lo: 0,
+                hi: 1,
+                require_known: true,
+            })
         }
         ProgramKind::Kprobe => {
             // SEC("kprobe.session") and SEC("uprobe.session"): the
@@ -489,7 +513,11 @@ pub fn expected_retval_rule(prog_kind: ProgramKind, subtype: Option<&str>) -> Op
             // Both share ProgramKind::Kprobe; the subtype derived from
             // the SEC string disambiguates.
             if matches!(subtype, Some("session")) {
-                return Some(RetvalRule { lo: 0, hi: 1, require_known: false });
+                return Some(RetvalRule {
+                    lo: 0,
+                    hi: 1,
+                    require_known: false,
+                });
             }
             None
         }

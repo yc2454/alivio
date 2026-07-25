@@ -286,15 +286,9 @@ pub fn compute_scc_callchain(
             let next = state.frames.get(FrameLevel::from_index(i + 1));
             next.return_pc.saturating_sub(1)
         };
-        let scc_id = insn_aux_data
-            .get(insn_idx)
-            .map(|a| a.scc_id)
-            .unwrap_or(0);
+        let scc_id = insn_aux_data.get(insn_idx).map(|a| a.scc_id).unwrap_or(0);
         if scc_id != 0 {
-            return Some(SccCallchain {
-                callsites,
-                scc_id,
-            });
+            return Some(SccCallchain { callsites, scc_id });
         } else if i + 1 < n {
             callsites.push(insn_idx);
         } else {
@@ -401,7 +395,12 @@ pub fn maybe_exit_scc(env: &mut VerifierEnv, cid: u32) {
             if let Some(hidx) = be.state.history_idx {
                 let before = env.precise_pcs.len();
                 for r in precise {
-                    crate::analysis::flow::precision::mark_chain_precision_backward(env, hidx, be.state.parent_cache_id, r);
+                    crate::analysis::flow::precision::mark_chain_precision_backward(
+                        env,
+                        hidx,
+                        be.state.parent_cache_id,
+                        r,
+                    );
                 }
                 if env.precise_pcs.len() != before {
                     changed = true;
@@ -460,11 +459,13 @@ pub fn add_scc_backedge(
     if visit.entry_state_cache_id.is_none() {
         return;
     }
-    visit.backedges.push(crate::analysis::flow::scc::SccBackedge {
-        state: cur.clone(),
-        equal_state_cache_id,
-        insn_idx,
-    });
+    visit
+        .backedges
+        .push(crate::analysis::flow::scc::SccBackedge {
+            state: cur.clone(),
+            equal_state_cache_id,
+            insn_idx,
+        });
 }
 
 /// Read a cached state's (branches, dfs_depth, loop_entry_cache_id)
@@ -495,8 +496,7 @@ pub fn get_loop_entry(env: &VerifierEnv, start_cache_id: u32) -> Option<u32> {
     }
     // Edge: start had loop_entry=Some(cid) but that cid had no entry
     // → outermost was `cid`.
-    cached_scc_info(env, start_cache_id)
-        .and_then(|(_, _, le)| le)
+    cached_scc_info(env, start_cache_id).and_then(|(_, _, le)| le)
 }
 
 /// Mirror of kernel `update_loop_entry` (verifier.c v6.15 L1934).

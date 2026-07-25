@@ -12,7 +12,7 @@ use std::hash::Hasher;
 
 use siphasher::sip::SipHasher24;
 
-use super::bcf::{BcfExpr, BCF_BV, BCF_OP_MASK, BCF_VAL, BCF_VAR};
+use super::bcf::{BCF_BV, BCF_OP_MASK, BCF_VAL, BCF_VAR, BcfExpr};
 
 // Record tags. See spec §3.1.
 const TAG_VAR: u8 = 0x01;
@@ -46,7 +46,10 @@ struct VarRenamer {
 
 impl VarRenamer {
     fn new() -> Self {
-        Self { map: HashMap::new(), next: 0 }
+        Self {
+            map: HashMap::new(),
+            next: 0,
+        }
     }
 
     fn intern(&mut self, expr_id: u32) -> u32 {
@@ -105,7 +108,12 @@ pub fn hash_expr(root: u32, exprs: &[BcfExpr]) -> u64 {
             .map(|b| format!("{:02x}", b))
             .collect::<Vec<_>>()
             .join(" ");
-        eprintln!("[zovia] bcf_canonical_hash: buf.len={} hash=0x{:016x} bytes: {}", buf.len(), h, hex);
+        eprintln!(
+            "[zovia] bcf_canonical_hash: buf.len={} hash=0x{:016x} bytes: {}",
+            buf.len(),
+            h,
+            hex
+        );
     }
 
     h
@@ -181,43 +189,195 @@ mod tests {
             s
         };
         // [0] VAR_64
-        let s0 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAR | BCF_BV, params: 0x40, args: vec![] });
+        let s0 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAR | BCF_BV,
+                params: 0x40,
+                args: vec![],
+            },
+        );
         // [1] EXTRACT_32(s0), params=0x1f00
-        let s1 = push(&mut e, &mut slot, BcfExpr { code: BCF_EXTRACT | BCF_BV, params: 0x1f00, args: vec![s0] });
+        let s1 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_EXTRACT | BCF_BV,
+                params: 0x1f00,
+                args: vec![s0],
+            },
+        );
         // [3] ZEXT(s1) params=0x2040
-        let _s3 = push(&mut e, &mut slot, BcfExpr { code: BCF_ZERO_EXTEND | BCF_BV, params: 0x2040, args: vec![s1] });
+        let _s3 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_ZERO_EXTEND | BCF_BV,
+                params: 0x2040,
+                args: vec![s1],
+            },
+        );
         // [5] VAL_64(0xff)  args=[0xff, 0] — unused in goal subtree but present in kernel table
-        let _s5 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x40, args: vec![0xff, 0] });
+        let _s5 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x40,
+                args: vec![0xff, 0],
+            },
+        );
         // [8] VAL_32(0xff) args=[0xff], params=0x20
-        let s8 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x20, args: vec![0xff] });
+        let s8 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x20,
+                args: vec![0xff],
+            },
+        );
         // [10] AND_32(s1, s8), params=0x20
-        let s10 = push(&mut e, &mut slot, BcfExpr { code: BPF_AND | BCF_BV, params: 0x20, args: vec![s1, s8] });
+        let s10 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BPF_AND | BCF_BV,
+                params: 0x20,
+                args: vec![s1, s8],
+            },
+        );
         // [13] ZEXT(s10) params=0x2040
-        let s13 = push(&mut e, &mut slot, BcfExpr { code: BCF_ZERO_EXTEND | BCF_BV, params: 0x2040, args: vec![s10] });
+        let s13 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_ZERO_EXTEND | BCF_BV,
+                params: 0x2040,
+                args: vec![s10],
+            },
+        );
         // [15] VAL_64(0)
-        let s15 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x40, args: vec![0, 0] });
+        let s15 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x40,
+                args: vec![0, 0],
+            },
+        );
         // [18] ADD_64(s15, s13), params=0x40 — r2's bcf_expr
-        let s18 = push(&mut e, &mut slot, BcfExpr { code: BPF_ADD | BCF_BV, params: 0x40, args: vec![s15, s13] });
+        let s18 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BPF_ADD | BCF_BV,
+                params: 0x40,
+                args: vec![s15, s13],
+            },
+        );
         // [21] VAL_64(1) — present in kernel but unused in goal subtree
-        let _s21 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x40, args: vec![1, 0] });
+        let _s21 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x40,
+                args: vec![1, 0],
+            },
+        );
         // [24] VAL_32(1)
-        let s24 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x20, args: vec![1] });
+        let s24 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x20,
+                args: vec![1],
+            },
+        );
         // [26] RSH_32(s10, s24)
-        let s26 = push(&mut e, &mut slot, BcfExpr { code: BPF_RSH | BCF_BV, params: 0x20, args: vec![s10, s24] });
+        let s26 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BPF_RSH | BCF_BV,
+                params: 0x20,
+                args: vec![s10, s24],
+            },
+        );
         // [29] ZEXT(s26) params=0x2040
-        let s29 = push(&mut e, &mut slot, BcfExpr { code: BCF_ZERO_EXTEND | BCF_BV, params: 0x2040, args: vec![s26] });
+        let s29 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_ZERO_EXTEND | BCF_BV,
+                params: 0x2040,
+                args: vec![s26],
+            },
+        );
         // [31] VAL_64(4)
-        let s31 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x40, args: vec![4, 0] });
+        let s31 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x40,
+                args: vec![4, 0],
+            },
+        );
         // [34] ule(s29, s31) — path_cond
-        let s34 = push(&mut e, &mut slot, BcfExpr { code: BPF_JLE | BCF_BOOL, params: 0, args: vec![s29, s31] });
+        let s34 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BPF_JLE | BCF_BOOL,
+                params: 0,
+                args: vec![s29, s31],
+            },
+        );
         // [37] EXTRACT_32(s18) params=0x1f00
-        let s37 = push(&mut e, &mut slot, BcfExpr { code: BCF_EXTRACT | BCF_BV, params: 0x1f00, args: vec![s18] });
+        let s37 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_EXTRACT | BCF_BV,
+                params: 0x1f00,
+                args: vec![s18],
+            },
+        );
         // [39] VAL_32(15)
-        let s39 = push(&mut e, &mut slot, BcfExpr { code: BCF_VAL | BCF_BV, params: 0x20, args: vec![15] });
+        let s39 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_VAL | BCF_BV,
+                params: 0x20,
+                args: vec![15],
+            },
+        );
         // [41] sgt(s37, s39) — refine_cond
-        let s41 = push(&mut e, &mut slot, BcfExpr { code: BPF_JSGT | BCF_BOOL, params: 0, args: vec![s37, s39] });
+        let s41 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BPF_JSGT | BCF_BOOL,
+                params: 0,
+                args: vec![s37, s39],
+            },
+        );
         // [44] CONJ(s34, s41) — goal_root
-        let s44 = push(&mut e, &mut slot, BcfExpr { code: BCF_CONJ | BCF_BOOL, params: 0, args: vec![s34, s41] });
+        let s44 = push(
+            &mut e,
+            &mut slot,
+            BcfExpr {
+                code: BCF_CONJ | BCF_BOOL,
+                params: 0,
+                args: vec![s34, s41],
+            },
+        );
 
         let h = hash_expr(s44, &e);
         // The kernel emits the same 140 encoded bytes for this layout
@@ -241,25 +401,41 @@ mod tests {
 
     fn bv_var(exprs: &mut Vec<BcfExpr>, params: u16) -> u32 {
         let id = next_slot(exprs);
-        exprs.push(BcfExpr { code: BCF_VAR | BCF_BV, params, args: vec![] });
+        exprs.push(BcfExpr {
+            code: BCF_VAR | BCF_BV,
+            params,
+            args: vec![],
+        });
         id
     }
 
     fn bv_val(exprs: &mut Vec<BcfExpr>, value: u32) -> u32 {
         let id = next_slot(exprs);
-        exprs.push(BcfExpr { code: BCF_VAL | BCF_BV, params: 0, args: vec![value] });
+        exprs.push(BcfExpr {
+            code: BCF_VAL | BCF_BV,
+            params: 0,
+            args: vec![value],
+        });
         id
     }
 
     fn bv_add(exprs: &mut Vec<BcfExpr>, a: u32, b: u32) -> u32 {
         let id = next_slot(exprs);
-        exprs.push(BcfExpr { code: BPF_ADD | BCF_BV, params: 0, args: vec![a, b] });
+        exprs.push(BcfExpr {
+            code: BPF_ADD | BCF_BV,
+            params: 0,
+            args: vec![a, b],
+        });
         id
     }
 
     fn bv_mul(exprs: &mut Vec<BcfExpr>, a: u32, b: u32) -> u32 {
         let id = next_slot(exprs);
-        exprs.push(BcfExpr { code: BPF_MUL | BCF_BV, params: 0, args: vec![a, b] });
+        exprs.push(BcfExpr {
+            code: BPF_MUL | BCF_BV,
+            params: 0,
+            args: vec![a, b],
+        });
         id
     }
 
@@ -447,8 +623,7 @@ mod tests {
             // v1: tag, code=BCF_VAR|BCF_BV=0x18, vlen=0, params=0x0000, idx=0
             0x01, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             // v2: tag, code=0x18, vlen=0, params=0, idx=1
-            0x01, 0x18, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-            // v1 again: idx=0
+            0x01, 0x18, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // v1 again: idx=0
             0x01, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             // mul: tag, code=BPF_MUL|BCF_BV=0x20, vlen=2, params=0
             0x03, 0x20, 0x02, 0x00, 0x00,
@@ -490,8 +665,7 @@ mod tests {
 
     fn c_tool_path() -> std::path::PathBuf {
         // CARGO_MANIFEST_DIR points at the crate root.
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("c-ref/build/canonical_hash_tool")
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("c-ref/build/canonical_hash_tool")
     }
 
     /// Serialize `(exprs, root)` into the binary stdin format the C tool reads.
@@ -535,8 +709,7 @@ mod tests {
         );
         let hex = String::from_utf8(out.stdout).expect("c tool stdout utf8");
         let hex = hex.trim();
-        u64::from_str_radix(hex, 16)
-            .unwrap_or_else(|e| panic!("parse c hash {:?}: {}", hex, e))
+        u64::from_str_radix(hex, 16).unwrap_or_else(|e| panic!("parse c hash {:?}: {}", hex, e))
     }
 
     #[test]
@@ -578,7 +751,9 @@ mod tests {
             }),
             ("alpha_pair_b_shifted_ids", || {
                 let mut e = vec![];
-                for _ in 0..3 { let _ = bv_val(&mut e, 99); }
+                for _ in 0..3 {
+                    let _ = bv_val(&mut e, 99);
+                }
                 let v3 = bv_var(&mut e, 0);
                 let v4 = bv_var(&mut e, 0);
                 let r = bv_add(&mut e, v3, v4);
@@ -634,7 +809,9 @@ mod tests {
             }),
             ("worked_example_add_v1_mul_v2_v1", || {
                 let mut e = vec![];
-                for _ in 0..7 { let _ = bv_val(&mut e, 0); }
+                for _ in 0..7 {
+                    let _ = bv_val(&mut e, 0);
+                }
                 let v1 = bv_var(&mut e, 0);
                 let _ = bv_val(&mut e, 0);
                 let v2 = bv_var(&mut e, 0);
@@ -644,7 +821,11 @@ mod tests {
             }),
             ("bool_var", || {
                 let mut e = vec![];
-                e.push(BcfExpr { code: BCF_VAR | BCF_BOOL, params: 0, args: vec![] });
+                e.push(BcfExpr {
+                    code: BCF_VAR | BCF_BOOL,
+                    params: 0,
+                    args: vec![],
+                });
                 (0, e)
             }),
         ];
@@ -666,14 +847,22 @@ mod tests {
         // code = BCF_VAR | BCF_BOOL: still a var, still nullary.
         let mut exprs = vec![];
         let id = exprs.len() as u32;
-        exprs.push(BcfExpr { code: BCF_VAR | BCF_BOOL, params: 0, args: vec![] });
+        exprs.push(BcfExpr {
+            code: BCF_VAR | BCF_BOOL,
+            params: 0,
+            args: vec![],
+        });
         let h = hash_expr(id, &exprs);
 
         // Two of them should α-rename identically.
         let mut b = vec![];
         let _ = bv_val(&mut b, 1);
         let idb = next_slot(&b);
-        b.push(BcfExpr { code: BCF_VAR | BCF_BOOL, params: 0, args: vec![] });
+        b.push(BcfExpr {
+            code: BCF_VAR | BCF_BOOL,
+            params: 0,
+            args: vec![],
+        });
         assert_eq!(h, hash_expr(idb, &b));
     }
 }

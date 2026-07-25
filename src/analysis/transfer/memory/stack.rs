@@ -9,7 +9,7 @@ use crate::analysis::machine::reg_types::RegType;
 use crate::analysis::machine::stack_state::StackState;
 use crate::analysis::machine::state::State;
 use crate::common::constants;
-use crate::refinement::bundle::{RefineEntry, BCF_BUNDLE_KIND_REFINE};
+use crate::refinement::bundle::{BCF_BUNDLE_KIND_REFINE, RefineEntry};
 use crate::refinement::refine_stack::try_refine_stack_oob;
 use log::{error, info};
 
@@ -35,15 +35,27 @@ fn try_bcf_refine_stack(
     // Also look up prev_insn_pc at the landed cache so the filter can
     // apply the kernel's record_path_cond-at-replay-start retention
     // (mirrors try_emit_path_unreachable_entry's wiring).
-    let landed = state
-        .history_idx
-        .and_then(|hidx| crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(env, hidx, state.parent_cache_id, &[base]));
+    let landed = state.history_idx.and_then(|hidx| {
+        crate::analysis::flow::precision::bcf_suffix_base_pc_and_cache_id(
+            env,
+            hidx,
+            state.parent_cache_id,
+            &[base],
+        )
+    });
     let base_pc = landed.map(|(pc, _)| pc);
     let prev_insn_pc = landed.and_then(|(_, cid)| env.cached_prev_insn_pc(cid));
-    let Some(ok) = try_refine_stack_oob(state, base, instruction_offset, size, base_pc, prev_insn_pc) else {
+    let Some(ok) =
+        try_refine_stack_oob(state, base, instruction_offset, size, base_pc, prev_insn_pc)
+    else {
         return false;
     };
-    let entry = RefineEntry::new(ok.goal_root, ok.sym.exprs, ok.proof_bytes, BCF_BUNDLE_KIND_REFINE);
+    let entry = RefineEntry::new(
+        ok.goal_root,
+        ok.sym.exprs,
+        ok.proof_bytes,
+        BCF_BUNDLE_KIND_REFINE,
+    );
     info!(
         target: "app",
         "[bcf] refined stack-OOB at base={:?} off={} size={}: cvc5 proof {} bytes (hash {:016x})",
@@ -63,14 +75,24 @@ fn try_bcf_refine_stack(
     }
     if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
         crate::refinement::emit::unreachable::census_log(
-            "refine_stack", state.pc, -1, -1, entry.cond_hash,
-            env.bcf_proofs.iter().any(|e| e.cond_hash == entry.cond_hash),
+            "refine_stack",
+            state.pc,
+            -1,
+            -1,
+            entry.cond_hash,
+            env.bcf_proofs
+                .iter()
+                .any(|e| e.cond_hash == entry.cond_hash),
         );
     }
     env.bcf_proofs.push(entry);
     // Mirror kernel `bcf_refine` parent-marking (verifier.c:24904-24921);
     // see the matching block in `memory/map.rs::try_bcf_refine_map`.
-    crate::analysis::flow::pruning::cache::mark_path_children_unsafe(env, state, landed.map(|(_, cid)| cid));
+    crate::analysis::flow::pruning::cache::mark_path_children_unsafe(
+        env,
+        state,
+        landed.map(|(_, cid)| cid),
+    );
     true
 }
 
@@ -172,10 +194,8 @@ pub fn check_stack_access(
             // mark every slot the access might touch.
             if !matches!(kind, AccessKind::Write) && lo != i64::MIN && hi != i64::MAX {
                 let span = (hi - lo) + size;
-                let mask = crate::analysis::flow::live_stack::slot_mask(
-                    lo + instruction_offset,
-                    span,
-                );
+                let mask =
+                    crate::analysis::flow::live_stack::slot_mask(lo + instruction_offset, span);
                 crate::analysis::flow::live_stack::mark_stack_read(
                     env,
                     state,

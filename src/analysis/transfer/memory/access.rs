@@ -69,7 +69,12 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
         && base != Reg::R10
         && let Some(&sink) = state.var_off_contributor.get(&base)
     {
-        crate::analysis::flow::precision::mark_chain_precision_backward(env, hidx, state.parent_cache_id, sink);
+        crate::analysis::flow::precision::mark_chain_precision_backward(
+            env,
+            hidx,
+            state.parent_cache_id,
+            sink,
+        );
     }
     let _ = base_has_variable_offset;
 
@@ -471,7 +476,12 @@ pub fn check_store(
     if let Some(hidx) = state.history_idx
         && let Some(&offset_reg) = state.var_off_contributor.get(&base)
     {
-        crate::analysis::flow::precision::mark_chain_precision_backward(env, hidx, state.parent_cache_id, offset_reg);
+        crate::analysis::flow::precision::mark_chain_precision_backward(
+            env,
+            hidx,
+            state.parent_cache_id,
+            offset_reg,
+        );
     }
     let _ = base_has_variable_offset;
 
@@ -570,7 +580,9 @@ pub fn check_store(
                 base_type: base_ty,
             });
         }
-        PtrToAllocMem { mem_size, rdonly, .. } => {
+        PtrToAllocMem {
+            mem_size, rdonly, ..
+        } => {
             // `bpf_dynptr_slice` returns `const void *` — kernel rejects
             // any store through it with "cannot write into rdonly_mem".
             // The rdonly bit is stamped on the slice result by

@@ -304,7 +304,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                             kind: RelocKind::HelperCall,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if let Some((sec_name, offset, size)) =
@@ -325,7 +325,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                                 size,
                             }),
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if !name.is_empty() {
@@ -341,7 +341,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                             kind: RelocKind::KfuncCall,
                             bpf_call_target: None,
                             kfunc_name: Some(name.to_string()),
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else {
@@ -356,7 +356,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                             kind: RelocKind::HelperCall,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 }
@@ -372,7 +372,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                             kind: RelocKind::MapPtr,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if let Some(&map_idx) = section_idx_to_map_idx.get(&sym.st_shndx) {
@@ -385,7 +385,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                             kind: RelocKind::MapValue,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if let Some(&(map_idx, offset)) = extern_var_to_loc.get(name) {
@@ -404,9 +404,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                             ..Default::default()
                         },
                     );
-                } else if let Some((struct_name, is_percpu)) =
-                    ksym_to_info.get(name).cloned()
-                {
+                } else if let Some((struct_name, is_percpu)) = ksym_to_info.get(name).cloned() {
                     // `__ksym` extern: kernel resolves at load time via
                     // `BPF_PSEUDO_BTF_ID`. Lowerer + transfer consume
                     // `ksym_struct_name`/`ksym_is_percpu` to materialize a
@@ -426,8 +424,7 @@ pub fn load_relocations<P: AsRef<Path>>(
                     // LD_IMM64. Symbol is either the callee directly or
                     // the section symbol with the byte offset stored in
                     // the LD_IMM64's own imm field.
-                    let host_sh_offset =
-                        elf.section_headers[target_sec_idx].sh_offset as usize;
+                    let host_sh_offset = elf.section_headers[target_sec_idx].sh_offset as usize;
                     let insn_file_offset = host_sh_offset + reloc.r_offset as usize;
                     if let Some((fn_name, sec_name, off, size)) =
                         resolve_pseudo_func_target(&elf, &buf, &sym, name, insn_file_offset)
@@ -514,8 +511,8 @@ fn resolve_section_symbol_call_name(
     let mut best_is_func = false;
     for s in elf.syms.iter() {
         let st_type = s.st_type();
-        let func_like = st_type == goblin::elf::sym::STT_FUNC
-            || st_type == goblin::elf::sym::STT_NOTYPE;
+        let func_like =
+            st_type == goblin::elf::sym::STT_FUNC || st_type == goblin::elf::sym::STT_NOTYPE;
         if !func_like {
             continue;
         }
@@ -766,8 +763,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
             // section. Resolve by finding the function symbol that lives
             // at the destination offset.
             let is_section_symbol = sym.st_type() == goblin::elf::sym::STT_SECTION
-                || (r_type == R_BPF_64_32
-                    && (name.is_empty() || name.starts_with('.')));
+                || (r_type == R_BPF_64_32 && (name.is_empty() || name.starts_with('.')));
             if r_type == R_BPF_64_32
                 && is_section_symbol
                 && sym.st_shndx < elf.section_headers.len()
@@ -847,7 +843,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                             kind: RelocKind::HelperCall,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if let Some((sec_name, offset, size)) =
@@ -868,7 +864,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                                 size,
                             }),
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if !name.is_empty() {
@@ -881,7 +877,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                             kind: RelocKind::KfuncCall,
                             bpf_call_target: None,
                             kfunc_name: Some(name.to_string()),
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else {
@@ -896,7 +892,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                             kind: RelocKind::HelperCall,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 }
@@ -912,7 +908,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                             kind: RelocKind::MapPtr,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if let Some(&map_idx) = section_idx_to_map_idx.get(&sym.st_shndx) {
@@ -925,7 +921,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                             kind: RelocKind::MapValue,
                             bpf_call_target: None,
                             kfunc_name: None,
-..Default::default()
+                            ..Default::default()
                         },
                     );
                 } else if let Some(&(map_idx, offset)) = extern_var_to_loc.get(name) {
@@ -942,9 +938,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                             ..Default::default()
                         },
                     );
-                } else if let Some((struct_name, is_percpu)) =
-                    ksym_to_info.get(name).cloned()
-                {
+                } else if let Some((struct_name, is_percpu)) = ksym_to_info.get(name).cloned() {
                     // `__ksym` extern: BPF_PSEUDO_BTF_ID resolution. See
                     // `load_relocations` for full description.
                     pc_to_reloc.insert(
@@ -957,8 +951,7 @@ pub fn load_relocations_for_function<P: AsRef<Path>>(
                         },
                     );
                 } else {
-                    let host_sh_offset =
-                        elf.section_headers[target_sec_idx].sh_offset as usize;
+                    let host_sh_offset = elf.section_headers[target_sec_idx].sh_offset as usize;
                     let insn_file_offset = host_sh_offset + reloc.r_offset as usize;
                     if let Some((fn_name, sec_name, off, size)) =
                         resolve_pseudo_func_target(&elf, &buf, &sym, name, insn_file_offset)
@@ -1174,8 +1167,7 @@ pub fn discover_bpf_call_targets<P: AsRef<Path>>(
 
             if r_type == R_BPF_64_32 {
                 // Cross-section BPF-to-BPF call (unchanged behavior).
-                if let Some((sec_name, offset, size)) =
-                    resolve_symbol_location(&elf, &buf, name)
+                if let Some((sec_name, offset, size)) = resolve_symbol_location(&elf, &buf, name)
                     && sec_name != target_section_name
                 {
                     targets.push(BpfCallTarget {
@@ -1446,7 +1438,7 @@ pub fn combine_function_with_subprogs<P: AsRef<Path> + Clone>(
                             size: 0,
                         }),
                         kfunc_name: None,
-..Default::default()
+                        ..Default::default()
                     },
                 );
             }

@@ -5,13 +5,13 @@
 use crate::analysis::machine::env::VerifierEnv;
 use crate::analysis::machine::reg::Reg;
 use crate::analysis::machine::reg_types::{PtrFlags, RegType, TypeState, new_ptr_id};
-use crate::parsing::elf::KptrFieldKind;
 use crate::analysis::machine::stack_state::StackState;
 use crate::analysis::machine::state::State;
 use crate::ast::{AluOp, MapLoadKind, MemSize, Operand, Width};
 use crate::common::constants;
 use crate::common::ctx_model::{CtxFieldKind, validate_ctx_access};
 use crate::domains::numeric::NumericDomain;
+use crate::parsing::elf::KptrFieldKind;
 
 /// Anchor a map-value pointer's BCF symbolic offset at const(0) when the
 /// reg is given `PtrToMapValue` directly (no `OrNull` stage that would go
@@ -23,20 +23,18 @@ use crate::domains::numeric::NumericDomain;
 /// provably in-bounds.
 fn bcf_anchor_map_value(state: &mut State, reg: Reg) {
     if let Some(bcf) = state.bcf.as_mut()
-        && let Some(i) = reg.bcf_idx() {
-            let zero = bcf.add_val64(0);
-            bcf.bind_reg(i, zero);
-        }
+        && let Some(i) = reg.bcf_idx()
+    {
+        let zero = bcf.add_val64(0);
+        bcf.bind_reg(i, zero);
+    }
 }
 
 /// True if R2 (the lookup-elem key pointer) points at a stack slot
 /// whose value is a known constant strictly less than `map_def.max_entries`.
 /// Mirrors kernel's array-map "lookup with const in-bounds key returns
 /// non-null" specialization (closes verifier_array_access::*_no_nullness).
-fn const_key_in_bounds(
-    state: &State,
-    map_def: &crate::parsing::elf::BpfMapDef,
-) -> bool {
+fn const_key_in_bounds(state: &State, map_def: &crate::parsing::elf::BpfMapDef) -> bool {
     let level = match state.types.get(Reg::R2) {
         RegType::PtrToStack { frame_level } => frame_level,
         _ => return false,
@@ -300,17 +298,14 @@ fn update_ptr_arithmetic_type(
                 .filter(|d| *d > 0 && *d < i64::from(i32::MAX))
                 .and_then(|d| {
                     let struct_id = env.ctx.btf.find_struct_by_name(type_name)?;
-                    let info = env
-                        .ctx
-                        .btf
-                        .field_at_offset(struct_id, d as u32)?;
+                    let info = env.ctx.btf.field_at_offset(struct_id, d as u32)?;
                     match info.kind {
                         crate::parsing::btf::BtfFieldKind::Embedded {
                             type_name: Some(name),
                             ..
-                        } => Some(crate::analysis::machine::context::intern_btf_type_name_strict(
-                            &name,
-                        )),
+                        } => Some(
+                            crate::analysis::machine::context::intern_btf_type_name_strict(&name),
+                        ),
                         _ => None,
                     }
                 })
@@ -464,9 +459,7 @@ pub(crate) fn update_alu_types(
             // correlated-branch length relation there).
             let both_ptr_sub = !is_add
                 && match src {
-                    Operand::Reg(r) => {
-                        dst_ty.is_pointer() && in_types.get(*r).is_pointer()
-                    }
+                    Operand::Reg(r) => dst_ty.is_pointer() && in_types.get(*r).is_pointer(),
                     _ => false,
                 };
 
@@ -530,9 +523,7 @@ pub(crate) fn update_load_types(
                             .set(dst, RegType::PtrToSockCommonOrNull { ref_id: None });
                     }
                     CtxFieldKind::Socket => {
-                        state
-                            .types
-                            .set(dst, RegType::PtrToSocket { ref_id: None });
+                        state.types.set(dst, RegType::PtrToSocket { ref_id: None });
                     }
                     CtxFieldKind::SocketOrNull => {
                         state
@@ -597,7 +588,9 @@ pub(crate) fn update_load_types(
                     CtxFieldKind::RefcountedTask { ref_id } => {
                         state.types.set(
                             dst,
-                            RegType::PtrToTask { ref_id: Some(ref_id) },
+                            RegType::PtrToTask {
+                                ref_id: Some(ref_id),
+                            },
                         );
                         state.domain.forget(dst);
                     }
@@ -624,9 +617,7 @@ pub(crate) fn update_load_types(
                         state.domain.assume_ge_imm(dst, lo);
                         state.domain.assume_le_imm(dst, hi);
                         if lo >= i32::MIN as i64 && hi <= i32::MAX as i64 {
-                            state
-                                .domain
-                                .set_s32_bounds(dst, lo as i32, hi as i32);
+                            state.domain.set_s32_bounds(dst, lo as i32, hi as i32);
                         }
                         return true;
                     }
@@ -695,11 +686,7 @@ pub(crate) fn update_load_types(
                         // refinement to `PtrToAllocMem` enables bounded
                         // field reads. Closes task_ls_uptr.c::on_enter
                         // (`v->udata->result` after null check).
-                        let mem_size = env
-                            .ctx
-                            .btf
-                            .type_size_bytes(field.pointee_btf_id)
-                            as u64;
+                        let mem_size = env.ctx.btf.type_size_bytes(field.pointee_btf_id) as u64;
                         state.types.set(
                             dst,
                             RegType::PtrToAllocMemOrNull {
@@ -754,9 +741,8 @@ pub(crate) fn update_load_types(
         // Sock-family variants stay on the mem_region_model field
         // tables (richer per-field offsets); we don't divert them
         // here.
-        ref t if size == MemSize::U64.bytes()
-            && off >= 0
-            && implied_btf_struct_name(t).is_some() =>
+        ref t
+            if size == MemSize::U64.bytes() && off >= 0 && implied_btf_struct_name(t).is_some() =>
         {
             use crate::parsing::btf::BtfFieldKind;
             let type_name = implied_btf_struct_name(t).unwrap();
@@ -827,9 +813,7 @@ pub(crate) fn update_load_types(
                 };
                 let flags = trust_flag.union(tag_flags);
                 let pointee_static =
-                    crate::analysis::machine::context::intern_btf_type_name_strict(
-                        pointee,
-                    );
+                    crate::analysis::machine::context::intern_btf_type_name_strict(pointee);
                 state.types.set(
                     dst,
                     RegType::PtrToBtfId {
@@ -850,9 +834,7 @@ pub(crate) fn update_load_types(
             // (verifier_bpf_get_stack::return_r0_range_is_refined). Hand-model
             // the pointer field like the existing field_tables/mem_region_model
             // hardcodes. Sound: the field IS a typed kernel pointer.
-            if !typed
-                && let Some(pointee) = kernel_internal_ptr_field(type_name, off)
-            {
+            if !typed && let Some(pointee) = kernel_internal_ptr_field(type_name, off) {
                 let pointee_static =
                     crate::analysis::machine::context::intern_btf_type_name_strict(pointee);
                 state.types.set(
@@ -987,7 +969,10 @@ pub(crate) fn update_call_types(
         crate::analysis::transfer::call::signatures::get_helper_proto(helper)
     {
         crate::analysis::transfer::call::side_effects::apply_call_proto_r0(
-            in_types, state, &proto, env.ctx.prog_kind,
+            in_types,
+            state,
+            &proto,
+            env.ctx.prog_kind,
         )
     } else {
         false
@@ -1002,9 +987,7 @@ pub(crate) fn update_call_types(
     //     materialize as ScalarValue and the per_cpu_ptr arg gate rejects).
     // bpf_per_cpu_ptr returns NULL on invalid CPU; bpf_this_cpu_ptr never
     // returns NULL (always callable on the current CPU).
-    if !routed
-        && (helper == constants::BPF_PER_CPU_PTR || helper == constants::BPF_THIS_CPU_PTR)
-    {
+    if !routed && (helper == constants::BPF_PER_CPU_PTR || helper == constants::BPF_THIS_CPU_PTR) {
         // Resolve (type_name, in_flags) from the percpu source pointer.
         // Two source shapes today:
         //   - typed __ksym (`extern percpu T sym __ksym;`) → PtrToBtfId
@@ -1013,7 +996,9 @@ pub(crate) fn update_call_types(
         //     reg, mirrored as PtrToMapKptr in our model).
         let resolved: Option<(&'static str, crate::analysis::machine::reg_types::PtrFlags)> =
             match in_types.get(Reg::R1) {
-                RegType::PtrToBtfId { type_name, flags, .. } => Some((type_name, flags)),
+                RegType::PtrToBtfId {
+                    type_name, flags, ..
+                } => Some((type_name, flags)),
                 RegType::PtrToMapKptr {
                     pointee_btf_id,
                     flags,
@@ -1041,8 +1026,8 @@ pub(crate) fn update_call_types(
             // field-store level today.
             let drop = crate::analysis::machine::reg_types::PtrFlags::PERCPU
                 | crate::analysis::machine::reg_types::PtrFlags::RDONLY;
-            let mut out_flags = flags.difference(drop)
-                | crate::analysis::machine::reg_types::PtrFlags::TRUSTED;
+            let mut out_flags =
+                flags.difference(drop) | crate::analysis::machine::reg_types::PtrFlags::TRUSTED;
             // Stamp MEM_ALLOC when the source was a `__percpu_kptr`
             // map field (PtrToMapKptr) — the dereferenced object is
             // program-owned (allocated via `bpf_percpu_obj_new`), so
@@ -1086,361 +1071,362 @@ pub(crate) fn update_call_types(
 
     // Set R0 based on helper return type (legacy path for non-migrated helpers)
     if !routed {
-    match helper {
-        constants::BPF_MAP_LOOKUP_ELEM
-        | constants::BPF_MAP_LOOKUP_PERCPU_ELEM
-        | constants::BPF_GET_LOCAL_STORAGE => {
-            // Redirect through `inner_map_idx` only when R1 is itself
-            // the result of an outer ARRAY_OF_MAPS / HASH_OF_MAPS
-            // lookup (i.e. `PtrToMapValue`, not `PtrToMapObject`).
-            // Without this, the inner-map lookup's R0 keeps the
-            // outer's map_idx and subsequent helpers (`bpf_spin_lock`,
-            // graph kfuncs) see the outer DATASEC's BTF instead of the
-            // inner map's value type — they fail to find the
-            // SpecialField at the offset (e.g.
-            // linked_list.c::inner_map_list_push_pop pc 26 r1). The
-            // outer lookup keeps its own map_idx so the next
-            // `bpf_map_lookup_elem` validator's `is_inner_map_ptr`
-            // check (which inspects R1's pointee map type) still
-            // recognizes the chain.
-            let map_idx = match in_types.get(Reg::R1) {
-                RegType::PtrToMapObject { map_idx } => map_idx,
-                RegType::PtrToMapValue { map_idx: outer_idx, .. } => env
-                    .ctx
-                    .map_defs
-                    .get(outer_idx)
-                    .and_then(|md| {
-                        matches!(
-                            md.type_,
-                            constants::BPF_MAP_TYPE_ARRAY_OF_MAPS
-                                | constants::BPF_MAP_TYPE_HASH_OF_MAPS
-                        )
-                        .then_some(md.inner_map_idx)
-                        .flatten()
-                    })
-                    .unwrap_or(outer_idx),
-                _ => 0,
-            };
-            let map_def_opt = env.ctx.map_defs.get(map_idx);
-            if let Some(map_def) = map_def_opt {
-                match map_def.type_ {
-                    constants::BPF_MAP_TYPE_SOCKMAP | constants::BPF_MAP_TYPE_SOCKHASH => {
-                        let id = state.acquire_ref();
-                        state
-                            .types
-                            .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id: Some(id) });
-                    }
-                    _ => {
-                        // bpf_get_local_storage returns a guaranteed non-null
-                        // pointer (cgroup_storage / per-cpu storage is always
-                        // allocated by the kernel for the prog's attach
-                        // target) — type R0 as PtrToMapValue directly so the
-                        // user can dereference without an explicit null check,
-                        // matching kernel behaviour.
-                        // map_uid: kernel mints a fresh per-lookup uid
-                        // when the lookup target is a map-of-maps
-                        // (each result represents a possibly-distinct
-                        // inner-map instance). For inner-of-inner
-                        // chains, R1 itself is a PtrToMapValue carrying
-                        // the outer-lookup's uid; propagate. Reused by
-                        // the bpf_timer_init / bpf_wq_init cross-arg
-                        // check (timer_mim_reject::test1).
-                        let map_uid: Option<u32> = match in_types.get(Reg::R1) {
-                            RegType::PtrToMapObject { map_idx: outer } => env
-                                .ctx
-                                .map_defs
-                                .get(outer)
-                                .and_then(|m| {
-                                    matches!(
-                                        m.type_,
-                                        constants::BPF_MAP_TYPE_ARRAY_OF_MAPS
-                                            | constants::BPF_MAP_TYPE_HASH_OF_MAPS
-                                    )
-                                    .then(crate::analysis::machine::reg_types::new_map_uid)
-                                }),
-                            RegType::PtrToMapValue {
-                                map_uid: outer_uid, ..
-                            } => outer_uid,
-                            _ => None,
-                        };
-                        if helper == constants::BPF_GET_LOCAL_STORAGE {
-                            let id = new_ptr_id();
-                            state.types.set(
-                                Reg::R0,
-                                RegType::PtrToMapValue {
-                                    id,
-                                    offset: Some(0),
-                                    map_idx,
-                                    map_uid,
-                                    rdonly: false,
-                                },
-                            );
-                            state.domain.init_map_value_ptr(Reg::R0);
-                            bcf_anchor_map_value(state, Reg::R0);
-                        } else if helper == constants::BPF_MAP_LOOKUP_ELEM
-                            && matches!(
-                                map_def.type_,
-                                constants::BPF_MAP_TYPE_ARRAY
-                                    | constants::BPF_MAP_TYPE_PERCPU_ARRAY
+        match helper {
+            constants::BPF_MAP_LOOKUP_ELEM
+            | constants::BPF_MAP_LOOKUP_PERCPU_ELEM
+            | constants::BPF_GET_LOCAL_STORAGE => {
+                // Redirect through `inner_map_idx` only when R1 is itself
+                // the result of an outer ARRAY_OF_MAPS / HASH_OF_MAPS
+                // lookup (i.e. `PtrToMapValue`, not `PtrToMapObject`).
+                // Without this, the inner-map lookup's R0 keeps the
+                // outer's map_idx and subsequent helpers (`bpf_spin_lock`,
+                // graph kfuncs) see the outer DATASEC's BTF instead of the
+                // inner map's value type — they fail to find the
+                // SpecialField at the offset (e.g.
+                // linked_list.c::inner_map_list_push_pop pc 26 r1). The
+                // outer lookup keeps its own map_idx so the next
+                // `bpf_map_lookup_elem` validator's `is_inner_map_ptr`
+                // check (which inspects R1's pointee map type) still
+                // recognizes the chain.
+                let map_idx = match in_types.get(Reg::R1) {
+                    RegType::PtrToMapObject { map_idx } => map_idx,
+                    RegType::PtrToMapValue {
+                        map_idx: outer_idx, ..
+                    } => env
+                        .ctx
+                        .map_defs
+                        .get(outer_idx)
+                        .and_then(|md| {
+                            matches!(
+                                md.type_,
+                                constants::BPF_MAP_TYPE_ARRAY_OF_MAPS
+                                    | constants::BPF_MAP_TYPE_HASH_OF_MAPS
                             )
-                            && const_key_in_bounds(state, map_def)
-                        {
-                            // Kernel: array-map lookups with a statically-known
-                            // in-bounds key return PTR_TO_MAP_VALUE (non-null).
-                            // verifier_array_access::*_no_nullness covers this.
-                            let id = new_ptr_id();
-                            state.types.set(
-                                Reg::R0,
+                            .then_some(md.inner_map_idx)
+                            .flatten()
+                        })
+                        .unwrap_or(outer_idx),
+                    _ => 0,
+                };
+                let map_def_opt = env.ctx.map_defs.get(map_idx);
+                if let Some(map_def) = map_def_opt {
+                    match map_def.type_ {
+                        constants::BPF_MAP_TYPE_SOCKMAP | constants::BPF_MAP_TYPE_SOCKHASH => {
+                            let id = state.acquire_ref();
+                            state
+                                .types
+                                .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id: Some(id) });
+                        }
+                        _ => {
+                            // bpf_get_local_storage returns a guaranteed non-null
+                            // pointer (cgroup_storage / per-cpu storage is always
+                            // allocated by the kernel for the prog's attach
+                            // target) — type R0 as PtrToMapValue directly so the
+                            // user can dereference without an explicit null check,
+                            // matching kernel behaviour.
+                            // map_uid: kernel mints a fresh per-lookup uid
+                            // when the lookup target is a map-of-maps
+                            // (each result represents a possibly-distinct
+                            // inner-map instance). For inner-of-inner
+                            // chains, R1 itself is a PtrToMapValue carrying
+                            // the outer-lookup's uid; propagate. Reused by
+                            // the bpf_timer_init / bpf_wq_init cross-arg
+                            // check (timer_mim_reject::test1).
+                            let map_uid: Option<u32> = match in_types.get(Reg::R1) {
+                                RegType::PtrToMapObject { map_idx: outer } => {
+                                    env.ctx.map_defs.get(outer).and_then(|m| {
+                                        matches!(
+                                            m.type_,
+                                            constants::BPF_MAP_TYPE_ARRAY_OF_MAPS
+                                                | constants::BPF_MAP_TYPE_HASH_OF_MAPS
+                                        )
+                                        .then(crate::analysis::machine::reg_types::new_map_uid)
+                                    })
+                                }
                                 RegType::PtrToMapValue {
-                                    id,
-                                    offset: Some(0),
-                                    map_idx,
-                                    map_uid,
-                                    rdonly: false,
-                                },
-                            );
-                            state.domain.init_map_value_ptr(Reg::R0);
-                            bcf_anchor_map_value(state, Reg::R0);
-                        } else {
-                            let id = new_ptr_id();
-                            state.types.set(
-                                Reg::R0,
-                                RegType::PtrToMapValueOrNull {
-                                    id,
-                                    map_idx,
-                                    map_uid,
-                                },
-                            );
+                                    map_uid: outer_uid, ..
+                                } => outer_uid,
+                                _ => None,
+                            };
+                            if helper == constants::BPF_GET_LOCAL_STORAGE {
+                                let id = new_ptr_id();
+                                state.types.set(
+                                    Reg::R0,
+                                    RegType::PtrToMapValue {
+                                        id,
+                                        offset: Some(0),
+                                        map_idx,
+                                        map_uid,
+                                        rdonly: false,
+                                    },
+                                );
+                                state.domain.init_map_value_ptr(Reg::R0);
+                                bcf_anchor_map_value(state, Reg::R0);
+                            } else if helper == constants::BPF_MAP_LOOKUP_ELEM
+                                && matches!(
+                                    map_def.type_,
+                                    constants::BPF_MAP_TYPE_ARRAY
+                                        | constants::BPF_MAP_TYPE_PERCPU_ARRAY
+                                )
+                                && const_key_in_bounds(state, map_def)
+                            {
+                                // Kernel: array-map lookups with a statically-known
+                                // in-bounds key return PTR_TO_MAP_VALUE (non-null).
+                                // verifier_array_access::*_no_nullness covers this.
+                                let id = new_ptr_id();
+                                state.types.set(
+                                    Reg::R0,
+                                    RegType::PtrToMapValue {
+                                        id,
+                                        offset: Some(0),
+                                        map_idx,
+                                        map_uid,
+                                        rdonly: false,
+                                    },
+                                );
+                                state.domain.init_map_value_ptr(Reg::R0);
+                                bcf_anchor_map_value(state, Reg::R0);
+                            } else {
+                                let id = new_ptr_id();
+                                state.types.set(
+                                    Reg::R0,
+                                    RegType::PtrToMapValueOrNull {
+                                        id,
+                                        map_idx,
+                                        map_uid,
+                                    },
+                                );
+                            }
                         }
                     }
+                } else {
+                    state.types.set(Reg::R0, RegType::ScalarValue);
                 }
-            } else {
-                state.types.set(Reg::R0, RegType::ScalarValue);
             }
-        }
 
-        // Socket lookup helpers - return PTR_TO_SOCKET_OR_NULL
-        constants::BPF_SK_LOOKUP_TCP | constants::BPF_SK_LOOKUP_UDP => {
-            let id = state.acquire_ref();
-            state
-                .types
-                .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id: Some(id) });
-        }
-
-        // The socket reference from bpf_get_listener_sock doesn't need to be released
-        constants::BPF_GET_LISTENER_SOCK => {
-            state
-                .types
-                .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id: None });
-        }
-
-        // Copies ref id from argument
-        constants::BPF_SK_FULLSOCK => {
-            let ref_id = state.types.get(Reg::R1).get_ref_id();
-            state
-                .types
-                .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id });
-        }
-
-        constants::BPF_TCP_SOCK => {
-            let id = state.types.get(Reg::R1).get_ref_id();
-            state.types.set(Reg::R0, RegType::PtrToTcpSockOrNull { id });
-        }
-
-        // bpf_sock_from_file(struct file *file): kernel returns
-        // `struct socket *` or NULL. R0 = PtrToBtfIdOrNull{socket, TRUSTED}
-        // so `sock->sk` field-load downstream resolves via the
-        // `("socket", "sk")` trusted_field_load entry. Closes
-        // bpf_iter_bpf_sk_storage_helpers::fill_socket_owner.
-        constants::BPF_SOCK_FROM_FILE => {
-            let id = new_ptr_id();
-            state.types.set(
-                Reg::R0,
-                RegType::PtrToBtfIdOrNull {
-                    id,
-                    type_name: crate::analysis::machine::context::intern_btf_type_name_strict(
-                        "socket",
-                    ),
-                    flags: PtrFlags::TRUSTED,
-                    ref_id: None,
-                },
-            );
-        }
-
-        // bpf_task_pt_regs(struct task_struct *task): kernel returns
-        // `struct pt_regs *` (NULL only if `task` is invalid; treated as
-        // PtrToBtfIdOrNull). Closes bpf_iter_tasks::dump_task_sleepable
-        // (PT_REGS_IP(regs) reads regs->ip at offset 128 on x86_64).
-        constants::BPF_TASK_PT_REGS => {
-            let id = new_ptr_id();
-            state.types.set(
-                Reg::R0,
-                RegType::PtrToBtfIdOrNull {
-                    id,
-                    type_name: crate::analysis::machine::context::intern_btf_type_name_strict(
-                        "pt_regs",
-                    ),
-                    flags: PtrFlags::TRUSTED,
-                    ref_id: None,
-                },
-            );
-        }
-
-        // SKC lookup - returns PTR_TO_SOCK_COMMON_OR_NULL
-        constants::BPF_SKC_LOOKUP_TCP => {
-            let id = state.acquire_ref();
-            state
-                .types
-                .set(Reg::R0, RegType::PtrToSockCommonOrNull { ref_id: Some(id) });
-        }
-
-        constants::BPF_SK_RELEASE => {
-            if let Some(ref_id) = state.types.get(Reg::R1).get_ref_id() {
-                state.release_ref(ref_id);
-                state.invalidate_ref(ref_id);
+            // Socket lookup helpers - return PTR_TO_SOCKET_OR_NULL
+            constants::BPF_SK_LOOKUP_TCP | constants::BPF_SK_LOOKUP_UDP => {
+                let id = state.acquire_ref();
+                state
+                    .types
+                    .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id: Some(id) });
             }
-        }
 
-        // SKC to kernel-struct sock conversion. The kernel's
-        // `bpf_skc_to_*` helpers return `PTR_TO_BTF_ID | PTR_MAYBE_NULL`
-        // typed as the kernel `struct tcp_sock` / `tcp6_sock` /
-        // `tcp_timewait_sock` / `tcp_request_sock` / `udp6_sock` /
-        // `unix_sock` — distinct from the UAPI `struct bpf_tcp_sock`
-        // returned by the `bpf_tcp_sock()` helper. Programs deref
-        // kernel-struct fields at offsets that exceed the UAPI snapshot
-        // (e.g. `tcp_sock` offset 798 in bpf_iter_tcp6, offset 524 in
-        // mptcp_subflow). Returning PtrToBtfIdOrNull{<kernel-struct>,
-        // TRUSTED} routes through the existing PtrToBtfId machinery
-        // (ALU preservation + lax field-load admit), unblocking the
-        // bpf_iter_tcp/udp/unix family.
-        //
-        // Two acceptance shapes for R1:
-        //   (a) acquire-tracked (ref_id Some) — refcounted sock pointer
-        //       from bpf_sk_lookup_*; R0 inherits the same ref_id so
-        //       `bpf_sk_release(R0)` finds it.
-        //   (b) ctx-derived (trusted, no ref_id) — e.g. bpf_iter__tcp's
-        //       `sk_common` field via the universal bpf_iter__*
-        //       allowlist; KF_RCU treatment admits without acquire.
-        constants::BPF_SKC_TO_TCP_SOCK
-        | constants::BPF_SKC_TO_TCP6_SOCK
-        | constants::BPF_SKC_TO_TCP_TIMEWAIT_SOCK
-        | constants::BPF_SKC_TO_TCP_REQUEST_SOCK
-        | constants::BPF_SKC_TO_UDP6_SOCK
-        | constants::BPF_SKC_TO_UNIX_SOCK
-        | constants::BPF_SKC_TO_MPTCP_SOCK => {
-            let r1 = state.types.get(Reg::R1);
-            let ref_id = r1.get_ref_id();
-            let trusted = r1.is_trusted();
-            // PtrToSockCommon / PtrToSocket from ctx-field reads
-            // (sock_addr.sk, sock_ops.sk, …) carry neither ref_id nor
-            // an explicit TRUSTED flag, but the kernel treats them as
-            // valid input to skc_to_* — they originate from kernel-
-            // managed ctx state. Without this acceptance, R0 falls
-            // through to ScalarValue and downstream field reads
-            // reject as "Unsafe generic load … type ScalarValue".
-            let ctx_sock_ok = matches!(
-                r1,
-                RegType::PtrToSockCommon { .. }
-                    | RegType::PtrToSocket { .. }
-                    | RegType::PtrToTcpSock { .. }
-            );
-            if ref_id.is_some() || trusted || ctx_sock_ok {
-                let type_name = match helper {
-                    constants::BPF_SKC_TO_TCP_SOCK => "tcp_sock",
-                    constants::BPF_SKC_TO_TCP6_SOCK => "tcp6_sock",
-                    constants::BPF_SKC_TO_TCP_TIMEWAIT_SOCK => "tcp_timewait_sock",
-                    constants::BPF_SKC_TO_TCP_REQUEST_SOCK => "tcp_request_sock",
-                    constants::BPF_SKC_TO_UDP6_SOCK => "udp6_sock",
-                    constants::BPF_SKC_TO_UNIX_SOCK => "unix_sock",
-                    constants::BPF_SKC_TO_MPTCP_SOCK => "mptcp_sock",
-                    _ => unreachable!(),
-                };
+            // The socket reference from bpf_get_listener_sock doesn't need to be released
+            constants::BPF_GET_LISTENER_SOCK => {
+                state
+                    .types
+                    .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id: None });
+            }
+
+            // Copies ref id from argument
+            constants::BPF_SK_FULLSOCK => {
+                let ref_id = state.types.get(Reg::R1).get_ref_id();
+                state
+                    .types
+                    .set(Reg::R0, RegType::PtrToSocketOrNull { ref_id });
+            }
+
+            constants::BPF_TCP_SOCK => {
+                let id = state.types.get(Reg::R1).get_ref_id();
+                state.types.set(Reg::R0, RegType::PtrToTcpSockOrNull { id });
+            }
+
+            // bpf_sock_from_file(struct file *file): kernel returns
+            // `struct socket *` or NULL. R0 = PtrToBtfIdOrNull{socket, TRUSTED}
+            // so `sock->sk` field-load downstream resolves via the
+            // `("socket", "sk")` trusted_field_load entry. Closes
+            // bpf_iter_bpf_sk_storage_helpers::fill_socket_owner.
+            constants::BPF_SOCK_FROM_FILE => {
                 let id = new_ptr_id();
                 state.types.set(
                     Reg::R0,
                     RegType::PtrToBtfIdOrNull {
                         id,
                         type_name: crate::analysis::machine::context::intern_btf_type_name_strict(
-                            type_name,
+                            "socket",
                         ),
                         flags: PtrFlags::TRUSTED,
-                        ref_id,
+                        ref_id: None,
                     },
                 );
             }
-        }
 
-        // *_storage_get: R0 = PtrToMapValueOrNull keyed off the map (R1),
-        // not the optional initial-value arg (R3). Real programs commonly
-        // pass NULL for R3 (e.g. bpf_dctcp_init), and the prior version of
-        // this arm fell through to Scalar in that case. fix.
-        constants::BPF_SK_STORAGE_GET
-        | constants::BPF_TASK_STORAGE_GET
-        | constants::BPF_INODE_STORAGE_GET
-        | constants::BPF_CGRP_STORAGE_GET => {
-            let map_idx = match in_types.get(Reg::R1) {
-                RegType::PtrToMapObject { map_idx } => map_idx,
-                RegType::PtrToMapValue { map_idx, .. } => map_idx,
-                _ => 0,
-            };
-            let id = new_ptr_id();
-            state.types.set(
-                Reg::R0,
-                RegType::PtrToMapValueOrNull {
-                    id,
-                    map_idx,
-                    map_uid: None,
-                },
-            );
-        }
+            // bpf_task_pt_regs(struct task_struct *task): kernel returns
+            // `struct pt_regs *` (NULL only if `task` is invalid; treated as
+            // PtrToBtfIdOrNull). Closes bpf_iter_tasks::dump_task_sleepable
+            // (PT_REGS_IP(regs) reads regs->ip at offset 128 on x86_64).
+            constants::BPF_TASK_PT_REGS => {
+                let id = new_ptr_id();
+                state.types.set(
+                    Reg::R0,
+                    RegType::PtrToBtfIdOrNull {
+                        id,
+                        type_name: crate::analysis::machine::context::intern_btf_type_name_strict(
+                            "pt_regs",
+                        ),
+                        flags: PtrFlags::TRUSTED,
+                        ref_id: None,
+                    },
+                );
+            }
 
-        // tail_call: R0 is undefined on failure path
-        constants::BPF_TAIL_CALL => {
-            state.types.set(Reg::R0, RegType::ScalarValue);
-        }
+            // SKC lookup - returns PTR_TO_SOCK_COMMON_OR_NULL
+            constants::BPF_SKC_LOOKUP_TCP => {
+                let id = state.acquire_ref();
+                state
+                    .types
+                    .set(Reg::R0, RegType::PtrToSockCommonOrNull { ref_id: Some(id) });
+            }
 
-        constants::BPF_SKB_LOAD_BYTES => {
-            let mem_ptr_ty = in_types.get(Reg::R3);
-            if let RegType::PtrToStack { frame_level } = mem_ptr_ty
-                && let Some(off) = state.domain.get_distance_fixed(Reg::R3, Reg::R10)
-            {
-                let (_, hi) = state.domain.get_interval(Reg::R4);
-                let len = if hi <= 0xFFFF { hi as i16 } else { 0 };
-                if len > 0 {
-                    // Kernel check_stack_range_initialized clobber semantics
-                    // (verifier.c:8630 "helper can write anything into the
-                    // stack" → STACK_MISC; :8635-8640 spilled slot →
-                    // __mark_reg_unknown + whole-slot scrub_spilled_slot).
-                    // (see the mem_size_pairs clobber in call/transfer.rs).
-                    let stack = state.stack_at_mut(frame_level);
-                    if let Ok(off16) = i16::try_from(off) {
-                        stack.scrub_spilled_slots_for_write(off16, len as usize);
-                    }
-                    for i in 0..len {
-                        stack.invalidate_slot((off + i as i64) as i16);
+            constants::BPF_SK_RELEASE => {
+                if let Some(ref_id) = state.types.get(Reg::R1).get_ref_id() {
+                    state.release_ref(ref_id);
+                    state.invalidate_ref(ref_id);
+                }
+            }
+
+            // SKC to kernel-struct sock conversion. The kernel's
+            // `bpf_skc_to_*` helpers return `PTR_TO_BTF_ID | PTR_MAYBE_NULL`
+            // typed as the kernel `struct tcp_sock` / `tcp6_sock` /
+            // `tcp_timewait_sock` / `tcp_request_sock` / `udp6_sock` /
+            // `unix_sock` — distinct from the UAPI `struct bpf_tcp_sock`
+            // returned by the `bpf_tcp_sock()` helper. Programs deref
+            // kernel-struct fields at offsets that exceed the UAPI snapshot
+            // (e.g. `tcp_sock` offset 798 in bpf_iter_tcp6, offset 524 in
+            // mptcp_subflow). Returning PtrToBtfIdOrNull{<kernel-struct>,
+            // TRUSTED} routes through the existing PtrToBtfId machinery
+            // (ALU preservation + lax field-load admit), unblocking the
+            // bpf_iter_tcp/udp/unix family.
+            //
+            // Two acceptance shapes for R1:
+            //   (a) acquire-tracked (ref_id Some) — refcounted sock pointer
+            //       from bpf_sk_lookup_*; R0 inherits the same ref_id so
+            //       `bpf_sk_release(R0)` finds it.
+            //   (b) ctx-derived (trusted, no ref_id) — e.g. bpf_iter__tcp's
+            //       `sk_common` field via the universal bpf_iter__*
+            //       allowlist; KF_RCU treatment admits without acquire.
+            constants::BPF_SKC_TO_TCP_SOCK
+            | constants::BPF_SKC_TO_TCP6_SOCK
+            | constants::BPF_SKC_TO_TCP_TIMEWAIT_SOCK
+            | constants::BPF_SKC_TO_TCP_REQUEST_SOCK
+            | constants::BPF_SKC_TO_UDP6_SOCK
+            | constants::BPF_SKC_TO_UNIX_SOCK
+            | constants::BPF_SKC_TO_MPTCP_SOCK => {
+                let r1 = state.types.get(Reg::R1);
+                let ref_id = r1.get_ref_id();
+                let trusted = r1.is_trusted();
+                // PtrToSockCommon / PtrToSocket from ctx-field reads
+                // (sock_addr.sk, sock_ops.sk, …) carry neither ref_id nor
+                // an explicit TRUSTED flag, but the kernel treats them as
+                // valid input to skc_to_* — they originate from kernel-
+                // managed ctx state. Without this acceptance, R0 falls
+                // through to ScalarValue and downstream field reads
+                // reject as "Unsafe generic load … type ScalarValue".
+                let ctx_sock_ok = matches!(
+                    r1,
+                    RegType::PtrToSockCommon { .. }
+                        | RegType::PtrToSocket { .. }
+                        | RegType::PtrToTcpSock { .. }
+                );
+                if ref_id.is_some() || trusted || ctx_sock_ok {
+                    let type_name = match helper {
+                        constants::BPF_SKC_TO_TCP_SOCK => "tcp_sock",
+                        constants::BPF_SKC_TO_TCP6_SOCK => "tcp6_sock",
+                        constants::BPF_SKC_TO_TCP_TIMEWAIT_SOCK => "tcp_timewait_sock",
+                        constants::BPF_SKC_TO_TCP_REQUEST_SOCK => "tcp_request_sock",
+                        constants::BPF_SKC_TO_UDP6_SOCK => "udp6_sock",
+                        constants::BPF_SKC_TO_UNIX_SOCK => "unix_sock",
+                        constants::BPF_SKC_TO_MPTCP_SOCK => "mptcp_sock",
+                        _ => unreachable!(),
+                    };
+                    let id = new_ptr_id();
+                    state.types.set(
+                        Reg::R0,
+                        RegType::PtrToBtfIdOrNull {
+                            id,
+                            type_name:
+                                crate::analysis::machine::context::intern_btf_type_name_strict(
+                                    type_name,
+                                ),
+                            flags: PtrFlags::TRUSTED,
+                            ref_id,
+                        },
+                    );
+                }
+            }
+
+            // *_storage_get: R0 = PtrToMapValueOrNull keyed off the map (R1),
+            // not the optional initial-value arg (R3). Real programs commonly
+            // pass NULL for R3 (e.g. bpf_dctcp_init), and the prior version of
+            // this arm fell through to Scalar in that case. fix.
+            constants::BPF_SK_STORAGE_GET
+            | constants::BPF_TASK_STORAGE_GET
+            | constants::BPF_INODE_STORAGE_GET
+            | constants::BPF_CGRP_STORAGE_GET => {
+                let map_idx = match in_types.get(Reg::R1) {
+                    RegType::PtrToMapObject { map_idx } => map_idx,
+                    RegType::PtrToMapValue { map_idx, .. } => map_idx,
+                    _ => 0,
+                };
+                let id = new_ptr_id();
+                state.types.set(
+                    Reg::R0,
+                    RegType::PtrToMapValueOrNull {
+                        id,
+                        map_idx,
+                        map_uid: None,
+                    },
+                );
+            }
+
+            // tail_call: R0 is undefined on failure path
+            constants::BPF_TAIL_CALL => {
+                state.types.set(Reg::R0, RegType::ScalarValue);
+            }
+
+            constants::BPF_SKB_LOAD_BYTES => {
+                let mem_ptr_ty = in_types.get(Reg::R3);
+                if let RegType::PtrToStack { frame_level } = mem_ptr_ty
+                    && let Some(off) = state.domain.get_distance_fixed(Reg::R3, Reg::R10)
+                {
+                    let (_, hi) = state.domain.get_interval(Reg::R4);
+                    let len = if hi <= 0xFFFF { hi as i16 } else { 0 };
+                    if len > 0 {
+                        // Kernel check_stack_range_initialized clobber semantics
+                        // (verifier.c:8630 "helper can write anything into the
+                        // stack" → STACK_MISC; :8635-8640 spilled slot →
+                        // __mark_reg_unknown + whole-slot scrub_spilled_slot).
+                        // (see the mem_size_pairs clobber in call/transfer.rs).
+                        let stack = state.stack_at_mut(frame_level);
+                        if let Ok(off16) = i16::try_from(off) {
+                            stack.scrub_spilled_slots_for_write(off16, len as usize);
+                        }
+                        for i in 0..len {
+                            stack.invalidate_slot((off + i as i64) as i16);
+                        }
                     }
                 }
             }
-        }
 
-        constants::BPF_RINGBUF_RESERVE => {
-            let (_, hi) = state.domain.get_interval(Reg::R2);
-            state.types.set(
-                Reg::R0,
-                RegType::PtrToAllocMemOrNull {
-                    id: new_ptr_id(),
-                    mem_size: hi as u64,
-                    ref_id: None,
-                    dynptr_id: None,
-                    rdonly: false,
-                },
-            );
-        }
+            constants::BPF_RINGBUF_RESERVE => {
+                let (_, hi) = state.domain.get_interval(Reg::R2);
+                state.types.set(
+                    Reg::R0,
+                    RegType::PtrToAllocMemOrNull {
+                        id: new_ptr_id(),
+                        mem_size: hi as u64,
+                        ref_id: None,
+                        dynptr_id: None,
+                        rdonly: false,
+                    },
+                );
+            }
 
-        _ => {
-            state.types.set(Reg::R0, RegType::ScalarValue);
+            _ => {
+                state.types.set(Reg::R0, RegType::ScalarValue);
+            }
         }
-    }
     } // end if !routed
 
     // Clobber caller-saved registers - they are NOT readable after the call.
@@ -1561,7 +1547,11 @@ pub(crate) fn update_map_load_types(
             // same identity. Required for `bpf_spin_lock` / `unlock` to
             // pair across two LD_IMM64s of the same `.bss.<name>`
             // global. Other map kinds (HASH/ARRAY etc.) keep fresh ids.
-            id: if is_static_data_section { 0 } else { new_ptr_id() },
+            id: if is_static_data_section {
+                0
+            } else {
+                new_ptr_id()
+            },
             map_idx: map_fd,
             offset: Some(offset),
             // Direct map decl — no map_uid (the per-instance identity

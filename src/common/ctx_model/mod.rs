@@ -56,9 +56,7 @@ pub enum CtxFieldKind {
     /// kernel exposes them as PTR_TO_BUF with size from the iter's
     /// target map. We don't have map context generically, so use a
     /// generous fixed bound.
-    AllocMem {
-        mem_size: u64,
-    },
+    AllocMem { mem_size: u64 },
 
     /// Trusted pointer to a kernel struct (PTR_TO_BTF_ID equivalent).
     ///
@@ -94,17 +92,12 @@ pub enum CtxFieldKind {
     /// trailing `int ret` args (kernel constrains to `[-MAX_ERRNO, 0]`
     /// at attach). Materializes as `RegType::ScalarValue` with the
     /// destination register's interval domain bounded.
-    BoundedScalar {
-        lo: i64,
-        hi: i64,
-    },
+    BoundedScalar { lo: i64, hi: i64 },
     /// struct_ops `task_struct *task__ref` ctx-array slot — the
     /// `EntryArg::TrustedRefcountedTask` companion. Materializes as
     /// `RegType::PtrToTask { ref_id: Some(ref_id) }` so the matching
     /// `bpf_task_release(task)` consumes the entry-acquired ref.
-    RefcountedTask {
-        ref_id: u32,
-    },
+    RefcountedTask { ref_id: u32 },
 }
 
 /// A field in a BPF context struct.
@@ -396,7 +389,6 @@ fn entry_arg_trusted_for_attach(
     }
 }
 
-
 // ===========================================================================
 // Public API
 // ===========================================================================
@@ -511,193 +503,180 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
     // through to Scalar so per-iter-subtype ctx structs that we
     // don't model in detail (bpf_iter__tcp::uid, bpf_iter__task_file
     // ::fd, etc.) accept the loads the kernel admits.
-    if is_direct_typed_ctx && size > 0 && off >= 0 && (size & (size - 1)) == 0 && size <= 8
+    if is_direct_typed_ctx
+        && size > 0
+        && off >= 0
+        && (size & (size - 1)) == 0
+        && size <= 8
         && off % size as i16 == 0
         && let Some(args) = env.ctx.entry_args.as_ref()
-            && let Some(arg0) = args.first()
-        {
-            use crate::analysis::machine::context::{
-                EntryArg, intern_btf_type_name_strict,
-            };
-            use crate::analysis::transfer::field_tables::trusted_field_load;
-            use crate::parsing::btf::BtfFieldKind;
-            if let EntryArg::TrustedPtrBtfId { type_name, .. } = arg0 {
-                if size == 8
-                    && let Some(struct_id) = env.ctx.btf.find_struct_by_name(type_name)
-                    && let Some(info) =
-                        env.ctx.btf.field_at_offset(struct_id, off as u32)
+        && let Some(arg0) = args.first()
+    {
+        use crate::analysis::machine::context::{EntryArg, intern_btf_type_name_strict};
+        use crate::analysis::transfer::field_tables::trusted_field_load;
+        use crate::parsing::btf::BtfFieldKind;
+        if let EntryArg::TrustedPtrBtfId { type_name, .. } = arg0 {
+            if size == 8
+                && let Some(struct_id) = env.ctx.btf.find_struct_by_name(type_name)
+                && let Some(info) = env.ctx.btf.field_at_offset(struct_id, off as u32)
+            {
+                if let BtfFieldKind::Pointer { pointee_name, .. } = &info.kind
+                    && trusted_field_load(type_name, info.name)
                 {
-                    if let BtfFieldKind::Pointer {
-                        pointee_name,
-                        ..
-                    } = &info.kind
-                        && trusted_field_load(type_name, info.name)
-                    {
-                        if let Some(pointee) = pointee_name {
-                            let pointee_static = intern_btf_type_name_strict(pointee);
-                            // Iter payload pointers are
-                            // PTR_TO_BTF_ID_OR_NULL when they're the
-                            // iter's "current element" cursor (NULL on
-                            // terminating call). Per-subtype rules
-                            // mirror the lax-fallback path below; see
-                            // its comment for the full table.
-                            let is_iter_ctx = type_name.starts_with("bpf_iter__");
-                            let is_nullable_iter_payload = is_iter_ctx
-                                && match *type_name {
-                                    "bpf_iter__task"
-                                    | "bpf_iter__cgroup"
-                                    | "bpf_iter__tcp"
-                                    | "bpf_iter__udp"
-                                    | "bpf_iter__unix"
-                                    | "bpf_iter__netlink"
-                                    | "bpf_iter__bpf_link"
-                                    | "bpf_iter__bpf_prog"
-                                    | "bpf_iter__bpf_map" => off == 8,
-                                    "bpf_iter__task_file"
-                                    | "bpf_iter__task_vma" => off == 16,
-                                    "bpf_iter__bpf_map_elem"
-                                    | "bpf_iter__bpf_sk_storage_map" => off == 16 || off == 24,
-                                    _ => false,
-                                };
-                            return Some(CtxAccessInfo {
-                                kind: CtxFieldKind::TrustedPtr {
-                                    type_name: pointee_static,
-                                    nullable: is_nullable_iter_payload,
-                                    trusted: true,
-                                    tag_flags: crate::analysis::machine::reg_types::PtrFlags::empty(),
-                                },
-                                readable: true,
-                                writable: false,
-                            });
-                        } else {
-                            // void * iter ctx field (e.g. bpf_iter__bpf_map_elem.
-                            // {key,value}). Kernel exposes as PTR_TO_BUF sized to
-                            // the iter's target map; we use a generous fixed
-                            // bound since map context isn't tracked here.
-                            return Some(CtxAccessInfo {
-                                kind: CtxFieldKind::AllocMem { mem_size: 4096 },
-                                readable: true,
-                                writable: false,
-                            });
-                        }
-                    }
-                    // Scalar BTF field (INT/ENUM/FLOAT — pt_regs.ax /
-                    // .di / etc. are u64 register dumps; raw u64 args
-                    // for raw_tracepoint slot loads). Return Scalar so
-                    // downstream arithmetic doesn't hit
-                    // "Invalid pointer arithmetic" on a bogus ptr type.
-                    // Closes loop1::nested_loops (PT_REGS_RC(ctx)→m;
-                    // m * i was failing under the lax TrustedPtr
-                    // fallback).
-                    if matches!(info.kind, BtfFieldKind::Scalar) {
+                    if let Some(pointee) = pointee_name {
+                        let pointee_static = intern_btf_type_name_strict(pointee);
+                        // Iter payload pointers are
+                        // PTR_TO_BTF_ID_OR_NULL when they're the
+                        // iter's "current element" cursor (NULL on
+                        // terminating call). Per-subtype rules
+                        // mirror the lax-fallback path below; see
+                        // its comment for the full table.
+                        let is_iter_ctx = type_name.starts_with("bpf_iter__");
+                        let is_nullable_iter_payload = is_iter_ctx
+                            && match *type_name {
+                                "bpf_iter__task" | "bpf_iter__cgroup" | "bpf_iter__tcp"
+                                | "bpf_iter__udp" | "bpf_iter__unix" | "bpf_iter__netlink"
+                                | "bpf_iter__bpf_link" | "bpf_iter__bpf_prog"
+                                | "bpf_iter__bpf_map" => off == 8,
+                                "bpf_iter__task_file" | "bpf_iter__task_vma" => off == 16,
+                                "bpf_iter__bpf_map_elem" | "bpf_iter__bpf_sk_storage_map" => {
+                                    off == 16 || off == 24
+                                }
+                                _ => false,
+                            };
                         return Some(CtxAccessInfo {
-                            kind: CtxFieldKind::Scalar,
+                            kind: CtxFieldKind::TrustedPtr {
+                                type_name: pointee_static,
+                                nullable: is_nullable_iter_payload,
+                                trusted: true,
+                                tag_flags: crate::analysis::machine::reg_types::PtrFlags::empty(),
+                            },
+                            readable: true,
+                            writable: false,
+                        });
+                    } else {
+                        // void * iter ctx field (e.g. bpf_iter__bpf_map_elem.
+                        // {key,value}). Kernel exposes as PTR_TO_BUF sized to
+                        // the iter's target map; we use a generous fixed
+                        // bound since map context isn't tracked here.
+                        return Some(CtxAccessInfo {
+                            kind: CtxFieldKind::AllocMem { mem_size: 4096 },
                             readable: true,
                             writable: false,
                         });
                     }
                 }
-                // Fallback for non-allowlisted iter / sk_reuseport ctx
-                // fields: scalar for non-pointer-sized reads, lax
-                // TrustedPtr for 8-byte loads. For BPF_PROG-wrapped
-                // iter programs whose `bpf_iter__<subtype>` struct
-                // isn't in the program's BTF (compiled-out as
-                // unused — the wrapper accesses ctx fields by raw
-                // offset, not by named member), the convention is:
-                //   offset 0 → bpf_iter_meta *
-                //   offset 8 → struct <payload> *
-                // Pick the payload struct name from the SEC subtype via
-                // a small table covering the iter classes our corpus
-                // exercises. Closes cgroup_hierarchical_stats::dumper
-                // (subtype "cgroup" → field-8 pointee = "cgroup",
-                // accepted by `cgroup_rstat_flush`'s PtrToCgroup arg
-                // validator). Other subtypes fall back to
-                // TrustedPtr{"unknown"} which still keeps the chain
-                // typed.
-                if size == 8 {
-                    let pointee_name: &'static str = if off == 0 {
-                        "bpf_iter_meta"
-                    } else if off == 8 {
-                        match *type_name {
-                            "bpf_iter__cgroup" => "cgroup",
-                            "bpf_iter__task" => "task_struct",
-                            "bpf_iter__task_file" => "task_struct",
-                            "bpf_iter__task_vma" => "task_struct",
-                            "bpf_iter__bpf_map" => "bpf_map",
-                            "bpf_iter__bpf_link" => "bpf_link",
-                            "bpf_iter__bpf_prog" => "bpf_prog",
-                            "bpf_iter__tcp" => "sock_common",
-                            "bpf_iter__udp" => "udp_sock",
-                            "bpf_iter__unix" => "unix_sock",
-                            "bpf_iter__netlink" => "netlink_sock",
-                            "bpf_iter__sockmap" => "bpf_map",
-                            "bpf_iter__ksym" => "kallsym_iter",
-                            "bpf_iter__bpf_sk_storage_map" => "bpf_map",
-                            _ => "unknown",
-                        }
-                    } else {
-                        "unknown"
-                    };
-                    // Kernel iter `ctx_arg_info[N].reg_type` is
-                    // `PTR_TO_BTF_ID_OR_NULL` for the iter's "current
-                    // element" pointer — the iter sends a final NULL
-                    // terminating call so the program can do per-iter
-                    // cleanup. Per-subtype: single-element iters
-                    // (task, cgroup, tcp, udp, unix, netlink, bpf_map,
-                    // bpf_link, bpf_prog, sockmap, …) put the nullable
-                    // payload at offset 8. Multi-pointer iters
-                    // (task_file, task_vma, bpf_map_elem) have a
-                    // mixture: a non-null target/owner at offset 8
-                    // and the nullable per-element fields after.
-                    // Encode via a per-subtype non-null offset set.
-                    // Closes bpf_iter_test_kern3::dump_task without
-                    // regressing bpf_iter_bpf_hash_map (where map at
-                    // offset 8 is the iter target, never null).
-                    let non_null_payload_offsets: &[i16] = match *type_name {
-                        // task/cgroup/sock/etc: single-element, payload
-                        // at offset 8 is the iter cursor (NULL on
-                        // terminating call).
-                        "bpf_iter__task"
-                        | "bpf_iter__cgroup"
-                        | "bpf_iter__tcp"
-                        | "bpf_iter__udp"
-                        | "bpf_iter__unix"
-                        | "bpf_iter__netlink"
-                        | "bpf_iter__bpf_link"
-                        | "bpf_iter__bpf_prog"
-                        | "bpf_iter__bpf_map" => &[],
-                        // task_file / task_vma: offset 8 is task
-                        // (parent, never null while iter is alive),
-                        // offset 16 is the file/vma cursor (nullable).
-                        "bpf_iter__task_file" | "bpf_iter__task_vma" => &[8],
-                        // bpf_map_elem: offset 8 is the target map
-                        // (never null), key/value at 16/24 are
-                        // nullable.
-                        "bpf_iter__bpf_map_elem" | "bpf_iter__bpf_sk_storage_map" => &[8],
-                        // Sockmap and others: keep current non-null
-                        // typing (no test currently exercises a NULL
-                        // payload deref outside of single-element).
-                        _ => &[0, 8, 16, 24],
-                    };
-                    let nullable = off != 0 && !non_null_payload_offsets.contains(&off);
+                // Scalar BTF field (INT/ENUM/FLOAT — pt_regs.ax /
+                // .di / etc. are u64 register dumps; raw u64 args
+                // for raw_tracepoint slot loads). Return Scalar so
+                // downstream arithmetic doesn't hit
+                // "Invalid pointer arithmetic" on a bogus ptr type.
+                // Closes loop1::nested_loops (PT_REGS_RC(ctx)→m;
+                // m * i was failing under the lax TrustedPtr
+                // fallback).
+                if matches!(info.kind, BtfFieldKind::Scalar) {
                     return Some(CtxAccessInfo {
-                        kind: CtxFieldKind::TrustedPtr {
-                            type_name: pointee_name,
-                            nullable,
-                            trusted: true,
-                            tag_flags: crate::analysis::machine::reg_types::PtrFlags::empty(),
-                        },
+                        kind: CtxFieldKind::Scalar,
                         readable: true,
                         writable: false,
                     });
                 }
+            }
+            // Fallback for non-allowlisted iter / sk_reuseport ctx
+            // fields: scalar for non-pointer-sized reads, lax
+            // TrustedPtr for 8-byte loads. For BPF_PROG-wrapped
+            // iter programs whose `bpf_iter__<subtype>` struct
+            // isn't in the program's BTF (compiled-out as
+            // unused — the wrapper accesses ctx fields by raw
+            // offset, not by named member), the convention is:
+            //   offset 0 → bpf_iter_meta *
+            //   offset 8 → struct <payload> *
+            // Pick the payload struct name from the SEC subtype via
+            // a small table covering the iter classes our corpus
+            // exercises. Closes cgroup_hierarchical_stats::dumper
+            // (subtype "cgroup" → field-8 pointee = "cgroup",
+            // accepted by `cgroup_rstat_flush`'s PtrToCgroup arg
+            // validator). Other subtypes fall back to
+            // TrustedPtr{"unknown"} which still keeps the chain
+            // typed.
+            if size == 8 {
+                let pointee_name: &'static str = if off == 0 {
+                    "bpf_iter_meta"
+                } else if off == 8 {
+                    match *type_name {
+                        "bpf_iter__cgroup" => "cgroup",
+                        "bpf_iter__task" => "task_struct",
+                        "bpf_iter__task_file" => "task_struct",
+                        "bpf_iter__task_vma" => "task_struct",
+                        "bpf_iter__bpf_map" => "bpf_map",
+                        "bpf_iter__bpf_link" => "bpf_link",
+                        "bpf_iter__bpf_prog" => "bpf_prog",
+                        "bpf_iter__tcp" => "sock_common",
+                        "bpf_iter__udp" => "udp_sock",
+                        "bpf_iter__unix" => "unix_sock",
+                        "bpf_iter__netlink" => "netlink_sock",
+                        "bpf_iter__sockmap" => "bpf_map",
+                        "bpf_iter__ksym" => "kallsym_iter",
+                        "bpf_iter__bpf_sk_storage_map" => "bpf_map",
+                        _ => "unknown",
+                    }
+                } else {
+                    "unknown"
+                };
+                // Kernel iter `ctx_arg_info[N].reg_type` is
+                // `PTR_TO_BTF_ID_OR_NULL` for the iter's "current
+                // element" pointer — the iter sends a final NULL
+                // terminating call so the program can do per-iter
+                // cleanup. Per-subtype: single-element iters
+                // (task, cgroup, tcp, udp, unix, netlink, bpf_map,
+                // bpf_link, bpf_prog, sockmap, …) put the nullable
+                // payload at offset 8. Multi-pointer iters
+                // (task_file, task_vma, bpf_map_elem) have a
+                // mixture: a non-null target/owner at offset 8
+                // and the nullable per-element fields after.
+                // Encode via a per-subtype non-null offset set.
+                // Closes bpf_iter_test_kern3::dump_task without
+                // regressing bpf_iter_bpf_hash_map (where map at
+                // offset 8 is the iter target, never null).
+                let non_null_payload_offsets: &[i16] = match *type_name {
+                    // task/cgroup/sock/etc: single-element, payload
+                    // at offset 8 is the iter cursor (NULL on
+                    // terminating call).
+                    "bpf_iter__task" | "bpf_iter__cgroup" | "bpf_iter__tcp" | "bpf_iter__udp"
+                    | "bpf_iter__unix" | "bpf_iter__netlink" | "bpf_iter__bpf_link"
+                    | "bpf_iter__bpf_prog" | "bpf_iter__bpf_map" => &[],
+                    // task_file / task_vma: offset 8 is task
+                    // (parent, never null while iter is alive),
+                    // offset 16 is the file/vma cursor (nullable).
+                    "bpf_iter__task_file" | "bpf_iter__task_vma" => &[8],
+                    // bpf_map_elem: offset 8 is the target map
+                    // (never null), key/value at 16/24 are
+                    // nullable.
+                    "bpf_iter__bpf_map_elem" | "bpf_iter__bpf_sk_storage_map" => &[8],
+                    // Sockmap and others: keep current non-null
+                    // typing (no test currently exercises a NULL
+                    // payload deref outside of single-element).
+                    _ => &[0, 8, 16, 24],
+                };
+                let nullable = off != 0 && !non_null_payload_offsets.contains(&off);
                 return Some(CtxAccessInfo {
-                    kind: CtxFieldKind::Scalar,
+                    kind: CtxFieldKind::TrustedPtr {
+                        type_name: pointee_name,
+                        nullable,
+                        trusted: true,
+                        tag_flags: crate::analysis::machine::reg_types::PtrFlags::empty(),
+                    },
                     readable: true,
                     writable: false,
                 });
             }
+            return Some(CtxAccessInfo {
+                kind: CtxFieldKind::Scalar,
+                readable: true,
+                writable: false,
+            });
         }
+    }
 
     if matches!(
         prog_kind,
@@ -713,50 +692,52 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
     {
         let idx = (off / 8) as usize;
         if let Some(args) = env.ctx.entry_args.as_ref()
-            && idx < args.len() {
-                use crate::analysis::machine::context::EntryArg;
-                // tp_btf attach targets carry per-arg PTR_MAYBE_NULL in
-                // the kernel's tracepoint BTF (which we don't ship). The
-                // BPF program's declared arg type loses that flag — e.g.
-                // `BPF_PROG(h, struct foo *nullable_ctx)` resolves to
-                // TrustedPtr{nullable:false} from our BTF resolver, but
-                // the tracepoint marks slot N as nullable. Consult the
-                // static (target, idx) table so the kernel's
-                // "trusted_ptr_or_null_" rejection lands.
-                let nullable_from_table = matches!(
-                    env.ctx.attach_flavor.as_deref(),
-                    Some("tp_btf") | Some("raw_tp") | Some("raw_tp.w")
-                ) && env
-                    .ctx
-                    .attach_subtype
-                    .as_deref()
-                    .map(|tp| tp_btf_arg_is_maybe_null(tp, idx as u8))
-                    .unwrap_or(false);
-                let attach_trusted =
-                    entry_arg_trusted_for_attach(prog_kind, env.ctx.attach_flavor.as_deref());
-                let kind = match &args[idx] {
-                    EntryArg::Scalar => CtxFieldKind::Scalar,
-                    EntryArg::TrustedPtrBtfId { type_name, nullable } => {
-                        CtxFieldKind::TrustedPtr {
-                            type_name,
-                            nullable: *nullable || nullable_from_table,
-                            trusted: attach_trusted,
-                            tag_flags: crate::analysis::machine::reg_types::PtrFlags::empty(),
-                        }
-                    }
-                    EntryArg::BoundedScalar { lo, hi } => {
-                        CtxFieldKind::BoundedScalar { lo: *lo, hi: *hi }
-                    }
-                    EntryArg::TrustedRefcountedTask { ref_id } => {
-                        CtxFieldKind::RefcountedTask { ref_id: *ref_id }
-                    }
-                };
-                return Some(CtxAccessInfo {
-                    kind,
-                    readable: true,
-                    writable: false,
-                });
-            }
+            && idx < args.len()
+        {
+            use crate::analysis::machine::context::EntryArg;
+            // tp_btf attach targets carry per-arg PTR_MAYBE_NULL in
+            // the kernel's tracepoint BTF (which we don't ship). The
+            // BPF program's declared arg type loses that flag — e.g.
+            // `BPF_PROG(h, struct foo *nullable_ctx)` resolves to
+            // TrustedPtr{nullable:false} from our BTF resolver, but
+            // the tracepoint marks slot N as nullable. Consult the
+            // static (target, idx) table so the kernel's
+            // "trusted_ptr_or_null_" rejection lands.
+            let nullable_from_table = matches!(
+                env.ctx.attach_flavor.as_deref(),
+                Some("tp_btf") | Some("raw_tp") | Some("raw_tp.w")
+            ) && env
+                .ctx
+                .attach_subtype
+                .as_deref()
+                .map(|tp| tp_btf_arg_is_maybe_null(tp, idx as u8))
+                .unwrap_or(false);
+            let attach_trusted =
+                entry_arg_trusted_for_attach(prog_kind, env.ctx.attach_flavor.as_deref());
+            let kind = match &args[idx] {
+                EntryArg::Scalar => CtxFieldKind::Scalar,
+                EntryArg::TrustedPtrBtfId {
+                    type_name,
+                    nullable,
+                } => CtxFieldKind::TrustedPtr {
+                    type_name,
+                    nullable: *nullable || nullable_from_table,
+                    trusted: attach_trusted,
+                    tag_flags: crate::analysis::machine::reg_types::PtrFlags::empty(),
+                },
+                EntryArg::BoundedScalar { lo, hi } => {
+                    CtxFieldKind::BoundedScalar { lo: *lo, hi: *hi }
+                }
+                EntryArg::TrustedRefcountedTask { ref_id } => {
+                    CtxFieldKind::RefcountedTask { ref_id: *ref_id }
+                }
+            };
+            return Some(CtxAccessInfo {
+                kind,
+                readable: true,
+                writable: false,
+            });
+        }
         // fallback for fentry/LSM/tp_btf where
         // `resolve_func_args` returns the BPF_PROG-wrapper signature
         // rather than the user-declared args (the kernel resolves these
@@ -889,17 +870,18 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
     // (The kernel additionally denies bound_dev_if(0)/priority(20) under
     // post_bind*; not modeled here.)
     if prog_kind == ProgramKind::CgroupSock
-        && let Some(sub) = env.ctx.attach_subtype.as_deref() {
-            let denied = match sub {
-                "sock_create" | "sock_release" => (24..48).contains(&off),
-                "post_bind4" => off == 16 || (28..44).contains(&off),
-                "post_bind6" => off == 16 || off == 24,
-                _ => false,
-            };
-            if denied {
-                return None;
-            }
+        && let Some(sub) = env.ctx.attach_subtype.as_deref()
+    {
+        let denied = match sub {
+            "sock_create" | "sock_release" => (24..48).contains(&off),
+            "post_bind4" => off == 16 || (28..44).contains(&off),
+            "post_bind6" => off == 16 || off == 24,
+            _ => false,
+        };
+        if denied {
+            return None;
         }
+    }
 
     let ctx_kind = match prog_kind {
         ProgramKind::Tracing => match (env.ctx.attach_kind, env.ctx.kfunc.as_deref()) {
@@ -916,20 +898,17 @@ pub fn validate_ctx_access(env: &VerifierEnv, off: i16, size: i64) -> Option<Ctx
         return Some(info);
     }
 
-    let (base, extended) = match get_field_tables(
-        ctx_kind,
-        prog_kind,
-        env.ctx.attach_subtype.as_deref(),
-    ) {
-        Some(tables) => tables,
-        None => {
-            return Some(CtxAccessInfo {
-                kind: CtxFieldKind::Scalar,
-                readable: true,
-                writable: false,
-            });
-        }
-    };
+    let (base, extended) =
+        match get_field_tables(ctx_kind, prog_kind, env.ctx.attach_subtype.as_deref()) {
+            Some(tables) => tables,
+            None => {
+                return Some(CtxAccessInfo {
+                    kind: CtxFieldKind::Scalar,
+                    readable: true,
+                    writable: false,
+                });
+            }
+        };
 
     // Search base fields, then extended fields
     let mut info = lookup_field(base, off, size).or_else(|| lookup_field(extended, off, size))?;

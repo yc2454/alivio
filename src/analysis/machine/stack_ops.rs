@@ -36,8 +36,7 @@ impl State {
         // The SPILL-vs-MISC byte-kind distinction matters for state
         // subsumption: the kernel keeps such paths apart on byte kinds.
         if !(is_aligned && (matches!(reg_type, RegType::ScalarValue) || size == MemSize::U64)) {
-            let is_null =
-                matches!(reg_type, RegType::ScalarValue) && self.domain.proven_zero(reg);
+            let is_null = matches!(reg_type, RegType::ScalarValue) && self.domain.proven_zero(reg);
             let kind = if is_null {
                 crate::analysis::machine::stack_state::StackSlotKind::Zero
             } else {
@@ -152,9 +151,7 @@ impl State {
         // const/width checks) linked consts and truncated values the
         // kernel keeps unlinked, feeding the sync_linked_regs-mirror
         // fanout with links the kernel can't have.
-        let slot_scalar_id = if is_aligned
-            && matches!(preserved_type, RegType::ScalarValue)
-        {
+        let slot_scalar_id = if is_aligned && matches!(preserved_type, RegType::ScalarValue) {
             let umax: u64 = if min < 0 { u64::MAX } else { max as u64 };
             let reg_width = 64 - umax.leading_zeros() as usize;
             let reg_value_fits = reg_width <= size.bytes() * 8;
@@ -170,17 +167,12 @@ impl State {
                 // lag the interval domain, so a pinned interval counts
                 // as const too (a kernel reg with umin==umax always has
                 // const var_off).
-                let is_const = min == max
-                    || self
-                        .tnums
-                        .get(&reg)
-                        .map(|t| t.is_const())
-                        .unwrap_or(false);
+                let is_const =
+                    min == max || self.tnums.get(&reg).map(|t| t.is_const()).unwrap_or(false);
                 match self.scalar_ids.get(&reg).copied() {
                     Some(id) => Some(id),
                     None if !is_const => {
-                        let new_id =
-                            crate::analysis::machine::reg_types::new_scalar_id();
+                        let new_id = crate::analysis::machine::reg_types::new_scalar_id();
                         self.scalar_ids.insert(reg, new_id);
                         Some(new_id)
                     }
@@ -203,36 +195,33 @@ impl State {
         // `ZEXT_64( EXTRACT_{size*8}( bcf_reg_expr(reg, sz==32) ) )`.
         // Gate matches `check_stack_write_fixed_off` (verifier.c:5598):
         // an 8-byte-aligned scalar spill only.
-        let slot_bcf_expr: Option<u32> = if is_aligned
-            && size.bytes() <= 8
-            && matches!(preserved_type, RegType::ScalarValue)
-        {
-            if let Some(src_idx) = reg.bcf_idx() {
-                let src_tnum =
-                    self.tnums.get(&reg).cloned().unwrap_or(Tnum::unknown());
-                if size == MemSize::U64 || src_tnum.is_const() {
-                    // size == BPF_REG_SIZE → bcf_mov not called; const
-                    // var_off → kernel `!tnum_is_const` gate skips
-                    // bcf_mov. Either way: verbatim copy_register_state.
-                    self.bcf.as_ref().and_then(|b| b.get_reg(src_idx))
+        let slot_bcf_expr: Option<u32> =
+            if is_aligned && size.bytes() <= 8 && matches!(preserved_type, RegType::ScalarValue) {
+                if let Some(src_idx) = reg.bcf_idx() {
+                    let src_tnum = self.tnums.get(&reg).cloned().unwrap_or(Tnum::unknown());
+                    if size == MemSize::U64 || src_tnum.is_const() {
+                        // size == BPF_REG_SIZE → bcf_mov not called; const
+                        // var_off → kernel `!tnum_is_const` gate skips
+                        // bcf_mov. Either way: verbatim copy_register_state.
+                        self.bcf.as_ref().and_then(|b| b.get_reg(src_idx))
+                    } else {
+                        let sz_bits = (size.bytes() as u16) * 8;
+                        let subreg = sz_bits == 32;
+                        let src_bounds = bcf_reg_bounds(self, reg);
+                        self.bcf.as_mut().map(|b| {
+                            let mut e = b.reg_expr(src_idx, &src_bounds, subreg);
+                            if sz_bits != 32 {
+                                e = b.add_extract(sz_bits, e);
+                            }
+                            b.add_extend(false, 64 - sz_bits, 64, e)
+                        })
+                    }
                 } else {
-                    let sz_bits = (size.bytes() as u16) * 8;
-                    let subreg = sz_bits == 32;
-                    let src_bounds = bcf_reg_bounds(self, reg);
-                    self.bcf.as_mut().map(|b| {
-                        let mut e = b.reg_expr(src_idx, &src_bounds, subreg);
-                        if sz_bits != 32 {
-                            e = b.add_extract(sz_bits, e);
-                        }
-                        b.add_extend(false, 64 - sz_bits, 64, e)
-                    })
+                    None
                 }
             } else {
                 None
-            }
-        } else {
-            None
-        };
+            };
 
         let spilled = SpilledReg {
             source_reg,
@@ -253,7 +242,7 @@ impl State {
             precise: is_aligned && size == MemSize::U64 && self.precise_regs.contains(&reg),
             iterator: None,
             dynptr: None,
-                    irq_flag: None,
+            irq_flag: None,
             bcf_expr: slot_bcf_expr,
             // Carry the const pointer offset (kernel copy_register_state
             // preserves var_off/off across spill). Only meaningful for an
@@ -289,10 +278,10 @@ impl State {
                         scalar_id: None,
                         scalar_id_off: None,
                         precise: false,
-            ptr_const_off: None,
+                        ptr_const_off: None,
                         iterator: None,
                         dynptr: None,
-                    irq_flag: None,
+                        irq_flag: None,
                         bcf_expr: None,
                         // Trailing byte of a spilled register (kernel STACK_SPILL).
                         kind: crate::analysis::machine::stack_state::StackSlotKind::Spill,
@@ -402,7 +391,7 @@ impl State {
             ptr_const_off: None,
             iterator: None,
             dynptr: None,
-                    irq_flag: None,
+            irq_flag: None,
             // Const-imm store: kernel `is_bpf_st_mem` path builds a
             // known-const fake_reg whose `var_off` is const, so the
             // `bcf_mov` gate is skipped and no variable expr is carried.
@@ -437,10 +426,10 @@ impl State {
                         scalar_id: None,
                         scalar_id_off: None,
                         precise: false,
-            ptr_const_off: None,
+                        ptr_const_off: None,
                         iterator: None,
                         dynptr: None,
-                    irq_flag: None,
+                        irq_flag: None,
                         bcf_expr: None,
                         // Trailing byte shares the store's slot kind (STACK_ZERO
                         // for a zero store, else the known-value STACK_SPILL).
@@ -524,7 +513,6 @@ impl State {
         // 3. Offset must be 8-byte aligned
         let is_aligned = (offset % 8) == 0;
         let sizes_match = spilled.source_reg.is_some() && spilled.size == size;
-
 
         // Try to extract a precise (sub-)value when reading a narrower
         // (or unaligned) slice of a wider spill whose enclosing tnum
@@ -709,10 +697,7 @@ impl State {
                 && matches!(spilled.reg_type, RegType::ScalarValue)
                 && self.domain.get_fixed_value(dst).is_none()
                 && !self.get_tnum(dst).is_const()
-                && self
-                    .bcf
-                    .as_ref()
-                    .is_some_and(|b| b.replay_share_slot_vars)
+                && self.bcf.as_ref().is_some_and(|b| b.replay_share_slot_vars)
                 && let Some(idx) = dst.bcf_idx()
             {
                 // Kernel demand-through-copy: the bt walk traces a COPY of
@@ -747,7 +732,13 @@ impl State {
                         .collect();
                     eprintln!(
                         "[slot-share] pc={} off={} spilled_id={:?} dst={:?} post_dst_bind={:?} pre_fill_binding={:?} adopted={:?} ids=[{}]",
-                        self.pc, offset, spilled.scalar_id, dst, dst_bind, pre_fill_dst_binding, adopted,
+                        self.pc,
+                        offset,
+                        spilled.scalar_id,
+                        dst,
+                        dst_bind,
+                        pre_fill_dst_binding,
+                        adopted,
                         ids.join(" ")
                     );
                 }
@@ -838,10 +829,7 @@ impl State {
     /// bound preserved across spill/fill is insufficient on its own to
     /// reconstruct a tighter `r - @data_end` bound that the access-site
     /// `end_ok` check depends on.
-    pub fn save_secondary_anchor_info(
-        &self,
-        reg: Reg,
-    ) -> (Option<Reg>, Option<i64>, Option<i64>) {
+    pub fn save_secondary_anchor_info(&self, reg: Reg) -> (Option<Reg>, Option<i64>, Option<i64>) {
         let secondary = match self.types.get(reg) {
             RegType::PtrToPacket | RegType::PtrToPacketMeta => Some(Reg::AnchorDataEnd),
             RegType::PtrToPacketEnd => Some(Reg::AnchorData),
@@ -865,14 +853,15 @@ impl State {
         reg: Reg,
     ) -> (Option<i64>, Option<u64>, Option<i64>, Option<u32>) {
         if let NumericDomain::Interval(ref ivl) = self.domain
-            && let Some(ptr_off) = ivl.get_ptr_offset(reg) {
-                return (
-                    Some(ptr_off.off),
-                    Some(ptr_off.var_off),
-                    ptr_off.range,
-                    ptr_off.id,
-                );
-            }
+            && let Some(ptr_off) = ivl.get_ptr_offset(reg)
+        {
+            return (
+                Some(ptr_off.off),
+                Some(ptr_off.var_off),
+                ptr_off.range,
+                ptr_off.id,
+            );
+        }
         (None, None, None, None)
     }
 
@@ -952,32 +941,34 @@ impl State {
                     // off/var_off/range here overrides the off=0
                     // default set above for spills taken after
                     // in-value pointer arithmetic.
-                    RegType::PtrToMapValue { .. }
-                    | RegType::PtrToMapValueOrNull { .. } => Some(Reg::Zero),
+                    RegType::PtrToMapValue { .. } | RegType::PtrToMapValueOrNull { .. } => {
+                        Some(Reg::Zero)
+                    }
                     _ => None, // fallback is None
                 };
 
                 if let (Some(anchor_reg), Some(o)) = (anchor, off)
-                    && let NumericDomain::Interval(ref mut ivl) = self.domain {
-                        let v = var_off.unwrap_or(0);
-                        let ptr_offset = crate::domains::interval::PtrOffset {
-                            anchor: anchor_reg,
-                            off: *o,
-                            var_off: v,
-                            range: *range,
-                            // id round-trips through the spill slot so
-                            // find_good_pkt_pointers-mirror propagation
-                            // can match spilled pkt pointers by ID (the
-                            // kernel's rule).
-                            id: *id,
-                            // mark_pkt_end relationship not round-tripped
-                            // through spill/fill; conservative None is sound.
-                            pkt_end_rel: None,
-                        };
+                    && let NumericDomain::Interval(ref mut ivl) = self.domain
+                {
+                    let v = var_off.unwrap_or(0);
+                    let ptr_offset = crate::domains::interval::PtrOffset {
+                        anchor: anchor_reg,
+                        off: *o,
+                        var_off: v,
+                        range: *range,
+                        // id round-trips through the spill slot so
+                        // find_good_pkt_pointers-mirror propagation
+                        // can match spilled pkt pointers by ID (the
+                        // kernel's rule).
+                        id: *id,
+                        // mark_pkt_end relationship not round-tripped
+                        // through spill/fill; conservative None is sound.
+                        pkt_end_rel: None,
+                    };
 
-                        // Set the PtrOffset on the register
-                        ivl.get_mut(reg).ptr_offset = Some(ptr_offset);
-                    }
+                    // Set the PtrOffset on the register
+                    ivl.get_mut(reg).ptr_offset = Some(ptr_offset);
+                }
             }
             None => {}
         }

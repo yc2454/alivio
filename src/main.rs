@@ -27,14 +27,14 @@ mod refinement;
 mod testing;
 
 use crate::ast::ProgramKind;
-use crate::cli::{
-    Cli, Cmd, DevCmd, ElfArgs, InputKind, LegacySelftestCmd, PccCmd, VerifyArgs,
-};
+use crate::cli::{Cli, Cmd, DevCmd, ElfArgs, InputKind, LegacySelftestCmd, PccCmd, VerifyArgs};
 use crate::common::config::{DomainMode, VerifierConfig};
 use crate::parsing::elf::program_kind_for_object;
 use crate::parsing::elf::{list_section_names, load_maps, load_raw_programs};
 use crate::pcc::ProgramCertificate;
-use crate::testing::legacy_selftest::{selftest_list, selftest_run, selftest_single, selftest_suite};
+use crate::testing::legacy_selftest::{
+    selftest_list, selftest_run, selftest_single, selftest_suite,
+};
 use crate::testing::logging;
 use crate::testing::pcc_test::{pcc_cert_run, pcc_test_single};
 use crate::testing::runner::{AnalysisResult, Analyzer, is_code_section};
@@ -136,7 +136,10 @@ fn run_elf_list(path: &str) {
     match load_maps(path) {
         Ok(maps) => {
             for (i, m) in maps.iter().enumerate() {
-                println!("  [{}] {} (k:{}, v:{})", i, m.name, m.key_size, m.value_size);
+                println!(
+                    "  [{}] {} (k:{}, v:{})",
+                    i, m.name, m.key_size, m.value_size
+                );
             }
         }
         Err(e) => eprintln!("  Error: {:?}", e),
@@ -397,8 +400,19 @@ fn run_pcc(sub: PccCmd, config: VerifierConfig) {
 
 fn run_dev(sub: DevCmd, config: VerifierConfig) {
     match sub {
-        DevCmd::SelftestFile { src, defines, upstream, func } => {
-            run_modern_selftest_file(&src, defines.as_deref(), upstream.as_deref(), func.as_deref(), &config);
+        DevCmd::SelftestFile {
+            src,
+            defines,
+            upstream,
+            func,
+        } => {
+            run_modern_selftest_file(
+                &src,
+                defines.as_deref(),
+                upstream.as_deref(),
+                func.as_deref(),
+                &config,
+            );
         }
         DevCmd::SelftestSuite { progs_dir } => {
             run_modern_selftest_dir(&progs_dir, &config);
@@ -629,11 +643,12 @@ fn sweep_modern_and_legacy(
     use crate::testing::selftest::runner;
 
     let headers = std::path::PathBuf::from("selftests/headers").join(DEFAULT_HEADERS_TAG);
-    let modern = runner::run_dir_filtered(std::path::Path::new(progs_dir), &headers, config, filter)
-        .unwrap_or_else(|e| {
-            eprintln!("Error sweeping modern {progs_dir}: {e:?}");
-            Vec::new()
-        });
+    let modern =
+        runner::run_dir_filtered(std::path::Path::new(progs_dir), &headers, config, filter)
+            .unwrap_or_else(|e| {
+                eprintln!("Error sweeping modern {progs_dir}: {e:?}");
+                Vec::new()
+            });
     let mut bl = Baseline::from_reports(DEFAULT_HEADERS_TAG, &modern);
 
     let mut legacy_files = Vec::new();
@@ -694,11 +709,12 @@ fn sweep_modern_only(
     use crate::testing::selftest::runner;
 
     let headers = std::path::PathBuf::from("selftests/headers").join(DEFAULT_HEADERS_TAG);
-    let modern = runner::run_dir_filtered(std::path::Path::new(progs_dir), &headers, config, filter)
-        .unwrap_or_else(|e| {
-            eprintln!("Error sweeping modern {progs_dir}: {e:?}");
-            Vec::new()
-        });
+    let modern =
+        runner::run_dir_filtered(std::path::Path::new(progs_dir), &headers, config, filter)
+            .unwrap_or_else(|e| {
+                eprintln!("Error sweeping modern {progs_dir}: {e:?}");
+                Vec::new()
+            });
     Baseline::from_reports(DEFAULT_HEADERS_TAG, &modern)
 }
 
@@ -969,7 +985,9 @@ fn validate_upstream_root_progs_dir(upstream_root: &str) -> String {
         for p in &missing {
             eprintln!("    {p}");
         }
-        eprintln!("Hint: pass the kernel-checkout root (e.g. `vendor/linux`), not the selftests dir.");
+        eprintln!(
+            "Hint: pass the kernel-checkout root (e.g. `vendor/linux`), not the selftests dir."
+        );
         std::process::exit(2);
     }
     root.join("tools/testing/selftests/bpf/progs")

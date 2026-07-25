@@ -298,45 +298,45 @@ fn transfer_endian(
         state.clear_scalar_id(dst);
         state.precise_regs.remove(&dst);
     } else {
-    match op {
-        EndianOp::ToLe => {
-            match size {
-                64 => { /* Identity for LE host; Keep constraints if Width::W64 */ }
-                32 => state.domain.apply_and_imm(dst, 0xFFFF_FFFF),
-                16 => state.domain.apply_and_imm(dst, 0xFFFF),
-                _ => state.domain.forget(dst),
+        match op {
+            EndianOp::ToLe => {
+                match size {
+                    64 => { /* Identity for LE host; Keep constraints if Width::W64 */ }
+                    32 => state.domain.apply_and_imm(dst, 0xFFFF_FFFF),
+                    16 => state.domain.apply_and_imm(dst, 0xFFFF),
+                    _ => state.domain.forget(dst),
+                }
+            }
+            EndianOp::ToBe => {
+                // Big Endian always swaps on LE host -> Value changes non-linearly
+                // We must forget the old value.
+                // However, we know the new max value based on the swap size.
+                match size {
+                    16 => state.domain.apply_and_imm(dst, 0xFFFF),
+                    32 => state.domain.apply_and_imm(dst, 0xFFFF_FFFF),
+                    // 64-bit BE swap: Result is u64 (if Width::W64) or u32 (if Width::W32)
+                    64 => state.domain.forget(dst),
+                    _ => state.domain.forget(dst),
+                }
+            }
+            EndianOp::Bswap => {
+                // BPF v4 BSWAP: byte-swap of the low `size` bits, independent of
+                // host endianness. Result fits in `size` bits — narrow, but the
+                // exact value is non-linear so the prior interval is forgotten.
+                match size {
+                    16 => state.domain.apply_and_imm(dst, 0xFFFF),
+                    32 => state.domain.apply_and_imm(dst, 0xFFFF_FFFF),
+                    64 => state.domain.forget(dst),
+                    _ => state.domain.forget(dst),
+                }
             }
         }
-        EndianOp::ToBe => {
-            // Big Endian always swaps on LE host -> Value changes non-linearly
-            // We must forget the old value.
-            // However, we know the new max value based on the swap size.
-            match size {
-                16 => state.domain.apply_and_imm(dst, 0xFFFF),
-                32 => state.domain.apply_and_imm(dst, 0xFFFF_FFFF),
-                // 64-bit BE swap: Result is u64 (if Width::W64) or u32 (if Width::W32)
-                64 => state.domain.forget(dst),
-                _ => state.domain.forget(dst),
-            }
-        }
-        EndianOp::Bswap => {
-            // BPF v4 BSWAP: byte-swap of the low `size` bits, independent of
-            // host endianness. Result fits in `size` bits — narrow, but the
-            // exact value is non-linear so the prior interval is forgotten.
-            match size {
-                16 => state.domain.apply_and_imm(dst, 0xFFFF),
-                32 => state.domain.apply_and_imm(dst, 0xFFFF_FFFF),
-                64 => state.domain.forget(dst),
-                _ => state.domain.forget(dst),
-            }
-        }
-    }
 
-    // 3. Handle Implicit 32-bit Zero Extension
-    // This provides a tighter bound [0, U32_MAX] even if the operation was "Unknown".
-    if width == Width::W32 {
-        state.domain.apply_and_imm(dst, 0xFFFF_FFFF);
-    }
+        // 3. Handle Implicit 32-bit Zero Extension
+        // This provides a tighter bound [0, U32_MAX] even if the operation was "Unknown".
+        if width == Width::W32 {
+            state.domain.apply_and_imm(dst, 0xFFFF_FFFF);
+        }
     } // end !kernel_faithful_alu (zone-mode precise model)
 
     // BCF symbolic mirror for BPF_END. Kernel `check_alu_op` BPF_END
@@ -351,29 +351,26 @@ fn transfer_endian(
     // instead of `RegBounds::unknown()`, so the bound preds
     // (`VAR ULE 0xffff`) appear in zovia's bcf graph too.
     if let Some(d) = dst.bcf_idx()
-        && let Some(bcf) = state.bcf.as_mut() {
-            // Step 1 (SRC_OP read): materialize dst with PRE-be16 bounds
-            // (snapshot before apply_and_imm above). Kernel's
-            // `check_reg_arg(dst, SRC_OP)` reads dst as a source for
-            // bcf — emits `VAR_U32 + bound preds` if the prior tnum
-            // fit u32. Without this, zovia misses the bound-pred
-            // conjuncts the kernel emits at the SRC read.
-            let _src_expr = bcf.reg_expr(d, &pre_endian_bounds, false);
+        && let Some(bcf) = state.bcf.as_mut()
+    {
+        // Step 1 (SRC_OP read): materialize dst with PRE-be16 bounds
+        // (snapshot before apply_and_imm above). Kernel's
+        // `check_reg_arg(dst, SRC_OP)` reads dst as a source for
+        // bcf — emits `VAR_U32 + bound preds` if the prior tnum
+        // fit u32. Without this, zovia misses the bound-pred
+        // conjuncts the kernel emits at the SRC read.
+        let _src_expr = bcf.reg_expr(d, &pre_endian_bounds, false);
 
-            // Step 2 (DST_OP write): kernel `mark_reg_unknown` clears
-            // `bcf_expr = -1`, so next bcf_reg_expr re-materializes
-            // fresh. Mirror by clearing the cache and re-emitting an
-            // unbounded VAR_64 (matches kernel-shape: byte-swap result
-            // is not abstractly bounded post-`mark_reg_unknown`,
-            // independent of zovia's tighter domain bound from
-            // apply_and_imm above which is preserved for AI precision).
-            bcf.clear_reg(d);
-            let _ = bcf.reg_expr(
-                d,
-                &crate::refinement::symbolic::RegBounds::unknown(),
-                false,
-            );
-        }
+        // Step 2 (DST_OP write): kernel `mark_reg_unknown` clears
+        // `bcf_expr = -1`, so next bcf_reg_expr re-materializes
+        // fresh. Mirror by clearing the cache and re-emitting an
+        // unbounded VAR_64 (matches kernel-shape: byte-swap result
+        // is not abstractly bounded post-`mark_reg_unknown`,
+        // independent of zovia's tighter domain bound from
+        // apply_and_imm above which is preserved for AI precision).
+        bcf.clear_reg(d);
+        let _ = bcf.reg_expr(d, &crate::refinement::symbolic::RegBounds::unknown(), false);
+    }
 
     state.pc += 1;
     vec![state]
@@ -396,11 +393,15 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
     // tighter rule fires only inside the cb pass.
     if env.analyzing_exception_cb
         && state.at_main_frame()
-        && matches!(env.ctx.attach_flavor.as_deref(), Some("fentry") | Some("fexit"))
-        && (r0_min != 0 || r0_max != 0) {
-            env.fail(VerificationError::InvalidReturnCode { pc: state.pc });
-            return vec![];
-        }
+        && matches!(
+            env.ctx.attach_flavor.as_deref(),
+            Some("fentry") | Some("fexit")
+        )
+        && (r0_min != 0 || r0_max != 0)
+    {
+        env.fail(VerificationError::InvalidReturnCode { pc: state.pc });
+        return vec![];
+    }
 
     // Kernel-aligned: main-program exit return-value precision sink
     // (verifier.c v6.15 `check_return_code` calls
@@ -418,17 +419,19 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
     // faithful mirror of "kernel reaches enforce_retval"). Per-path
     // lineage walk via parent_cache_id.
     let exit_enforces_retval = env.ctx.attach_flavor.as_deref() != Some("freplace")
-        && (crate::ast::expected_retval_rule(
-            env.ctx.prog_kind,
-            env.ctx.attach_subtype.as_deref(),
-        )
-        .is_some()
+        && (crate::ast::expected_retval_rule(env.ctx.prog_kind, env.ctx.attach_subtype.as_deref())
+            .is_some()
             || env.ctx.prog_kind.requires_strict_return_code());
     if state.at_main_frame()
         && exit_enforces_retval
         && let Some(hidx) = state.history_idx
     {
-        crate::analysis::flow::precision::mark_chain_precision_backward(env, hidx, state.parent_cache_id, Reg::R0);
+        crate::analysis::flow::precision::mark_chain_precision_backward(
+            env,
+            hidx,
+            state.parent_cache_id,
+            Reg::R0,
+        );
     }
 
     // per-attach-type retval range. When a finer rule applies
@@ -445,10 +448,9 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
     // rejects.
     let is_freplace_ext = env.ctx.attach_flavor.as_deref() == Some("freplace");
     if state.at_main_frame() && !is_freplace_ext {
-        if let Some(rule) = crate::ast::expected_retval_rule(
-            env.ctx.prog_kind,
-            env.ctx.attach_subtype.as_deref(),
-        ) {
+        if let Some(rule) =
+            crate::ast::expected_retval_rule(env.ctx.prog_kind, env.ctx.attach_subtype.as_deref())
+        {
             // Kernel `check_return_code` uses `retval_range_s32` for
             // hooks whose retval is `int` — clang emits `return -EPERM`
             // as `w0 = 0xFFFFFFFF` (W32 mov), which zero-extends to
@@ -469,26 +471,21 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
             // s64=[-4095, 0] at the entry-arg load but split to a
             // disjoint u64 set after W32 mov truncation. The s32 shadow
             // tracker preserves the [-4095, 0] view across the W32 mov.
-            let (r0_lo_eff, r0_hi_eff) = if rule.lo < 0
-                && rule.lo >= i32::MIN as i64
-                && rule.hi <= i32::MAX as i64
-            {
-                let (s32_lo, s32_hi) = state.domain.get_s32_bounds(Reg::R0);
-                (s32_lo as i64, s32_hi as i64)
-            } else {
-                (r0_min, r0_max)
-            };
+            let (r0_lo_eff, r0_hi_eff) =
+                if rule.lo < 0 && rule.lo >= i32::MIN as i64 && rule.hi <= i32::MAX as i64 {
+                    let (s32_lo, s32_hi) = state.domain.get_s32_bounds(Reg::R0);
+                    (s32_lo as i64, s32_hi as i64)
+                } else {
+                    (r0_min, r0_max)
+                };
             let out_of_range = r0_lo_eff < rule.lo || r0_hi_eff > rule.hi;
             let needs_known = rule.require_known
-                && (r0_min != r0_max
-                    || state.types.get(Reg::R0) != RegType::ScalarValue);
+                && (r0_min != r0_max || state.types.get(Reg::R0) != RegType::ScalarValue);
             if out_of_range || needs_known {
                 env.fail(VerificationError::InvalidReturnCode { pc: state.pc });
                 return vec![];
             }
-        } else if env.ctx.prog_kind.requires_strict_return_code()
-            && (r0_min < 0 || r0_max > 1)
-        {
+        } else if env.ctx.prog_kind.requires_strict_return_code() && (r0_min < 0 || r0_max > 1) {
             env.fail(VerificationError::InvalidReturnCode { pc: state.pc });
             return vec![];
         }
@@ -605,7 +602,10 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
     // Also reject leaked irq flag stack slots (parallel to
     // has_active_iterators above).
     let irq_leak = if state.at_main_frame() {
-        state.frames.iter().any(|f| f.stack.has_unreleased_irq_flags())
+        state
+            .frames
+            .iter()
+            .any(|f| f.stack.has_unreleased_irq_flags())
     } else {
         state.frames.current().stack.has_unreleased_irq_flags()
     };
@@ -654,7 +654,12 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
         // (verifier.c v6.15 prepare_func_exit L10862). Per-path
         // lineage walk via parent_cache_id.
         if let Some(hidx) = state.history_idx {
-            crate::analysis::flow::precision::mark_chain_precision_backward(env, hidx, state.parent_cache_id, Reg::R0);
+            crate::analysis::flow::precision::mark_chain_precision_backward(
+                env,
+                hidx,
+                state.parent_cache_id,
+                Reg::R0,
+            );
         }
         // bpf_loop / bpf_for_each_map_elem / bpf_user_ringbuf_drain
         // callbacks must return 0 (continue) or 1 (break). Timer callbacks
@@ -888,9 +893,7 @@ fn cb_exit_propagate(env: &VerifierEnv, mut state: State) -> Vec<State> {
     // we keep the cb's writes concretely; this lets `_ok`-style tests
     // verify with the post-cb concrete value while still abstracting
     // multi-iteration cases.
-    if should_widen
-        && let (Some(snap), Some(idx)) = (snapshot, caller_level)
-    {
+    if should_widen && let (Some(snap), Some(idx)) = (snapshot, caller_level) {
         let caller_stack = state.stack_at_mut(FrameLevel::from_index(idx));
         let mut all_offsets: HashSet<i16> = snap.slot_offsets().into_iter().collect();
         all_offsets.extend(caller_stack.slot_offsets());
@@ -947,11 +950,12 @@ fn cb_exit_propagate(env: &VerifierEnv, mut state: State) -> Vec<State> {
     // at `return_pc` is the just-recorded current state — skip it and
     // take the previous one.
     if should_widen {
-        let prev_clone: Option<State> = env.explored_states.get(&return_pc).and_then(|prev_states| {
-            let mut iter = prev_states.iter().rev().filter(|s| s.pc == return_pc);
-            iter.next();
-            iter.next().cloned()
-        });
+        let prev_clone: Option<State> =
+            env.explored_states.get(&return_pc).and_then(|prev_states| {
+                let mut iter = prev_states.iter().rev().filter(|s| s.pc == return_pc);
+                iter.next();
+                iter.next().cloned()
+            });
         if let Some(prev) = prev_clone.as_ref() {
             crate::analysis::transfer::call::kfunc::widen_imprecise_scalars_at_iter_next(
                 env, prev, &mut state,

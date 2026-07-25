@@ -35,7 +35,7 @@ use crate::analysis::transfer::alu::helpers::bcf_reg_bounds;
 use crate::refinement::bcf::{BPF_ADD, BPF_JGT, BPF_JSGT, BPF_JSLT};
 use crate::refinement::smtlib;
 use crate::refinement::solver;
-use crate::refinement::symbolic::{build_goal_root, SymbolicState};
+use crate::refinement::symbolic::{SymbolicState, build_goal_root};
 use log::{debug, warn};
 
 pub fn try_refine_map_access(
@@ -100,8 +100,7 @@ pub fn try_refine_map_access(
     // at verifier.c:5315, 5328). `ptr_is_var` iff the pointer has any
     // variable contributor; `size_is_var` iff the size register isn't a
     // statically-pinned constant.
-    let ptr_is_var = var_off_expr.is_some()
-        && state.var_off_contributor.contains_key(&base);
+    let ptr_is_var = var_off_expr.is_some() && state.var_off_contributor.contains_key(&base);
     let (size_const_val, size_expr_cached) = match size_reg {
         Some(sz_reg) => {
             let c = state.domain.get_fixed_value(sz_reg);
@@ -131,13 +130,8 @@ pub fn try_refine_map_access(
 
     // Helper to peel the cached 64-bit expression to its 32-bit form when
     // bit32, matching kernel `bcf_expr32`.
-    let peel = |sym: &mut SymbolicState, idx: u32| -> u32 {
-        if bit32 {
-            sym.expr32(idx)
-        } else {
-            idx
-        }
-    };
+    let peel =
+        |sym: &mut SymbolicState, idx: u32| -> u32 { if bit32 { sym.expr32(idx) } else { idx } };
 
     let oob = if !ptr_is_var && size_is_var {
         // Case (i): ptr const, refine size. Kernel verifier.c:5315-5326.
@@ -202,7 +196,10 @@ pub fn try_refine_map_access(
         }
     };
     if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
-        eprintln!("---- [bcf] SMT-LIB to cvc5 (map) ----\n{}\n---- end ----", smt);
+        eprintln!(
+            "---- [bcf] SMT-LIB to cvc5 (map) ----\n{}\n---- end ----",
+            smt
+        );
     }
     // Goal root built before the solve so the canonical hash is available
     // for the pre-solve dedupe; `sym` is local, ordering is inert.
@@ -225,7 +222,9 @@ pub fn try_refine_map_access(
         }
     }
     if let Some(skip) = skip_hashes
-        && skip.contains(&crate::refinement::canonical_hash::hash_expr(goal_root, &sym.exprs))
+        && skip.contains(&crate::refinement::canonical_hash::hash_expr(
+            goal_root, &sym.exprs,
+        ))
     {
         return None;
     }
@@ -235,7 +234,11 @@ pub fn try_refine_map_access(
                 "[bcf] map-OOB refinement: cvc5 accepted ({} bytes)",
                 bytes.len()
             );
-            Some(super::refine_stack::RefineOk { proof_bytes: bytes, goal_root, sym })
+            Some(super::refine_stack::RefineOk {
+                proof_bytes: bytes,
+                goal_root,
+                sym,
+            })
         }
         Err(e) => {
             debug!("[bcf] map-OOB refinement: cvc5 declined ({})", e);

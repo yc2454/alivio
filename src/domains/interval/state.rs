@@ -700,15 +700,17 @@ impl IntervalState {
         // which is impossible when lower >= upper
         if let (Some(lower), Some(upper)) =
             (self.packet_size_lower_bound, self.packet_size_upper_bound)
-            && lower >= upper {
-                return true;
-            }
+            && lower >= upper
+        {
+            return true;
+        }
 
         // Check meta size bounds similarly
         if let (Some(lower), Some(upper)) = (self.meta_size_lower_bound, self.meta_size_upper_bound)
-            && lower >= upper {
-                return true;
-            }
+            && lower >= upper
+        {
+            return true;
+        }
 
         false
     }

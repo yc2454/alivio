@@ -83,10 +83,7 @@ pub(crate) fn transfer_alu(
     // - `Alu Add Reg(scalar)`: `handle_add` re-inserts the new contributor.
     // - Everything else (Mov, And, Mul, Reg-Sub, ...) breaks the link;
     //   clear it here so a stale contributor doesn't get read downstream.
-    let preserves_contributor = matches!(
-        (op, &src),
-        (AluOp::Add | AluOp::Sub, Operand::Imm(_))
-    );
+    let preserves_contributor = matches!((op, &src), (AluOp::Add | AluOp::Sub, Operand::Imm(_)));
     if !preserves_contributor {
         state.var_off_contributor.remove(&dst);
     }
@@ -100,8 +97,7 @@ pub(crate) fn transfer_alu(
     // and must be cleared. `handle_mov` re-inserts when the src is a
     // pointer-typed register so the copy carries K with it.
     let dst_was_ptr = in_types.get(dst).is_pointer();
-    let preserves_ptr_const_off =
-        matches!(op, AluOp::Add | AluOp::Sub) && dst_was_ptr;
+    let preserves_ptr_const_off = matches!(op, AluOp::Add | AluOp::Sub) && dst_was_ptr;
     if !preserves_ptr_const_off {
         state.ptr_const_off.remove(&dst);
     }
@@ -202,23 +198,24 @@ pub(crate) fn transfer_alu(
         let signed_delta_const = match (op, &src) {
             (AluOp::Add, Operand::Imm(k)) if width == Width::W64 => Some(*k),
             (AluOp::Sub, Operand::Imm(k)) if width == Width::W64 => Some(-*k),
-            (AluOp::Add, Operand::Reg(r)) if width == Width::W64 => state
-                .get_tnum(*r)
-                .const_value()
-                .map(|c| c as i64),
-            (AluOp::Sub, Operand::Reg(r)) if width == Width::W64 => state
-                .get_tnum(*r)
-                .const_value()
-                .map(|c| -(c as i64)),
+            (AluOp::Add, Operand::Reg(r)) if width == Width::W64 => {
+                state.get_tnum(*r).const_value().map(|c| c as i64)
+            }
+            (AluOp::Sub, Operand::Reg(r)) if width == Width::W64 => {
+                state.get_tnum(*r).const_value().map(|c| -(c as i64))
+            }
             _ => None,
         };
         let new_ref = match (op, &src) {
             (AluOp::Mov, Operand::Reg(r)) if width == Width::W64 => {
                 state.btf_field_refs.get(r).cloned()
             }
-            _ if signed_delta_const.is_some() => {
-                resolve_btf_field_ref(env, type_name, prev_btf_field_ref, signed_delta_const.unwrap())
-            }
+            _ if signed_delta_const.is_some() => resolve_btf_field_ref(
+                env,
+                type_name,
+                prev_btf_field_ref,
+                signed_delta_const.unwrap(),
+            ),
             _ => None,
         };
         if let Some(r) = new_ref {
@@ -261,8 +258,7 @@ pub(crate) fn transfer_alu(
                 }
             }
             (AluOp::Add, Operand::Imm(k))
-                if width == crate::ast::Width::W64
-                    && state.scalar_id(dst).is_some() =>
+                if width == crate::ast::Width::W64 && state.scalar_id(dst).is_some() =>
             {
                 // Kernel `BPF_ADD_CONST` (verifier.c v6.15 L16367): a 64-bit
                 // `dst += K` where dst already carries a scalar id records the
@@ -488,8 +484,8 @@ pub(crate) fn transfer_mov_sx(
                 SxWidth::B32 => 32i64,
             };
             let max_positive = (1i64 << (n - 1)) - 1; // 127 / 32767 / 2^31-1
-            let mask = (1i64 << n) - 1;               // 255 / 65535 / 2^32-1
-            let sign_bit = 1i64 << (n - 1);            // 128 / 32768 / 2^31
+            let mask = (1i64 << n) - 1; // 255 / 65535 / 2^32-1
+            let sign_bit = 1i64 << (n - 1); // 128 / 32768 / 2^31
             // Amount to add when zero-extending a negative N-bit value to 32-bit:
             // fills the bits above N with 1s (two's-complement).
             let ext = (0x1_0000_0000i64) - (1i64 << n); // 0xFFFF_FF00 for S8

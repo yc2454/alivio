@@ -5,7 +5,7 @@
 //! using BCF's binary format and cvc5 as the solver.
 //!
 //! Algorithmic reference: see the memory file
-//! `reference_bcf_symbolic_tracking.md` (distilled from BCF kernel patches
+//! the BCF kernel patches (distilled from
 //! set1 + set2 in `/Users/yalucai/BCF/patches-kernel/`).
 
 pub mod bcf;

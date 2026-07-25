@@ -1,0 +1,50 @@
+{
+  "bpf-examples": {
+    "nat64_kern.o": [
+      "clang-15_-O2_nat64_kern.o",
+      "clang-19_-Os_nat64_kern.o",
+      "clang-16_-O3_nat64_kern.o",
+      "clang-13_-Os_nat64_kern.o",
+      "clang-13_-O3_nat64_kern.o",
+      "clang-15_-O3_nat64_kern.o",
+      "clang-17_-O3_nat64_kern.o",
+      "clang-16_-O2_nat64_kern.o",
+      "clang-17_-O2_nat64_kern.o",
+      "clang-14_-Os_nat64_kern.o",
+      "clang-19_-O2_nat64_kern.o",
+      "clang-18_-O2_nat64_kern.o",
+      "clang-21_-Os_nat64_kern.o",
+      "clang-20_-O1_nat64_kern.o",
+      "clang-13_-O2_nat64_kern.o",
+      "clang-14_-O3_nat64_kern.o",
+      "clang-14_-O1_nat64_kern.o",
+      "clang-19_-O3_nat64_kern.o",
+      "clang-18_-O1_nat64_kern.o",
+      "clang-21_-O3_nat64_kern.o",
+      "clang-16_-O1_nat64_kern.o",
+      "clang-21_-O1_nat64_kern.o",
+      "clang-20_-Os_nat64_kern.o",
+      "clang-17_-O1_nat64_kern.o",
+      "clang-14_-O2_nat64_kern.o",
+      "clang-18_-O3_nat64_kern.o",
+      "clang-13_-O1_nat64_kern.o",
+      "clang-19_-O1_nat64_kern.o",
+      "clang-20_-O2_nat64_kern.o",
+      "clang-18_-Os_nat64_kern.o",
+      "clang-20_-O3_nat64_kern.o",
+      "clang-21_-O2_nat64_kern.o",
+      "clang-15_-O1_nat64_kern.o"
+    ],
+    "pping_kern.o": [
+      "clang-16_-O1_pping_kern.o",
+      "clang-13_-O1_pping_kern.o",
+      "clang-20_-O1_pping_kern.o",
+      "clang-19_-O1_pping_kern.o",
+      "clang-21_-O1_pping_kern.o",
+      "clang-14_-O1_pping_kern.o",
+      "clang-17_-O1_pping_kern.o",
+      "clang-18_-O1_pping_kern.o",
+      "clang-15_-O1_pping_kern.o"
+    ]
+  }
+}

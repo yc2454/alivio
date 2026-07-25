@@ -25,7 +25,7 @@
 //! `#[cfg(test)]` (so we verify we can read cvc5's output and the layout
 //! matches). `validate_proof_bytes` is a deliberately test-only soundness
 //! backstop — redundant in production since the kernel re-checks every
-//! bundle. See project_userspace_bcf.md.
+//! bundle.
 #![allow(dead_code)]
 
 use std::io;

@@ -6,13 +6,9 @@ target/
 debug_trace.txt
 trace.log
 pcc_proof_steps.md
-docs/
 track.patch
 .DS_Store
 vendor/
-scripts/bcf*
-CHANGES_v6.15.md
-linux-deltas/
 
 # Python bytecode caches
 __pycache__/
@@ -31,4 +27,4 @@ tests/baselines/prevail.json
 
 # Pre-built kernel + loader binaries pulled from cloudlab (too large for git;
 # ship via GitHub Releases once tagged)
-artifacts/
+artifacts/docs/pcc_proof_steps.docx

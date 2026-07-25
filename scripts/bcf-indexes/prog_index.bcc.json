@@ -1,0 +1,14 @@
+{
+  "bcc": {
+    "ksnoop.bpf.o": [
+      "clang-21_-Os_ksnoop.bpf.o",
+      "clang-21_-O2_ksnoop.bpf.o",
+      "clang-21_-O3_ksnoop.bpf.o",
+      "clang-20_-Os_ksnoop.bpf.o",
+      "clang-20_-O3_ksnoop.bpf.o",
+      "clang-20_-O2_ksnoop.bpf.o",
+      "clang-20_-O1_ksnoop.bpf.o",
+      "clang-21_-O1_ksnoop.bpf.o"
+    ]
+  }
+}

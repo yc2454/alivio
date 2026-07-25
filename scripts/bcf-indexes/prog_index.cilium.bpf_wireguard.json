@@ -1,0 +1,14 @@
+{
+  "cilium": {
+    "bpf_wireguard.o": [
+      "clang-17_-O1_bpf_wireguard.o",
+      "clang-21_-O1_bpf_wireguard.o",
+      "clang-20_-O1_bpf_wireguard.o",
+      "clang-19_-O1_bpf_wireguard.o",
+      "clang-14_-O1_bpf_wireguard.o",
+      "clang-15_-O1_bpf_wireguard.o",
+      "clang-18_-O1_bpf_wireguard.o",
+      "clang-16_-O1_bpf_wireguard.o"
+    ]
+  }
+}

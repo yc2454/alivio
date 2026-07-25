@@ -290,14 +290,19 @@ impl Drop for TempDir {
 }
 
 fn tempdir() -> std::io::Result<TempDir> {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    // pid + timestamp alone can collide across threads (same pid, quantized
+    // clock); the process-wide counter makes the name unique.
+    static SEQ: AtomicU64 = AtomicU64::new(0);
     let base = std::env::temp_dir();
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let pid = std::process::id();
-    let dir = base.join(format!("zovia-bcf-{}-{}", pid, stamp));
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let dir = base.join(format!("zovia-bcf-{}-{}-{}", pid, stamp, seq));
     std::fs::create_dir(&dir)?;
     Ok(TempDir(dir))
 }

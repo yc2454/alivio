@@ -1,0 +1,8 @@
+{
+  "cilium": {
+    "bpf_xdp.o": [
+      "clang-20_-O1_bpf_xdp.o",
+      "clang-21_-O1_bpf_xdp.o"
+    ]
+  }
+}

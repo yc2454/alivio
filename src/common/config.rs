@@ -115,7 +115,7 @@ pub struct VerifierConfig {
     /// Userspace BCF symbolic tracking (Phase 1). When true, the analysis
     /// seeds a `SymbolicState` on the entry `State` and the per-op transfer
     /// hooks populate a parallel symbolic DAG. Default false; flipped by
-    /// `--bcf`. See `project_userspace_bcf.md`.
+    /// `--bcf`.
     pub bcf_enabled: bool,
 
     /// Output path for the BCF bundle sidecar. Set by `main::run_verify`

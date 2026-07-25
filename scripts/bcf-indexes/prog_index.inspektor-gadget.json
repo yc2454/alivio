@@ -1,0 +1,17 @@
+{
+  "inspektor-gadget": {
+    "seccomp_x86_bpfel.o": [
+      "clang-20_-O3_seccomp_x86_bpfel.o",
+      "clang-19_-O3_seccomp_x86_bpfel.o",
+      "clang-21_-Os_seccomp_x86_bpfel.o",
+      "clang-20_-O2_seccomp_x86_bpfel.o",
+      "clang-19_-Os_seccomp_x86_bpfel.o",
+      "clang-20_-O1_seccomp_x86_bpfel.o",
+      "clang-21_-O3_seccomp_x86_bpfel.o",
+      "clang-19_-O2_seccomp_x86_bpfel.o",
+      "clang-21_-O2_seccomp_x86_bpfel.o",
+      "clang-20_-Os_seccomp_x86_bpfel.o",
+      "clang-19_-O1_seccomp_x86_bpfel.o"
+    ]
+  }
+}

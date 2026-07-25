@@ -1,0 +1,58 @@
+{
+  "cilium": {
+    "bpf_lxc.o": [
+      "clang-18_-O1_bpf_lxc.o",
+      "clang-15_-O1_bpf_lxc.o",
+      "clang-17_-O1_bpf_lxc.o",
+      "clang-16_-O1_bpf_lxc.o",
+      "clang-21_-O1_bpf_lxc.o",
+      "clang-14_-O1_bpf_lxc.o",
+      "clang-19_-O1_bpf_lxc.o",
+      "clang-20_-O1_bpf_lxc.o"
+    ],
+    "bpf_wireguard.o": [
+      "clang-17_-O1_bpf_wireguard.o",
+      "clang-21_-O1_bpf_wireguard.o",
+      "clang-20_-O1_bpf_wireguard.o",
+      "clang-19_-O1_bpf_wireguard.o",
+      "clang-14_-O1_bpf_wireguard.o",
+      "clang-15_-O1_bpf_wireguard.o",
+      "clang-18_-O1_bpf_wireguard.o",
+      "clang-16_-O1_bpf_wireguard.o"
+    ],
+    "bpf_xdp.o": [
+      "clang-20_-O1_bpf_xdp.o",
+      "clang-21_-O1_bpf_xdp.o"
+    ],
+    "bpf_overlay.o": [
+      "clang-19_-O1_bpf_overlay.o",
+      "clang-17_-O1_bpf_overlay.o",
+      "clang-16_-O1_bpf_overlay.o",
+      "clang-20_-O1_bpf_overlay.o",
+      "clang-14_-O1_bpf_overlay.o",
+      "clang-21_-O1_bpf_overlay.o",
+      "clang-15_-O1_bpf_overlay.o",
+      "clang-18_-O1_bpf_overlay.o"
+    ],
+    "bpf_sock.o": [
+      "clang-18_-O1_bpf_sock.o",
+      "clang-17_-O1_bpf_sock.o",
+      "clang-16_-O1_bpf_sock.o",
+      "clang-14_-O1_bpf_sock.o",
+      "clang-15_-O1_bpf_sock.o",
+      "clang-21_-O1_bpf_sock.o",
+      "clang-20_-O1_bpf_sock.o",
+      "clang-19_-O1_bpf_sock.o"
+    ],
+    "bpf_host.o": [
+      "clang-21_-O1_bpf_host.o",
+      "clang-15_-O1_bpf_host.o",
+      "clang-17_-O1_bpf_host.o",
+      "clang-18_-O1_bpf_host.o",
+      "clang-20_-O1_bpf_host.o",
+      "clang-16_-O1_bpf_host.o",
+      "clang-14_-O1_bpf_host.o",
+      "clang-19_-O1_bpf_host.o"
+    ]
+  }
+}

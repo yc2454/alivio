@@ -2,6 +2,8 @@
 name = "zovia"
 version = "0.1.0"
 edition = "2024"
+description = "Userspace mirror of the Linux kernel BPF verifier with BCF proof-bundle generation"
+repository = "https://github.com/yc2454/eBPF-Zone-Verifier"
 
 [dependencies]
 anyhow = "1.0"

@@ -1,0 +1,27 @@
+/*
+ * Addition to include/linux/bcf_checker.h — append this prototype before
+ * the closing #endif. Full file content goes through git apply as a
+ * proper patch when this lands as a commit on the bpf-next tree.
+ */
+
+/**
+ * bcf_canonical_hash - structural fingerprint of a BCF expression
+ * @root:	expr-id (slot offset) of the root in @exprs
+ * @exprs:	expression table
+ * @nr_exprs:	number of expressions in @exprs
+ * @out_hash:	on success, the 64-bit canonical hash
+ *
+ * Computes a SipHash-2-4 fingerprint such that two expressions equivalent
+ * under __expr_equiv(a, b, from_checker=false, own_args=false) hash to
+ * the same value. Used at refinement sites to look up a precomputed
+ * proof in the per-program BCF bundle.
+ *
+ * See Documentation/bpf/bcf_canonical_hash.rst (or, in our development
+ * tree, docs/userspace-bcf/canonical-hash-spec.md).
+ *
+ * Return: 0 on success; -EINVAL for bad inputs (root not in table,
+ * dangling args); -E2BIG for expressions deeper than the internal stack
+ * limit; -ENOMEM on allocation failure.
+ */
+int bcf_canonical_hash(u32 root, const struct bcf_expr *exprs, u32 nr_exprs,
+		       u64 *out_hash);

@@ -1,0 +1,15 @@
+{
+  "collected": {
+    "all": [
+      "ksnoop.bpf.o",
+      "shift_constraint.bpf.o",
+      "stack_ptr_varoff.bpf.o",
+      "system_monitor.bpf.o",
+      "tcp_conn_tuner.bpf.o",
+      "test_get_stack_rawtp.bpf.o",
+      "trace_sys_enter_execve.bpf.o",
+      "unreachable_arsh.bpf.o",
+      "xdp_synproxy_kern.bpf.o"
+    ]
+  }
+}

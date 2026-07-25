@@ -50,7 +50,7 @@ pub(crate) fn transfer_load(
     // rather than dragging in a stale pre-load expression (e.g. an
     // earlier `Mov r8, 0` cache hit). Mirrors kernel BCF's
     // `reg->bcf_expr = -1` on clobbering writes
-    // (reference_bcf_symbolic_tracking.md §6.1; verifier.c `bcf_mov32`
+    // (verifier.c `bcf_mov32`
     // analog at the post-load reset point).
     if let Some(idx) = dst.bcf_idx()
         && let Some(bcf) = state.bcf.as_mut()

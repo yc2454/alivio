@@ -402,8 +402,7 @@ pub struct State {
     /// `Box` keeps the per-clone cost at a pointer copy when the inner
     /// state is large. Mutated in parallel with `domain` / `tnums` by
     /// transfer hooks in `transfer/alu/*`. See
-    /// `reference_bcf_symbolic_tracking.md` and
-    /// `project_userspace_bcf.md`.
+    /// the BCF kernel patches (bcf_expr tracking).
     pub bcf: Option<Box<SymbolicState>>,
 }
 

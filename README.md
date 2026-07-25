@@ -476,3 +476,12 @@ c-ref/                      # Frozen C reference: bcf_bundle.h (bundle UAPI),
                             #   canonical_hash.c (hash cross-check tool)
 docs/userspace-bcf/         # BCF design docs incl. canonical-hash-spec.md
 ```
+
+## License
+
+Licensed under either of
+
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+* MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.

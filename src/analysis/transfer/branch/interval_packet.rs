@@ -386,6 +386,64 @@ fn propagate_packet_range(state: &mut State, checked_reg: Reg, proven_size: i64)
     // ranges across unrelated chains — kernel-UNFAITHFUL (it can prove
     // safe a reloaded-pointer load the kernel rejects).
     propagate_packet_range_to_all_frames_stack(state, checked_id, proven_size);
+
+    // Caller-frame LIVE registers: kernel find_good_pkt_pointers runs
+    // bpf_for_each_reg_in_vstate, which walks the registers of EVERY
+    // frame, not just the current one. A bounds check performed inside a
+    // subprog must refine the caller's packet pointers too. Anchor:
+    // verifier_direct_packet_access.c::reg_pkt_end_in_subprog (caller
+    // r6+8 checked against pkt_end by the callee).
+    propagate_range_to_caller_frame_regs(
+        state,
+        checked_id,
+        proven_size,
+        |t| matches!(t, RegType::PtrToPacket),
+        Reg::AnchorData,
+    );
+}
+
+/// Propagate a proven range to matching pointer REGISTERS saved in caller
+/// frames (`CallFrame.caller_domain`, restored wholesale on Exit). Spilled
+/// slots are handled by the `*_to_stack` walkers; this covers the live
+/// registers the kernel reaches via `bpf_for_each_reg_in_vstate`.
+fn propagate_range_to_caller_frame_regs(
+    state: &mut State,
+    checked_id: Option<u32>,
+    proven_size: i64,
+    is_wanted_type: impl Fn(&RegType) -> bool,
+    want_anchor: Reg,
+) {
+    for frame in state.frames.iter_mut() {
+        let NumericDomain::Interval(ref mut ivl) = frame.caller_domain else {
+            continue;
+        };
+        for reg in Reg::ALL {
+            if !is_wanted_type(&frame.caller_types.get(reg)) {
+                continue;
+            }
+            let Some(po) = ivl.get_ptr_offset(reg).cloned() else {
+                continue;
+            };
+            if po.anchor != want_anchor {
+                continue;
+            }
+            // Kernel same-id family rule (find_good_pkt_pointers).
+            let in_family = match (checked_id, po.id) {
+                (Some(a), Some(b)) => a == b,
+                (None, None) => true,
+                _ => false,
+            };
+            if !in_family {
+                continue;
+            }
+            let range_for_reg = proven_size.saturating_sub(po.off);
+            if range_for_reg >= 0 && range_for_reg > po.range.unwrap_or(-1) {
+                let mut new_po = po;
+                new_po.range = Some(range_for_reg);
+                ivl.get_mut(reg).ptr_offset = Some(new_po);
+            }
+        }
+    }
 }
 
 /// Propagate packet range to spilled packet pointers on ALL frames' stacks.
@@ -502,6 +560,16 @@ fn propagate_meta_range(state: &mut State, checked_reg: Reg, proven_size: i64) {
     }
 
     propagate_meta_range_to_stack(state, checked_id, proven_size);
+
+    // Caller-frame live registers — same all-frames kernel rule as the
+    // data-region path (see propagate_range_to_caller_frame_regs).
+    propagate_range_to_caller_frame_regs(
+        state,
+        checked_id,
+        proven_size,
+        |t| matches!(t, RegType::PtrToPacketMeta),
+        Reg::AnchorDataMeta,
+    );
 }
 
 /// Propagate meta range to spilled meta pointers on all stack frames.

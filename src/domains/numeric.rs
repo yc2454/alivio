@@ -403,6 +403,17 @@ impl NumericDomain {
         }
     }
 
+    /// Performs dst -= imm. Interval mode mirrors kernel
+    /// `scalar_min_max_sub` with a known src (NOT equivalent to adding
+    /// the negation — see `interval_ops::apply_sub_imm`). Zone mode keeps
+    /// its relational add-of-negation, which is exact over signed DBM.
+    pub fn apply_sub_imm(&mut self, dst: Reg, imm: i64) {
+        match self {
+            NumericDomain::Zone(dbm) => zone_ops::apply_add_imm(dbm, dst, -imm),
+            NumericDomain::Interval(ivl) => interval_ops::apply_sub_imm(ivl, dst, imm),
+        }
+    }
+
     /// Performs dst += src
     pub fn apply_add_reg(&mut self, dst: Reg, src: Reg) {
         match self {

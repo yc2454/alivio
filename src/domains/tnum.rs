@@ -189,17 +189,22 @@ impl Tnum {
         self.add(Tnum::constant(imm as u64))
     }
 
-    /// Subtraction (approximate - may lose precision)
+    /// Subtraction. Exact port of kernel `tnum_sub` (kernel/bpf/tnum.c):
+    /// alpha/beta bracket the extreme borrows and their XOR marks every
+    /// bit a borrow can reach. The previous version here was the ADD
+    /// formula with `+` flipped to `-`, which computed `mu = 0xFF` for
+    /// [0,0xFF]-[0,0xFF] — claiming the high 56 bits known-zero while
+    /// 5-200 wraps to a value with all of them set (soundness bug; anchor:
+    /// verifier_bounds.c::bounds_map_value_variant_1).
     pub fn sub(self, other: Tnum) -> Tnum {
-        // Subtraction with unknown bits is complex due to carries.
-        let sm = self.mask.wrapping_sub(other.mask);
-        let sv = self.value.wrapping_sub(other.value);
-        let sigma = sm.wrapping_sub(sv);
-        let chi = sigma ^ sv;
+        let dv = self.value.wrapping_sub(other.value);
+        let alpha = dv.wrapping_add(self.mask);
+        let beta = dv.wrapping_sub(other.mask);
+        let chi = alpha ^ beta;
         let mu = chi | self.mask | other.mask;
 
         Tnum {
-            value: sv & !mu,
+            value: dv & !mu,
             mask: mu,
         }
     }

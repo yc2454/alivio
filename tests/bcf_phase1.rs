@@ -138,7 +138,10 @@ fn phase1_shift_constraint_accepts_with_bcf() {
                 cs
             );
         } else {
-            eprintln!("[note] ALIVIO_BCF_CHECKER set but path missing: {}", checker);
+            eprintln!(
+                "[note] ALIVIO_BCF_CHECKER set but path missing: {}",
+                checker
+            );
         }
     }
 

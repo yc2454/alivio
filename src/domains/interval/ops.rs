@@ -145,16 +145,11 @@ pub fn assign_reg_offset(state: &mut IntervalState, dst: Reg, src: Reg, imm: i64
     }
 
     let src_interval = state.get(src).clone();
-    let mut new_bounds = ScalarBounds {
-        smin: src_interval.bounds.smin.saturating_add(imm),
-        smax: src_interval.bounds.smax.saturating_add(imm),
-        umin: src_interval.bounds.umin.saturating_add(imm as u64),
-        umax: src_interval.bounds.umax.saturating_add(imm as u64),
-        scalar_id: None, // Arithmetic breaks scalar relationship
-        ..ScalarBounds::unknown()
-    };
-    // 8-bound: derive 32-bit halves from the post-add 64-bit.
-    new_bounds.forget_32_then_sync();
+    // Kernel add semantics (check_add_overflow reset), same as
+    // apply_add_imm — the last saturating scalar-bounds site.
+    let mut new_bounds = src_interval.bounds;
+    new_bounds.kernel_add(&ScalarBounds::constant(imm));
+    new_bounds.sync_bounds();
 
     // Preserve pointer offset info, adjusting the fixed offset
     // Also preserve range if set, adjusting for the offset change
@@ -278,70 +273,13 @@ pub fn apply_add_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
 
     let bounds = state.get_bounds_mut(dst);
 
-    // Kernel-faithful wrap-detection. Mirrors `scalar_min_max_add` in
-    // verifier.c v6.15 (~L13700): if `min + imm` and `max + imm` don't
-    // agree on overflow, the post-op range straddles the wrap boundary
-    // (two disjoint pieces in unsigned modular arithmetic) and can't be
-    // represented by a single contiguous interval. The kernel resets
-    // such ranges to the full domain instead of using saturating
-    // arithmetic, which silently produces inconsistent (min > max)
-    // bounds when later constraints intersect with the wrong piece.
-    //
-    // Concrete: r1 ∈ u32 [0, 0xFFFFFFFF], r1 += -4 with saturating_add
-    // produced umin=0xFFF..FFFC (no overflow), umax=u64::MAX
-    // (saturated from overflow). A subsequent `umax := min(umax, 1)`
-    // then leaves umin > umax and the whole state is dropped as
-    // infeasible — wrongly excluding the kernel-reachable case where
-    // r1 was 4 or 5 (so r1-4 ∈ {0, 1}).
-    //
-    // We do separate overflow checks for the four bound pairs: u64
-    // (umin/umax) and i64 (smin/smax) for the 64-bit halves, plus u32
-    // (u32_min/u32_max) and i32 (s32_min/s32_max) for the 32-bit
-    // halves. Each pair is reset to its full domain independently
-    // when wrap-disagreement is detected.
-    let imm_u64 = imm as u64;
-    let (new_umin, ovf_umin) = bounds.umin.overflowing_add(imm_u64);
-    let (new_umax, ovf_umax) = bounds.umax.overflowing_add(imm_u64);
-    if ovf_umin == ovf_umax {
-        bounds.umin = new_umin;
-        bounds.umax = new_umax;
-    } else {
-        bounds.umin = 0;
-        bounds.umax = u64::MAX;
-    }
-    let (new_smin, ovf_smin) = bounds.smin.overflowing_add(imm);
-    let (new_smax, ovf_smax) = bounds.smax.overflowing_add(imm);
-    if ovf_smin == ovf_smax {
-        bounds.smin = new_smin;
-        bounds.smax = new_smax;
-    } else {
-        bounds.smin = i64::MIN;
-        bounds.smax = i64::MAX;
-    }
-    bounds.scalar_id = None; // Arithmetic breaks scalar relationship
-
-    // 32-bit halves: mirror `adjust_scalar_min_max_vals` 32-bit path.
-    // Same wrap-disagreement reset as the 64-bit pairs above.
-    let imm32_u = imm as u32;
-    let imm32_s = imm as i32;
-    let (new_u32_min, ovf_u32_min) = bounds.u32_min.overflowing_add(imm32_u);
-    let (new_u32_max, ovf_u32_max) = bounds.u32_max.overflowing_add(imm32_u);
-    if ovf_u32_min == ovf_u32_max {
-        bounds.u32_min = new_u32_min;
-        bounds.u32_max = new_u32_max;
-    } else {
-        bounds.u32_min = 0;
-        bounds.u32_max = u32::MAX;
-    }
-    let (new_s32_min, ovf_s32_min) = bounds.s32_min.overflowing_add(imm32_s);
-    let (new_s32_max, ovf_s32_max) = bounds.s32_max.overflowing_add(imm32_s);
-    if ovf_s32_min == ovf_s32_max {
-        bounds.s32_min = new_s32_min;
-        bounds.s32_max = new_s32_max;
-    } else {
-        bounds.s32_min = i32::MIN;
-        bounds.s32_max = i32::MAX;
-    }
+    // Kernel scalar_min_max_add with a known-constant src, exactly how the
+    // kernel handles ALU-with-imm (__mark_reg_known(&off_reg, imm) then the
+    // same scalar_min_max_* path). Earlier code here reset a bound pair
+    // only when its two bounds DISAGREED on overflow; the kernel resets
+    // when EITHER overflows — the both-wrap case must also go to full
+    // range to stay in lockstep with the kernel's exploration.
+    bounds.kernel_add(&ScalarBounds::constant(imm));
     bounds.sync_bounds();
     // Update pointer offset if present
     if let Some(ref mut po) = state.get_mut(dst).ptr_offset {
@@ -358,6 +296,28 @@ pub fn apply_add_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
     }
 }
 
+/// Performs dst -= imm. NOT the same as `apply_add_imm(dst, -imm)`:
+/// the kernel routes BPF_SUB|K through `scalar_min_max_sub` with a known
+/// src, whose unsigned rule (`umin < K` → full reset, else exact) differs
+/// from add-of-two's-complement (`umax >= K` → overflow → full reset).
+/// E.g. [10,20] - 5: kernel-sub keeps [5,15]; add of 2^64-5 resets.
+pub fn apply_sub_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
+    if dst == Reg::Zero || dst.is_anchor() {
+        return;
+    }
+
+    let bounds = state.get_bounds_mut(dst);
+    bounds.kernel_sub(&ScalarBounds::constant(imm));
+    bounds.sync_bounds();
+    // Pointer-offset tail mirrors apply_add_imm with the sign flipped.
+    if let Some(ref mut po) = state.get_mut(dst).ptr_offset {
+        po.off = po.off.saturating_sub(imm);
+        // Moving the pointer back grows the remaining safe range.
+        po.range = po.range.map(|r| r.saturating_add(imm));
+        po.pkt_end_rel = None;
+    }
+}
+
 /// Performs dst += src
 pub fn apply_add_reg(state: &mut IntervalState, dst: Reg, src: Reg) {
     if dst == Reg::Zero || dst.is_anchor() {
@@ -367,21 +327,10 @@ pub fn apply_add_reg(state: &mut IntervalState, dst: Reg, src: Reg) {
     let src_bounds = *state.get_bounds(src);
     let dst_bounds = state.get_bounds_mut(dst);
 
-    // Add intervals: [a, b] + [c, d] = [a+c, b+d]
-    dst_bounds.smin = dst_bounds.smin.saturating_add(src_bounds.smin);
-    dst_bounds.smax = dst_bounds.smax.saturating_add(src_bounds.smax);
-    dst_bounds.umin = dst_bounds.umin.saturating_add(src_bounds.umin);
-    dst_bounds.umax = dst_bounds.umax.saturating_add(src_bounds.umax);
-    dst_bounds.scalar_id = None; // Arithmetic breaks scalar relationship
-    // 8-bound: 32-bit halves added with 32-bit saturation. The
-    // saturating add on i32/u32 keeps the 32-bit view tight for
-    // values that don't wrap past 32 bits; reg_bounds_sync below
-    // then back-derives tighter values when the 64-bit upper bits
-    // stayed constant.
-    dst_bounds.u32_min = dst_bounds.u32_min.saturating_add(src_bounds.u32_min);
-    dst_bounds.u32_max = dst_bounds.u32_max.saturating_add(src_bounds.u32_max);
-    dst_bounds.s32_min = dst_bounds.s32_min.saturating_add(src_bounds.s32_min);
-    dst_bounds.s32_max = dst_bounds.s32_max.saturating_add(src_bounds.s32_max);
+    // Kernel scalar_min_max_add: wrapping arithmetic, full-domain reset if
+    // either bound of a pair overflows. Saturation is unsound on umin: a
+    // wrapped sum lies below the saturated bound.
+    dst_bounds.kernel_add(&src_bounds);
     dst_bounds.sync_bounds();
 
     // Adding variable destroys fixed pointer offset precision
@@ -491,18 +440,13 @@ pub fn apply_sub_reg(state: &mut IntervalState, dst: Reg, src: Reg) {
     let src_bounds = *state.get_bounds(src);
     let dst_bounds = state.get_bounds_mut(dst);
 
-    // Subtract intervals: [a, b] - [c, d] = [a-d, b-c]
-    dst_bounds.smin = dst_bounds.smin.saturating_sub(src_bounds.smax);
-    dst_bounds.smax = dst_bounds.smax.saturating_sub(src_bounds.smin);
-    dst_bounds.umin = dst_bounds.umin.saturating_sub(src_bounds.umax);
-    dst_bounds.umax = dst_bounds.umax.saturating_sub(src_bounds.umin);
-    dst_bounds.scalar_id = None; // Arithmetic breaks scalar relationship
-    // 8-bound: 32-bit halves subtracted with 32-bit saturation;
-    // sync_bounds derives further tightening from 64-bit.
-    dst_bounds.u32_min = dst_bounds.u32_min.saturating_sub(src_bounds.u32_max);
-    dst_bounds.u32_max = dst_bounds.u32_max.saturating_sub(src_bounds.u32_min);
-    dst_bounds.s32_min = dst_bounds.s32_min.saturating_sub(src_bounds.s32_max);
-    dst_bounds.s32_max = dst_bounds.s32_max.saturating_sub(src_bounds.s32_min);
+    // Kernel scalar_min_max_sub: unsigned resets to [0, U64_MAX] whenever
+    // umin < src.umax (wrap possible). The old saturating subtraction here
+    // was UNSOUND: [0,255] - [0,255] saturated to u=[0,255], but 5-200
+    // wraps to a huge u64 — sync_bounds then poisoned the signed side and
+    // a following >>56 concluded [0,0] (kernel: [0,255] → reject).
+    // Selftest anchor: verifier_bounds.c::bounds_map_value_variant_1.
+    dst_bounds.kernel_sub(&src_bounds);
     dst_bounds.sync_bounds();
 
     // Update pointer offset if present: ptr -= [smin, smax]
@@ -563,27 +507,13 @@ pub fn apply_mul_imm(state: &mut IntervalState, dst: Reg, imm: i64) {
         return;
     }
 
-    let bounds = *state.get_bounds(dst);
-
-    if imm > 0 {
-        // Positive multiplier preserves sign
-        let mut new_bounds = ScalarBounds {
-            smin: bounds.smin.saturating_mul(imm),
-            smax: bounds.smax.saturating_mul(imm),
-            umin: bounds.umin.saturating_mul(imm as u64),
-            umax: bounds.umax.saturating_mul(imm as u64),
-            scalar_id: None, // Arithmetic breaks scalar relationship
-            ..ScalarBounds::unknown()
-        };
-        // 8-bound: reset 32-bit halves to full and let sync_bounds
-        // derive tight values from the post-mul 64-bit bounds.
-        new_bounds.forget_32_then_sync();
-        state.get_bounds_mut(dst).clone_from(&new_bounds);
-    } else {
-        // Negative multiplier - go conservative
-        forget(state, dst);
-        return;
-    }
+    // Kernel scalar_min_max_mul with a known-constant src. The old
+    // saturating_mul was unsound on umin (a wrapped product lies below the
+    // saturated bound), and the old negative-imm forget was looser than
+    // the kernel's 4-product signed logic.
+    let bounds = state.get_bounds_mut(dst);
+    bounds.kernel_mul(&ScalarBounds::constant(imm));
+    bounds.sync_bounds();
 
     // Multiplication destroys pointer relationship
     state.get_mut(dst).ptr_offset = None;

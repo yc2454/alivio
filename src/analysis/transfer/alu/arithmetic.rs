@@ -307,7 +307,7 @@ pub(crate) fn handle_sub(
 ) {
     match src {
         Operand::Imm(c) => {
-            state.domain.apply_add_imm(dst, -c);
+            state.domain.apply_sub_imm(dst, *c);
             // Mirror kernel `ptr_reg->off -= smin_val` (verifier.c:14448)
             // for the `ptr -= K` const-shift case.
             if in_types.get(dst).is_pointer() {
@@ -327,7 +327,7 @@ pub(crate) fn handle_sub(
 
                 if let Some(c) = const_value {
                     // Scalar is a known constant: exact relational shift
-                    state.domain.apply_add_imm(dst, -c);
+                    state.domain.apply_sub_imm(dst, c);
                     // Mirror `ptr_reg->off -= smin_val` for const-reg case
                     // (verifier.c:14439-14450). Variable-scalar case: K is
                     // preserved by the transfer_alu catch-all and we add

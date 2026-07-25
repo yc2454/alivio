@@ -252,6 +252,132 @@ impl ScalarBounds {
         }
     }
 
+    /// Mirror of kernel `scalar_min_max_add` + `scalar32_min_max_add`
+    /// (verifier.c v6.15): each bound pair is computed with wrapping
+    /// arithmetic, and if EITHER bound of a pair overflows, that pair
+    /// resets to its full domain. Saturating arithmetic is unsound here:
+    /// a wrapped-around value lies BELOW the saturated bound, so a
+    /// saturated min can exceed the real value. Caller syncs afterwards
+    /// (kernel: reg_bounds_sync).
+    pub fn kernel_add(&mut self, src: &ScalarBounds) {
+        let (smin, ov_a) = self.smin.overflowing_add(src.smin);
+        let (smax, ov_b) = self.smax.overflowing_add(src.smax);
+        (self.smin, self.smax) = if ov_a || ov_b {
+            (i64::MIN, i64::MAX)
+        } else {
+            (smin, smax)
+        };
+        let (umin, ov_a) = self.umin.overflowing_add(src.umin);
+        let (umax, ov_b) = self.umax.overflowing_add(src.umax);
+        (self.umin, self.umax) = if ov_a || ov_b {
+            (0, u64::MAX)
+        } else {
+            (umin, umax)
+        };
+        let (s32_min, ov_a) = self.s32_min.overflowing_add(src.s32_min);
+        let (s32_max, ov_b) = self.s32_max.overflowing_add(src.s32_max);
+        (self.s32_min, self.s32_max) = if ov_a || ov_b {
+            (i32::MIN, i32::MAX)
+        } else {
+            (s32_min, s32_max)
+        };
+        let (u32_min, ov_a) = self.u32_min.overflowing_add(src.u32_min);
+        let (u32_max, ov_b) = self.u32_max.overflowing_add(src.u32_max);
+        (self.u32_min, self.u32_max) = if ov_a || ov_b {
+            (0, u32::MAX)
+        } else {
+            (u32_min, u32_max)
+        };
+        self.scalar_id = None;
+    }
+
+    /// Mirror of kernel `scalar_min_max_sub` + `scalar32_min_max_sub`
+    /// (verifier.c v6.15). Signed: reset to full range if either
+    /// `smin - src.smax` or `smax - src.smin` overflows. Unsigned: if
+    /// `umin < src.umax` the subtraction can wrap below zero, so the
+    /// kernel knows nothing — [0, U64_MAX]; otherwise exact.
+    pub fn kernel_sub(&mut self, src: &ScalarBounds) {
+        let (smin, ov_a) = self.smin.overflowing_sub(src.smax);
+        let (smax, ov_b) = self.smax.overflowing_sub(src.smin);
+        (self.smin, self.smax) = if ov_a || ov_b {
+            (i64::MIN, i64::MAX)
+        } else {
+            (smin, smax)
+        };
+        if self.umin < src.umax {
+            self.umin = 0;
+            self.umax = u64::MAX;
+        } else {
+            self.umin -= src.umax;
+            self.umax -= src.umin;
+        }
+        let (s32_min, ov_a) = self.s32_min.overflowing_sub(src.s32_max);
+        let (s32_max, ov_b) = self.s32_max.overflowing_sub(src.s32_min);
+        (self.s32_min, self.s32_max) = if ov_a || ov_b {
+            (i32::MIN, i32::MAX)
+        } else {
+            (s32_min, s32_max)
+        };
+        if self.u32_min < src.u32_max {
+            self.u32_min = 0;
+            self.u32_max = u32::MAX;
+        } else {
+            self.u32_min -= src.u32_max;
+            self.u32_max -= src.u32_min;
+        }
+        self.scalar_id = None;
+    }
+
+    /// Mirror of kernel `scalar_min_max_mul` + `scalar32_min_max_mul`
+    /// (verifier.c v6.15). Unsigned: reset on overflow of either
+    /// `umax*src.umax` or `umin*src.umin`. Signed: all four cross
+    /// products; reset if any overflows, else their min/max.
+    pub fn kernel_mul(&mut self, src: &ScalarBounds) {
+        let (umax, ov_a) = self.umax.overflowing_mul(src.umax);
+        let (umin, ov_b) = self.umin.overflowing_mul(src.umin);
+        (self.umin, self.umax) = if ov_a || ov_b {
+            (0, u64::MAX)
+        } else {
+            (umin, umax)
+        };
+        let p = [
+            self.smin.overflowing_mul(src.smin),
+            self.smin.overflowing_mul(src.smax),
+            self.smax.overflowing_mul(src.smin),
+            self.smax.overflowing_mul(src.smax),
+        ];
+        (self.smin, self.smax) = if p.iter().any(|&(_, ov)| ov) {
+            (i64::MIN, i64::MAX)
+        } else {
+            (
+                p.iter().map(|&(v, _)| v).min().unwrap(),
+                p.iter().map(|&(v, _)| v).max().unwrap(),
+            )
+        };
+        let (u32_max, ov_a) = self.u32_max.overflowing_mul(src.u32_max);
+        let (u32_min, ov_b) = self.u32_min.overflowing_mul(src.u32_min);
+        (self.u32_min, self.u32_max) = if ov_a || ov_b {
+            (0, u32::MAX)
+        } else {
+            (u32_min, u32_max)
+        };
+        let p = [
+            self.s32_min.overflowing_mul(src.s32_min),
+            self.s32_min.overflowing_mul(src.s32_max),
+            self.s32_max.overflowing_mul(src.s32_min),
+            self.s32_max.overflowing_mul(src.s32_max),
+        ];
+        (self.s32_min, self.s32_max) = if p.iter().any(|&(_, ov)| ov) {
+            (i32::MIN, i32::MAX)
+        } else {
+            (
+                p.iter().map(|&(v, _)| v).min().unwrap(),
+                p.iter().map(|&(v, _)| v).max().unwrap(),
+            )
+        };
+        self.scalar_id = None;
+    }
+
     /// Reset 32-bit halves to full range, then re-derive tightest
     /// possible values from the current 64-bit bounds via
     /// `sync_bounds`. Use at the end of ALU transfers that mutated

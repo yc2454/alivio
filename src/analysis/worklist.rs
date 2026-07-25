@@ -53,7 +53,7 @@ pub(super) fn run_worklist(
         // valve `add_new_state` reads at L20256
         // (`cur->jmp_history_cnt > 40`). Other push_jmp_history sites
         // (linked-regs at L17682, stack-spill flags at L5670/L5976)
-        // are conditional on insn-specific flags zovia doesn't model
+        // are conditional on insn-specific flags alivio doesn't model
         // yet — under-counting at those secondary sites is preferred
         // over re-implementing the flag machinery.
         // Kernel SECONDARY push_jmp_history sites (verifier.c:5677 spill /
@@ -171,7 +171,7 @@ pub(super) fn run_worklist(
         // layered:
         //   (1) Outer: cache only at PRUNE POINTS (kernel `do_check` only
         //       calls `is_state_visited` when is_prune_point fires).
-        //       zovia's dense default mode caches at EVERY popped state;
+        //       alivio's dense default mode caches at EVERY popped state;
         //       that produces a parent_cache_id chain with consecutive-pc
         //       deltas the kernel never has. Gate fixes that.
         //   (2) Inner: `add_new_state` heuristic (verifier.c v6.15
@@ -186,7 +186,7 @@ pub(super) fn run_worklist(
             .get(state.pc)
             .map(|a| a.force_checkpoint)
             .unwrap_or(false);
-        // Kernel L18999-L19013 uses ENV-WIDE counters. But zovia's
+        // Kernel L18999-L19013 uses ENV-WIDE counters. But alivio's
         // worklist interleaves paths, so env-wide deltas are noisy:
         // they can be inflated (other paths' work) OR understated
         // (after a cache event, the same path may re-pop with no
@@ -217,7 +217,7 @@ pub(super) fn run_worklist(
         // Kernel `is_state_visited` add_new_state (verifier.c L20186-20189) is a
         // SINGLE condition on the env-wide counters:
         //   jmps_processed - prev_jmps_processed >= 2 && insn_processed - prev >= 8
-        // zovia's worklist is a LIFO stack (push_back + pop_back) = pure DFS,
+        // alivio's worklist is a LIFO stack (push_back + pop_back) = pure DFS,
         // identical to the kernel's traversal, and `jmps/insn_processed` are
         // bumped per-insn/per-jmp with `prev_*` reset at each add_new_state
         // (below) — so `env_heuristic` reproduces the kernel's condition exactly.
@@ -274,7 +274,7 @@ pub(super) fn run_worklist(
             state.prev_insn_at_cache = state.path_insn_count;
             // Kernel `clear_jmp_history(cur)` at verifier.c v6.15 L20645:
             // at every add_new_state event, kernel resets the current
-            // state's jmp_history_cnt to 0. Zovia must mirror — otherwise
+            // state's jmp_history_cnt to 0. Alivio must mirror — otherwise
             // the counter grows unboundedly across cache events and the
             // long-history safety valve (jmp_history_cnt > 40) fires
             // unnecessarily at every later prune-point, force-caching
@@ -542,9 +542,9 @@ pub(super) fn run_worklist(
 // helper does its own gating (env var and/or trace-pc range) so the call
 // site is a single line; none affect analysis results.
 
-/// ZOVIA_DUMP_AST: one-shot dump of AST instr at trace PCs (WT diagnostic).
+/// ALIVIO_DUMP_AST: one-shot dump of AST instr at trace PCs (WT diagnostic).
 fn dump_ast(prog: &Program) {
-    if std::env::var("ZOVIA_DUMP_AST").is_ok() {
+    if std::env::var("ALIVIO_DUMP_AST").is_ok() {
         for pc in 0..prog.instrs.len() {
             if trace_pc_in_range(pc) {
                 eprintln!("[AST] pc={} instr={:?}", pc, prog.instrs[pc]);

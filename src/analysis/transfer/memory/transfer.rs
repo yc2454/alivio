@@ -82,7 +82,7 @@ pub(crate) fn transfer_load(
         // Kernel `INSN_F_STACK_ACCESS` for a fill
         // (`check_stack_read_fixed_off`): kept only when the slot
         // `is_spilled_reg` — it actually held a spilled register.
-        // zovia's `SpilledReg.source_reg.is_some()` is that exact
+        // alivio's `SpilledReg.source_reg.is_some()` is that exact
         // predicate (symmetric with the spill side above), so a read of
         // plain stack data (no spilled reg in the slot) is *not* tagged
         // and the backtrack stops there.
@@ -110,7 +110,7 @@ pub(crate) fn transfer_load(
                 );
             }
             // Kernel-faithful: spill/fill saves and restores the full
-            // bpf_reg_state. zovia's slot doesn't carry ptr_const_off or
+            // bpf_reg_state. alivio's slot doesn't carry ptr_const_off or
             // var_off_contributor, so clear them for `dst` on fill to
             // match the kernel's "fresh value" semantics; a proper fix
             // would preserve them through slot metadata.
@@ -469,7 +469,7 @@ pub(crate) fn transfer_store(
             }
             // Kernel `INSN_F_STACK_ACCESS` for a spill
             // (`check_stack_write_fixed_off`): a slot-aligned scalar /
-            // BPF_ST-const / 8-byte-pointer register spill. zovia's
+            // BPF_ST-const / 8-byte-pointer register spill. alivio's
             // `spill_at`/`store_imm_to_stack_at` already encode exactly
             // that gate as `SpilledReg.source_reg.is_some()` (set iff
             // `off % 8 == 0`; see stack_ops.rs comments citing

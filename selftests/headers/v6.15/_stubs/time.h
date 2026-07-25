@@ -1,5 +1,5 @@
-#ifndef _ZOVIA_STUB_TIME_H
-#define _ZOVIA_STUB_TIME_H
+#ifndef _ALIVIO_STUB_TIME_H
+#define _ALIVIO_STUB_TIME_H
 typedef long time_t;
 
 /* clock_gettime(2) IDs — the BPF selftests reference these as the

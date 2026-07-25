@@ -27,7 +27,7 @@ static inline int expr_arg_is_id(uint8_t code) {
 }
 
 /* is_leaf_node mirror: bcf_checker.c:1110-1113. */
-static inline int is_leaf(const struct zovia_bcf_expr *e) {
+static inline int is_leaf(const struct alivio_bcf_expr *e) {
     return e->vlen == 0 || !expr_arg_is_id(e->code);
 }
 
@@ -176,7 +176,7 @@ struct slot_table {
 #define SLOT_EMPTY UINT32_MAX
 
 static int slot_table_build(struct slot_table *t,
-                            const struct zovia_bcf_expr *exprs,
+                            const struct alivio_bcf_expr *exprs,
                             size_t exprs_len) {
     size_t cap = 16;
     while (cap < exprs_len * 2 + 1) cap *= 2;
@@ -213,12 +213,12 @@ static size_t slot_table_get(const struct slot_table *t, uint32_t slot) {
 }
 
 /* Recursive post-order encoder. Mirrors `encode()` in canonical_hash.rs. */
-static void encode(uint32_t id, const struct zovia_bcf_expr *exprs,
+static void encode(uint32_t id, const struct alivio_bcf_expr *exprs,
                    const struct slot_table *st,
                    struct renamer *r, struct outbuf *b) {
     size_t array_idx = slot_table_get(st, id);
     if (array_idx == (size_t)-1) { b->oom = 1; return; }
-    const struct zovia_bcf_expr *e = &exprs[array_idx];
+    const struct alivio_bcf_expr *e = &exprs[array_idx];
 
     if (is_leaf(e)) {
         if (is_var(e->code)) {
@@ -250,8 +250,8 @@ static void encode(uint32_t id, const struct zovia_bcf_expr *exprs,
     }
 }
 
-uint64_t zovia_canonical_hash(uint32_t root,
-                              const struct zovia_bcf_expr *exprs,
+uint64_t alivio_canonical_hash(uint32_t root,
+                              const struct alivio_bcf_expr *exprs,
                               size_t exprs_len) {
     struct renamer    r;
     struct outbuf     b;

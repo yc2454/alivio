@@ -13,6 +13,6 @@
  * actually used in BPF compile context — `bpf_compiler.h` (vendored
  * from selftests/bpf/progs/) supplies the equivalents.
  */
-#ifndef _ZOVIA_STUB_LINUX_COMPILER_GCC_H
-#define _ZOVIA_STUB_LINUX_COMPILER_GCC_H
+#ifndef _ALIVIO_STUB_LINUX_COMPILER_GCC_H
+#define _ALIVIO_STUB_LINUX_COMPILER_GCC_H
 #endif

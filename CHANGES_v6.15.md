@@ -149,4 +149,4 @@ A series of targeted widening improvements were made to close loop-related false
 - **`ptr+=scalar`/`ptr-=scalar` tnum** — absolute-address tnum synchronisation removed from pointer arithmetic (was unsound).
 - **`OUT_OF_SCOPE` verdict** — new test result added for tests that require loader or runtime preprocessing that the static verifier cannot replicate.
 - **Per-file domain overrides** — individual test files can be pinned to the Interval domain (e.g., `cls_redirect`) or given kernel-equivalent per-file step limits.
-- **`ZOVIA_DUMP_PRECISE_PCS_PC` diagnostic flag** — set `ZOVIA_DUMP_PRECISE_PCS_PC=<pc>` to dump the precise-PC set at a given instruction during analysis.
+- **`ALIVIO_DUMP_PRECISE_PCS_PC` diagnostic flag** — set `ALIVIO_DUMP_PRECISE_PCS_PC=<pc>` to dump the precise-PC set at a given instruction during analysis.

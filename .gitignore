@@ -28,3 +28,4 @@ tests/baselines/prevail.json
 # Pre-built kernel + loader binaries pulled from cloudlab (too large for git;
 # ship via GitHub Releases once tagged)
 artifacts/docs/pcc_proof_steps.docx
+c-ref/build/

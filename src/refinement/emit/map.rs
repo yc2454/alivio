@@ -26,7 +26,7 @@ pub(crate) fn try_bcf_refine_map(
     // and include size_regno ONLY when its var_off is non-const.
     // Kernel `tnum_is_const(ptr_reg->var_off)` analog: use ptr_off range
     // from the interval domain. min == max ⇒ no variable contribution.
-    // var_off_contributor is unreliable here because zovia's spill/fill
+    // var_off_contributor is unreliable here because alivio's spill/fill
     // doesn't always clear it when a fresh const-offset map_value is
     // filled.
     let ptr_is_const = match state
@@ -42,7 +42,7 @@ pub(crate) fn try_bcf_refine_map(
         target_regs.push(base);
     }
     if let Some(sr) = size_reg {
-        // Kernel also gates size_reg inclusion on non-const; for zovia,
+        // Kernel also gates size_reg inclusion on non-const; for alivio,
         // a missing bcf_expr cache means size is const for refine
         // purposes (case (ii)/(iv) below handles it).
         if state.domain.get_fixed_value(sr).is_none() {
@@ -144,7 +144,7 @@ pub(crate) fn try_bcf_refine_map(
             // Third tuple slot = reset_at_crossing (see replay_to_reject):
             // the kernel's base can be a checkpoint on the CURRENT
             // lineage whose segment starts at a LATER re-arrival at the
-            // rung's pc (zovia may never have cached there — adds are
+            // rung's pc (alivio may never have cached there — adds are
             // cadence-gated). Offer the last two crossings per rung,
             // share-only, plain-anchor (ADDITIVE; crossings absent →
             // replay_to_reject bails to None).
@@ -267,7 +267,7 @@ pub(crate) fn try_bcf_refine_map(
             "[bcf] refined map-OOB at base={:?} insn_off={} size={} (size_reg={:?}) limit={}: cvc5 proof {} bytes (hash {:016x})",
             base, insn_off, size, size_reg, map_limit, entry.proof_bytes.len(), entry.cond_hash
         );
-        if let Ok(prefix) = std::env::var("ZOVIA_BCF_DUMP_PROOF") {
+        if let Ok(prefix) = std::env::var("ALIVIO_BCF_DUMP_PROOF") {
             let idx = env.bcf_proofs.len();
             let path = format!("{}.{}.bcf", prefix, idx);
             if let Err(e) = std::fs::write(&path, &entry.proof_bytes) {
@@ -276,7 +276,7 @@ pub(crate) fn try_bcf_refine_map(
                 log::info!(target: "app", "[bcf] dumped raw proof to {}", path);
             }
         }
-        if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_BCF_CENSUS").ok().as_deref() == Some("1") {
             crate::refinement::emit::unreachable::census_log(
                 "refine_map",
                 state.pc,

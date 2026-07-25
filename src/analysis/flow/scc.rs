@@ -281,7 +281,7 @@ pub fn compute_scc_callchain(
             state.pc
         } else {
             // Callsite of frame i = the call insn that pushed frame
-            // i+1. zovia stores `return_pc` (= callsite + 1) on the
+            // i+1. alivio stores `return_pc` (= callsite + 1) on the
             // next-inner frame; recover the callsite by subtracting 1.
             let next = state.frames.get(FrameLevel::from_index(i + 1));
             next.return_pc.saturating_sub(1)
@@ -418,7 +418,7 @@ pub fn maybe_exit_scc(env: &mut VerifierEnv, cid: u32) {
 /// pending backedges (i.e., the SCC hasn't yet been processed by
 /// `propagate_backedges`). Used in step 4 to gate
 /// RANGE_WITHIN vs NOT_EXACT subsumption strictness — replaces
-/// zovia's current `prev.branches > 0` approximation.
+/// alivio's current `prev.branches > 0` approximation.
 pub fn incomplete_read_marks(env: &VerifierEnv, state: &State) -> bool {
     let Some(callchain) =
         crate::analysis::flow::scc::compute_scc_callchain(state, &env.insn_aux_data)

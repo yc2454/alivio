@@ -93,7 +93,7 @@ pub fn hash_expr(root: u32, exprs: &[BcfExpr]) -> u64 {
     let slot_to_idx = slot_index(exprs);
     encode(root, exprs, &slot_to_idx, &mut renamer, &mut buf);
 
-    // Diagnostic hatch: when ZOVIA_BCF_DUMP_HASH_BYTES is set, dump the
+    // Diagnostic hatch: when ALIVIO_BCF_DUMP_HASH_BYTES is set, dump the
     // canonical encoder's byte stream to stderr exactly like the kernel's
     // `pr_warn("bcf_canonical_hash: buf.len=...")`. Lets us byte-diff
     // against `dmesg | grep bcf_canonical_hash` to localise DAG-shape
@@ -102,14 +102,14 @@ pub fn hash_expr(root: u32, exprs: &[BcfExpr]) -> u64 {
     hasher.write(&buf);
     let h = hasher.finish();
 
-    if std::env::var("ZOVIA_BCF_DUMP_HASH_BYTES").is_ok() {
+    if std::env::var("ALIVIO_BCF_DUMP_HASH_BYTES").is_ok() {
         let hex: String = buf
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect::<Vec<_>>()
             .join(" ");
         eprintln!(
-            "[zovia] bcf_canonical_hash: buf.len={} hash=0x{:016x} bytes: {}",
+            "[alivio] bcf_canonical_hash: buf.len={} hash=0x{:016x} bytes: {}",
             buf.len(),
             h,
             hex
@@ -172,7 +172,7 @@ mod tests {
     };
 
     /// Regression test: byte-for-byte the kernel-side canonical_hash agrees
-    /// with zovia's on the shift_constraint goal layout. Locks the hash to
+    /// with alivio's on the shift_constraint goal layout. Locks the hash to
     /// the value the kernel produces (kernel/bpf/canonical_hash.c).
     /// If either impl changes its encoding, this asserts loudly before the
     /// next end-to-end test would silently miss the bundle entry.

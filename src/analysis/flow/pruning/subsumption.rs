@@ -19,7 +19,7 @@ fn callee_saved_regs() -> HashSet<Reg> {
 /// Mirror of kernel `states_maybe_looping` (verifier.c v6.15 L18884).
 /// Topmost frame registers R0..R10 must be bytewise identical and the
 /// call-stack depth must match. The kernel uses `memcmp` ignoring the
-/// `parent` pointer; zovia compares the abstract fields that together
+/// `parent` pointer; alivio compares the abstract fields that together
 /// constitute the per-reg state at this site.
 pub(super) fn states_maybe_looping(prev: &State, cur: &State) -> bool {
     if prev.frames.depth() != cur.frames.depth() {
@@ -29,7 +29,7 @@ pub(super) fn states_maybe_looping(prev: &State, cur: &State) -> bool {
     // scalar-id linkage. tnum/precise_regs are intentionally EXCLUDED:
     // the kernel sets precision via mark_chain_precision (backward walk
     // that updates BOTH cached and current state), and refines tnum via
-    // reg_set_min_max only on scalar registers — zovia eager-propagates
+    // reg_set_min_max only on scalar registers — alivio eager-propagates
     // both forward, which makes cached vs current state diverge on
     // bookkeeping that the kernel keeps in lock-step. The faithful
     // signal for "this state is identical at this pc" is the abstract
@@ -44,10 +44,10 @@ pub(super) fn states_maybe_looping(prev: &State, cur: &State) -> bool {
         // of bpf_reg_state up to frameno; the `id` field gets compared
         // too in principle, but the kernel canonicalizes ids via
         // `check_ids` before this point so that semantically-equivalent
-        // states have equal ids. zovia mints fresh `scalar_id` on every
+        // states have equal ids. alivio mints fresh `scalar_id` on every
         // memory load (e.g. `r3 = *(u8*)(r10-N)` each iteration),
         // producing per-iteration distinct ids for the same abstract
-        // value. That's a zovia-internal bookkeeping artifact, not a
+        // value. That's a alivio-internal bookkeeping artifact, not a
         // semantic difference. Comparing ids here would spuriously
         // suppress the infinite-loop trap (mov64sx_s32_varoff_1 family),
         // letting unsound programs through. Type + abstract value +
@@ -108,7 +108,7 @@ pub(super) fn iter_active_depths_differ(prev: &State, cur: &State) -> bool {
 /// Mirror of kernel `states_equal(old, cur, EXACT)` (verifier.c v6.15
 /// L18838-L18883). Strict equality used by the infinite-loop trap; ranges
 /// must match exactly (no widening allowed). Compared field-by-field
-/// against `prev`. Returns true iff every semantic field zovia tracks is
+/// against `prev`. Returns true iff every semantic field alivio tracks is
 /// identical between `prev` and `cur`. Path-bookkeeping fields
 /// (`history_idx`, `parent_cache_id`, `cache_id`, `children_unsafe`) and
 /// the BCF symbolic state are intentionally excluded — they don't bear on
@@ -172,14 +172,14 @@ pub(super) fn state_subsumed_by(
     // is what the returned miss reason names, so cheaper / more-
     // fundamental checks come first.
     if !types_subsumed_by(&cur.types, &old.types, live_regs) {
-        // Measurement hatch (ZOVIA_DUMP_SUBSUM_MISS): on a Types
+        // Measurement hatch (ALIVIO_DUMP_SUBSUM_MISS): on a Types
         // miss, re-scan to report the first offending live reg + its
         // (cur, old) RegType at this pc. Runs ONLY when the env var is
         // set AND we already know the check failed — zero hot-path /
         // behavioral effect otherwise. Used to localize the
         // clean_verifier_state / liveness-fidelity gap (skb_drop = 100%
         // types misses).
-        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
             for &r in live_regs {
                 let ct = cur.types.get(r);
                 let ot = old.types.get(r);
@@ -432,7 +432,7 @@ fn active_lock_subsumed_by(cur: &State, old: &State, live_regs: &HashSet<Reg>) -
 /// bijection `old_id ↔ cur_id`. Both zero ⇒ ok; exactly one zero ⇒
 /// mismatch; else old_id must map to exactly one cur_id and a cur_id
 /// may be claimed by only one old_id. `map` holds the recorded pairs
-/// (zovia live-reg count is tiny, so the linear scan is trivial vs the
+/// (alivio live-reg count is tiny, so the linear scan is trivial vs the
 /// kernel's fixed BPF_ID_MAP_SIZE array).
 fn check_ids(old_id: u32, cur_id: u32, map: &mut Vec<(u32, u32)>) -> bool {
     if (old_id != 0) != (cur_id != 0) {
@@ -456,7 +456,7 @@ fn check_ids(old_id: u32, cur_id: u32, map: &mut Vec<(u32, u32)>) -> bool {
 /// Kernel `check_scalar_ids` (verifier.c:19416): like `check_ids` but a
 /// zero id gets a fresh unique temp so `0 vs ID` / `ID vs 0` are valid
 /// (but still consistently bijective). `tmp` is a per-comparison
-/// generator seeded high (disjoint from real low-valued zovia ids).
+/// generator seeded high (disjoint from real low-valued alivio ids).
 fn check_scalar_ids(old_id: u32, cur_id: u32, map: &mut Vec<(u32, u32)>, tmp: &mut u32) -> bool {
     let o = if old_id != 0 {
         old_id
@@ -560,9 +560,9 @@ fn scalar_id_links_subsumed_by(cur: &State, old: &State, live_regs: &HashSet<Reg
 fn types_subsumed_by(cur: &TypeState, old: &TypeState, live_regs: &HashSet<Reg>) -> bool {
     for &r in live_regs {
         if !type_subsumed_by(&cur.get(r), &old.get(r)) {
-            // ZOVIA_DUMP_SUBSUM_MISS=1: name the live reg + type pair that
+            // ALIVIO_DUMP_SUBSUM_MISS=1: name the live reg + type pair that
             // blocks the Types verdict.
-            if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+            if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[types_miss] reg={:?} old={:?} cur={:?}",
                     r,
@@ -733,7 +733,7 @@ fn domain_subsumed_by(
         let (old_smin, old_smax) = old.get_interval(r);
         let (cur_smin, cur_smax) = cur.get_interval(r);
         if !(old_smin <= cur_smin && old_smax >= cur_smax) {
-            if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+            if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                 eprintln!(
                     "[domain_miss] reg={:?} precise={} force_exact={} s64 old=[{},{}] cur=[{},{}]",
                     r,
@@ -755,7 +755,7 @@ fn domain_subsumed_by(
             let ob = old_ivl.get_bounds(r);
             let cb = cur_ivl.get_bounds(r);
             if !(ob.umin <= cb.umin && ob.umax >= cb.umax) {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[domain_miss] reg={:?} precise u64 old=[{},{}] cur=[{},{}]",
                         r, ob.umin, ob.umax, cb.umin, cb.umax
@@ -764,7 +764,7 @@ fn domain_subsumed_by(
                 return false;
             }
             if !(ob.s32_min <= cb.s32_min && ob.s32_max >= cb.s32_max) {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[domain_miss] reg={:?} precise s32 old=[{},{}] cur=[{},{}]",
                         r, ob.s32_min, ob.s32_max, cb.s32_min, cb.s32_max
@@ -773,7 +773,7 @@ fn domain_subsumed_by(
                 return false;
             }
             if !(ob.u32_min <= cb.u32_min && ob.u32_max >= cb.u32_max) {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[domain_miss] reg={:?} precise u32 old=[{},{}] cur=[{},{}]",
                         r, ob.u32_min, ob.u32_max, cb.u32_min, cb.u32_max
@@ -815,7 +815,7 @@ fn zone_subsumed_by(
                 continue;
             }
             if old_dbm.get(a, b) < cur_dbm.get(a, b) {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[domain_miss] anchor-anchor a={:?} b={:?}", a, b);
                 }
                 return false;
@@ -844,13 +844,13 @@ fn zone_subsumed_by(
     for &r in &live {
         for &a in &anchors {
             if old_dbm.get(r, a) < cur_dbm.get(r, a) {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[domain_miss] reg-anchor r={:?} a={:?}", r, a);
                 }
                 return false;
             }
             if old_dbm.get(a, r) < cur_dbm.get(a, r) {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[domain_miss] anchor-reg a={:?} r={:?}", a, r);
                 }
                 return false;
@@ -883,7 +883,7 @@ fn interval_subsumed_by(
     let old_pkt = old_ivl.get_packet_size_bound().unwrap_or(0);
     let cur_pkt = cur_ivl.get_packet_size_bound().unwrap_or(0);
     if old_pkt > cur_pkt {
-        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
             eprintln!("[ivl_miss] pkt_bound old={} cur={}", old_pkt, cur_pkt);
         }
         return false;
@@ -927,13 +927,13 @@ fn interval_subsumed_by(
         let cur_range = cur_po.and_then(|po| po.range);
         match (old_range, cur_range) {
             (Some(_), None) => {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[ivl_miss] reg={:?} range old=Some cur=None", r);
                 }
                 return false;
             }
             (Some(old_r), Some(cur_r)) if old_r > cur_r => {
-                if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                     eprintln!("[ivl_miss] reg={:?} range old={} cur={}", r, old_r, cur_r);
                 }
                 return false;
@@ -1028,7 +1028,7 @@ fn stack_subsumed_by(
         // Kernel `scalar_reg_for_stack` slot-pair rule (stacksafe
         // verifier.c:19736): when BOTH slots read as scalars — (a) a
         // full 8-byte scalar spill (`is_spilled_scalar_reg64`: kernel
-        // slot_type[0]==SPILL, i.e. zovia's byte base+7 under the
+        // slot_type[0]==SPILL, i.e. alivio's byte base+7 under the
         // top-down↔bottom-up mirror, plus base anchor SPILL + scalar),
         // or (b) `is_stack_all_misc`: every byte MISC or (privileged)
         // INVALID/never-written — the whole slot compares as ONE
@@ -1062,7 +1062,7 @@ fn stack_subsumed_by(
                     let all_skippable = (base..base + 8)
                         .all(|b| matches!(old_frame.stack.get_slot_kind(b), None | Some(Misc)));
                     if !all_skippable {
-                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                        if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} base={} (alloc-boundary: cur_alloc={})",
                                 cur.pc,
@@ -1143,7 +1143,7 @@ fn stack_subsumed_by(
                     }
                 };
                 if !ok {
-                    if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                    if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                         eprintln!(
                             "[stack_miss] pc={} frame={} base={} (scalar-pair regsafe)",
                             cur.pc, frame_i, base
@@ -1201,7 +1201,7 @@ fn stack_subsumed_by(
                     // Kernel stacksafe:19742 — `env->allow_uninit_stack &&
                     // old slot_type == STACK_MISC -> continue`, BEFORE the
                     // scalar_reg_for_stack arm and the per-byte kind rule.
-                    // Privileged loads (zovia's model, like test_loader as
+                    // Privileged loads (alivio's model, like test_loader as
                     // root) may read uninit stack, so an old MISC byte
                     // covers ANY cur byte — including a never-written one.
                     // EXACT compares still require equal kinds (kernel
@@ -1232,7 +1232,7 @@ fn stack_subsumed_by(
                                 .all(|b| matches!(fr.stack.get_slot_kind(b), Some(Misc) | None))
                         };
                         // Kernel `is_spilled_scalar_reg64` = slot_type[0] ==
-                        // STACK_SPILL, i.e. a FULL 8-byte scalar spill (zovia
+                        // STACK_SPILL, i.e. a FULL 8-byte scalar spill (alivio
                         // mirror: base AND base+7 Spill). A sub-8 spill leaves
                         // the kernel's slot_type[0] non-SPILL, so
                         // `scalar_reg_for_stack` returns NULL and the per-byte
@@ -1272,7 +1272,7 @@ fn stack_subsumed_by(
                         if covered {
                             continue;
                         }
-                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                        if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                             let kinds = |fr: &crate::analysis::machine::frame_stack::CallFrame| {
                                 (slot_base..slot_base + 8)
                                     .map(|b| fr.stack.get_slot_kind(b))
@@ -1295,7 +1295,7 @@ fn stack_subsumed_by(
                         return false;
                     }
                     (Some(_), None) | (Some(_), Some(_)) => {
-                        if std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
+                        if std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1") {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} old_kind={:?} new_kind={:?}",
                                 cur.pc, frame_i, offset, ok, nk
@@ -1314,7 +1314,7 @@ fn stack_subsumed_by(
             // allow_uninit_stack MISC skip at :19742). So a SUB-8-BYTE spill
             // whose remainder is MISC (byte 7 == MISC) gets NO reg
             // comparison: as OLD it covers any cur (the misc remainder reads
-            // as an unbound scalar). zovia stores the slot's reg at the BASE
+            // as an unbound scalar). alivio stores the slot's reg at the BASE
             // byte and iterates per-byte; comparing the reg on EVERY spill
             // byte would be over-strict vs the kernel's byte-7-only rule.
             // Restrict the reg comparison to the base byte, gated on the
@@ -1328,9 +1328,9 @@ fn stack_subsumed_by(
                 // bytes TOP-DOWN, so ITS byte 7 is SPILL for EVERY spilled
                 // reg (any size) — the byte-7 gate only skips slots whose
                 // spill ANCHOR was scrubbed by a later partial overwrite.
-                // zovia marks spills BOTTOM-UP (Spill at [0..size), Misc
-                // above), so the kernel's byte-7 ≡ zovia's BASE byte.
-                // Gating on zovia's byte 7 would skip the whole
+                // alivio marks spills BOTTOM-UP (Spill at [0..size), Misc
+                // above), so the kernel's byte-7 ≡ alivio's BASE byte.
+                // Gating on alivio's byte 7 would skip the whole
                 // reg/type/precision compare for every sub-8-byte spill.
                 let old_anchor_spill =
                     old_frame.stack.get_slot_kind(slot_base) == Some(StackSlotKind::Spill);
@@ -1360,7 +1360,7 @@ fn stack_subsumed_by(
             // the same offset.
             if !stack_slot_type_subsumed_by(&new_ty, &old_ty) {
                 if crate::analysis::trace_pc_in_range(cur.pc)
-                    && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
+                    && std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                 {
                     eprintln!(
                         "[stack_miss] pc={} frame={} off={} old_ty={:?} new_ty={:?} (slot-type)",
@@ -1385,7 +1385,7 @@ fn stack_subsumed_by(
             {
                 if !tnum_covers(&new_s.tnum, &old_s.tnum) {
                     if crate::analysis::trace_pc_in_range(cur.pc)
-                        && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
+                        && std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                     {
                         eprintln!(
                             "[stack_miss] pc={} frame={} off={} old_tn={:?} new_tn={:?} (precise-tnum)",
@@ -1396,7 +1396,7 @@ fn stack_subsumed_by(
                 }
                 if !(old_s.bounds.min <= new_s.bounds.min && new_s.bounds.max <= old_s.bounds.max) {
                     if crate::analysis::trace_pc_in_range(cur.pc)
-                        && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
+                        && std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                     {
                         eprintln!(
                             "[stack_miss] pc={} frame={} off={} old=[{},{}] new=[{},{}] (precise-bounds)",
@@ -1458,7 +1458,7 @@ fn stack_subsumed_by(
             };
             if !iter_eq_modulo_depth {
                 if crate::analysis::trace_pc_in_range(cur.pc)
-                    && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
+                    && std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                 {
                     eprintln!(
                         "[stack_miss] pc={} frame={} off={} (iter-identity)",
@@ -1490,7 +1490,7 @@ fn stack_subsumed_by(
                         || matches!((old_range, new_range), (Some(o), Some(n)) if o > n);
                     if pkt_fail {
                         if crate::analysis::trace_pc_in_range(cur.pc)
-                            && std::env::var("ZOVIA_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
+                            && std::env::var("ALIVIO_DUMP_SUBSUM_MISS").ok().as_deref() == Some("1")
                         {
                             eprintln!(
                                 "[stack_miss] pc={} frame={} off={} old_rng={:?} new_rng={:?} (pkt-range)",

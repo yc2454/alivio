@@ -2,8 +2,8 @@
  * forward declarations for kfuncs added in v6.15 that are missing from
  * the base file. As we hit more 6.15-only symbols during translation,
  * append them at the bottom. */
-#ifndef __ZOVIA_VMLINUX_H
-#define __ZOVIA_VMLINUX_H
+#ifndef __ALIVIO_VMLINUX_H
+#define __ALIVIO_VMLINUX_H
 
 #include "vmlinux_v614_base.h"
 
@@ -227,4 +227,4 @@ struct bpf_sockopt {
 	__s32 retval;
 };
 
-#endif /* __ZOVIA_VMLINUX_H */
+#endif /* __ALIVIO_VMLINUX_H */

@@ -11,8 +11,8 @@
  * implementation and the cross-impl test harness only.
  */
 
-#ifndef ZOVIA_SIPHASH24_H
-#define ZOVIA_SIPHASH24_H
+#ifndef ALIVIO_SIPHASH24_H
+#define ALIVIO_SIPHASH24_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -77,4 +77,4 @@ static inline uint64_t siphash24(const uint8_t *in, size_t inlen,
     return v0 ^ v1 ^ v2 ^ v3;
 }
 
-#endif /* ZOVIA_SIPHASH24_H */
+#endif /* ALIVIO_SIPHASH24_H */

@@ -208,7 +208,7 @@ pub enum PointerBounds {
 }
 
 /// Kernel `enum bpf_stack_slot_type` (verifier.h) for the scalar-data slot
-/// kinds zovia distinguishes. `STACK_INVALID` is modelled as the ABSENCE of a
+/// kinds alivio distinguishes. `STACK_INVALID` is modelled as the ABSENCE of a
 /// map entry (a never-written / scratch byte), so it has no variant here; the
 /// remaining kernel kinds (`STACK_DYNPTR`/`STACK_ITER`/`STACK_IRQ_FLAG`) are
 /// carried by the dedicated `dynptr`/`iterator`/`irq_flag` annotations on
@@ -278,10 +278,10 @@ pub struct SpilledReg {
     /// `check_stack_read_fixed_off` (`copy_register_state`,
     /// verifier.c:5889/5934). `None` == kernel `-1`.
     pub bcf_expr: Option<u32>,
-    /// Const pointer offset (zovia's `ptr_const_off`) carried across
+    /// Const pointer offset (alivio's `ptr_const_off`) carried across
     /// spill/fill. The kernel keeps a pointer's offset in `reg->var_off`
     /// / `reg->off`, which `copy_register_state` preserves verbatim across
-    /// spill+fill; zovia models a packet pointer's const offset OUTSIDE the
+    /// spill+fill; alivio models a packet pointer's const offset OUTSIDE the
     /// value-tnum (in `State::ptr_const_off`), so without carrying it here a
     /// filled packet pointer loses its const offset and is wrongly kept in
     /// the BCF reject `reg_masks` (accepted_entrypoint pc274 R2=pkt(off=14):
@@ -315,7 +315,7 @@ pub struct StackState {
     /// shrinks it; `stacksafe` hard-fails any old non-INVALID/non-MISC
     /// byte at `i >= cur->allocated_stack` (verifier.c:19816) BEFORE the
     /// `scalar_reg_for_stack` bridge — no imprecise-old wildcard applies
-    /// across the boundary. zovia grows on slot materialization (every
+    /// across the boundary. alivio grows on slot materialization (every
     /// write path lands in `insert`/`set_slot_type`/`invalidate_slot`);
     /// pure reads of never-written stack don't grow it — strict-side
     /// approximation, validated stream-identical on the probe objects.
@@ -494,12 +494,12 @@ impl StackState {
     /// (verifier.c:5641): a misc-class write (unaligned / non-spillable)
     /// into a slot that "belonged to spilled ptr/dynptr/iter"
     /// (`is_stack_slot_special` — the slot's ANCHOR byte, kernel
-    /// `slot_type[7]` ≡ zovia's BASE byte, is SPILL) destroys the tracked
+    /// `slot_type[7]` ≡ alivio's BASE byte, is SPILL) destroys the tracked
     /// spill and runs `scrub_spilled_slot` on EVERY byte: STACK_INVALID
     /// stays, everything else — including STACK_ZERO — becomes STACK_MISC.
-    /// zovia previously only overwrote the WRITTEN bytes, so a stale sub-8
+    /// alivio previously only overwrote the WRITTEN bytes, so a stale sub-8
     /// spill survived beside them (from_l3 1716-join first-divergence:
-    /// zovia old [Spill×4,Misc×4] vs kernel all-MISC → kernel HIT, zovia
+    /// alivio old [Spill×4,Misc×4] vs kernel all-MISC → kernel HIT, alivio
     /// Stack-MISS → ghost route → env-counter phase shift → the 512/527
     /// checkpoint displacement that extinguishes the demanded route).
     pub fn scrub_spilled_slots_for_write(&mut self, write_off: i16, write_size: usize) {

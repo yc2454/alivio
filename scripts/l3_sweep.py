@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-L3 sweep harness — end-to-end (Mac zovia → bundle → cloudlab → VM kernel).
+L3 sweep harness — end-to-end (Mac alivio → bundle → cloudlab → VM kernel).
 
 For each input .o:
-  1. L2: run `zovia --bcf` locally; record accept/reject + bundle.
+  1. L2: run `alivio --bcf` locally; record accept/reject + bundle.
   2. If bundle produced: scp it to cloudlab, ssh into VM, run test_loader,
      capture exit and key dmesg lines.
 
@@ -18,7 +18,7 @@ under /users/yc1795/BCF/bpf-progs/ (already synced, virtiofs-shared as
 /root/bcf/bpf-progs/ in the VM).
 
 Notes:
-  - L2 runs in parallel (zovia is CPU-only, no shared state).
+  - L2 runs in parallel (alivio is CPU-only, no shared state).
   - L3 runs serial — single VM, kernel state is global.
   - L3 SSH uses BatchMode (no password prompts); a working ssh key
     chain to the cloudlab host + the VM's bookworm key file is required.
@@ -38,7 +38,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional
 
-ZOVIA = Path("./target/release/zovia")
+ALIVIO = Path("./target/release/alivio")
 LOCAL_BPFPROGS = Path("/Users/yalucai/BCF/bpf-progs")
 CLOUDLAB_HOST = "yc1795@ms0802.utah.cloudlab.us"
 CLOUDLAB_BPFPROGS = "/users/yc1795/BCF/bpf-progs"
@@ -67,7 +67,7 @@ def lookup_prog_type(prog_path: Path) -> Optional[str]:
 class Result:
     program: str            # path under bpf-progs/
     source: str             # cilium / calico / ...
-    # L2 (zovia)
+    # L2 (alivio)
     l2_outcome: str = "SKIP"   # ACCEPT / REJECT / TIMEOUT / ERROR
     l2_elapsed_s: float = 0.0
     l2_fail_reason: Optional[str] = None
@@ -97,7 +97,7 @@ def run_l2(prog: Path, timeout: int) -> dict:
     start = time.time()
     try:
         r = subprocess.run(
-            [str(ZOVIA), "--bcf", "--kernel-mode", "verify", str(prog)],
+            [str(ALIVIO), "--bcf", "--kernel-mode", "verify", str(prog)],
             capture_output=True, text=True, timeout=timeout,
         )
         out = r.stdout + "\n" + r.stderr
@@ -236,10 +236,10 @@ def main() -> int:
     ap.add_argument("--input-list", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--l2-jobs", type=int, default=4,
-                    help="parallel zovia jobs (default 4)")
+                    help="parallel alivio jobs (default 4)")
     # Defaults are intentionally LARGE: a small wall-clock cap is a
     # harness artifact, not a kernel-faithfulness limit (the kernel
-    # bounds verification by insn-count, which zovia models
+    # bounds verification by insn-count, which alivio models
     # separately). A too-small cap silently loses real wins by
     # turning slow-but-valid analyses into spurious TIMEOUT/REJECT
     # (measured: 60s undercounted cilium L3 by 3). So by default we
@@ -251,7 +251,7 @@ def main() -> int:
                          "result is lost to an arbitrary cap.")
     ap.add_argument("--timeout-l2", type=int, default=600, metavar="SECONDS",
                     help="max seconds for the L2 phase per object "
-                         "(zovia analysis on the Mac; default 600). "
+                         "(alivio analysis on the Mac; default 600). "
                          "Overridden by --timeout if given.")
     ap.add_argument("--timeout-l3", type=int, default=600, metavar="SECONDS",
                     help="max seconds for the L3 phase per object "

@@ -1,5 +1,5 @@
-#ifndef _ZOVIA_STUB_LIMITS_H
-#define _ZOVIA_STUB_LIMITS_H
+#ifndef _ALIVIO_STUB_LIMITS_H
+#define _ALIVIO_STUB_LIMITS_H
 #define CHAR_BIT 8
 #define SCHAR_MAX 127
 #define SCHAR_MIN (-128)

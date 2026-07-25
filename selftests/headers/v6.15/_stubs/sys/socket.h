@@ -9,8 +9,8 @@
  *
  * Values match POSIX / glibc on Linux.
  */
-#ifndef _ZOVIA_STUB_SYS_SOCKET_H
-#define _ZOVIA_STUB_SYS_SOCKET_H
+#ifndef _ALIVIO_STUB_SYS_SOCKET_H
+#define _ALIVIO_STUB_SYS_SOCKET_H
 
 #include <linux/socket.h>   /* __kernel_sa_family_t, struct __kernel_sockaddr_storage */
 #include <linux/in.h>       /* struct in_addr, sockaddr_in, IPPROTO_* */

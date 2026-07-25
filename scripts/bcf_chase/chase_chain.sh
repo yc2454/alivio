@@ -3,14 +3,14 @@
 #
 # The BCF kernel logs `bcf_canonical_hash:` for EVERY discharge query and STOPS at
 # the first MISS (load fails EACCES -13). So: load a bundle -> read the one missed
-# hash from dmesg -> if it's in zovia's emitted superset, add it (REAL, zovia can
+# hash from dmesg -> if it's in alivio's emitted superset, add it (REAL, alivio can
 # generate it); else clone-fabricate an entry with that cond_hash (ENGINE-SHAPE gap,
-# zovia cannot generate it -- works only because the prototype kernel "trusts the
+# alivio cannot generate it -- works only because the prototype kernel "trusts the
 # hash match", see bcf_bundle.c TODO) -> reload -> kernel advances one reject.
 # Loop until the program loads (err=0). Final tally: |WANT| real vs |FAKE| engine-shape.
 #
 # Config via env (defaults = the accepted_entrypoint run, 2026-06-08):
-#   SUP   superset bundle (zovia --bcf --kernel-mode, all 4 passes, depth16 + knobs)
+#   SUP   superset bundle (alivio --bcf --kernel-mode, all 4 passes, depth16 + knobs)
 #   HOST  cloudlab host (read from your git remote / memory; do NOT hardcode long-term)
 #   VMKEY nested-VM ssh key on the host;  OBJ  .o path INSIDE the VM;  PROG  --prog name
 #   WANT  real-hash list (seed with known reals to skip iterations);  FAKE  fabricated list
@@ -22,8 +22,8 @@ VMKEY=${VMKEY:-/users/yc1795/BCF/imgs/bookworm.id_rsa}
 OBJ=${OBJ:-/root/bcf/bpf-progs/calico/clang-15_-O1_felix_bin_bpf_from_nat_no_log.o}
 PROG=${PROG:-calico_tc_skb_accepted_entrypoint}
 DIR=${DIR:-/tmp}
-WANT=${WANT:-$DIR/want.txt}      # in-superset (real) hashes -- zovia CAN generate
-FAKE=${FAKE:-$DIR/fake.txt}      # engine-shape hashes -- fabricated, zovia CANNOT generate
+WANT=${WANT:-$DIR/want.txt}      # in-superset (real) hashes -- alivio CAN generate
+FAKE=${FAKE:-$DIR/fake.txt}      # engine-shape hashes -- fabricated, alivio CANNOT generate
 ITERS=${ITERS:-40}
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # Precompute the superset hash set once (used to classify each miss real vs engine-shape).

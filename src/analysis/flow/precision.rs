@@ -1,6 +1,6 @@
 // src/analysis/flow/precision.rs
 //
-// Backward precision propagation — zovia's port of the kernel's
+// Backward precision propagation — alivio's port of the kernel's
 // __mark_chain_precision / backtrack_insn (verifier.c). Two consumers:
 //   * mark_chain_precision_backward / propagate_precision — mark the
 //     precision-critical reg/stack lineage so pruning keeps those states
@@ -275,7 +275,7 @@ pub fn mark_chain_precision_backward_seeded(
                     // EXACTLY the bt frame regs — no scalar-id fan-out on the
                     // ancestor state. The kernel's id-class propagation is
                     // (a) mark_precise_scalar_ids on CUR at walk start and
-                    // (b) hist->linked_regs during the walk (zovia mirrors it
+                    // (b) hist->linked_regs during the walk (alivio mirrors it
                     // in bt_sync_linked_regs). A mark_reg_precise fan-out
                     // here would mark ancestors' unrelated-in-that-state id
                     // classes over-precise.
@@ -347,7 +347,7 @@ pub fn propagate_precision(env: &mut VerifierEnv, cur: &State, old: &State) {
     // state-tag never push that mark onto the arriving path's lineage;
     // the arriving lineage's own checkpoints would stay imprecise and
     // wildcard-merge arrivals with DIFFERENT tags where the kernel keeps
-    // them apart. Current-frame slots only (zovia's stack frontier is
+    // them apart. Current-frame slots only (alivio's stack frontier is
     // current-frame-scoped — extend with per-frame frontiers if a
     // multi-frame case surfaces).
     let slots: Vec<i16> = old
@@ -467,16 +467,16 @@ pub fn bcf_suffix_base_pc(
     parent_cache_id: Option<u32>,
     target_regs: &[Reg],
 ) -> Option<usize> {
-    // ZOVIA_BCF_TRACK_DEBUG_PC: set to anything for the per-insn walk
+    // ALIVIO_BCF_TRACK_DEBUG_PC: set to anything for the per-insn walk
     // trace; a numeric value restricts it to walks whose reject
     // breadcrumb sits at that pc (an all-walks trace drowns big
     // objects — one trace per discharge attempt).
-    let debug = std::env::var("ZOVIA_BCF_TRACK_DEBUG_PC").is_ok()
-        && std::env::var("ZOVIA_BCF_TRACK_DEBUG_PC")
+    let debug = std::env::var("ALIVIO_BCF_TRACK_DEBUG_PC").is_ok()
+        && std::env::var("ALIVIO_BCF_TRACK_DEBUG_PC")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .is_none_or(|p| env.history.get(history_idx).map(|s| s.pc) == Some(p));
-    let probe = std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1");
+    let probe = std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1");
     if probe {
         eprintln!(
             "[bcf-track-start] history_idx={} targets={:?}",
@@ -492,7 +492,7 @@ pub fn bcf_suffix_base_pc(
         }
         return None;
     }
-    // Initial precision lives in the reject state's call frame. zovia
+    // Initial precision lives in the reject state's call frame. alivio
     // records the call depth on every breadcrumb forward, so it is the
     // authoritative analogue of the kernel's `bt->frame`
     // (`bt_init(bt, st->curframe)` in `backtrack_states`).
@@ -562,7 +562,7 @@ pub fn bcf_suffix_base_pc(
                 {
                     // Kernel `backtrack_insn` returned a negative errno
                     // (-ENOTSUPP / -EFAULT): `backtrack_states` aborts
-                    // with `base = NULL`, which on the zovia side means
+                    // with `base = NULL`, which on the alivio side means
                     // "keep all accumulated path_conds" — sound, just
                     // not a tighter suffix.
                     if debug {
@@ -598,7 +598,7 @@ pub fn bcf_suffix_base_pc(
                     // bt-empty while walking state `st`, `base = st->parent`.
                     // `parent_loc` (the cache at `current_parent_id`) IS
                     // `st->parent`; its cache pc == `base->insn_idx`, the
-                    // `bcf_track` replay start (:24424). zovia's analog is
+                    // `bcf_track` replay start (:24424). alivio's analog is
                     // the cached (live or retired) state at the current
                     // parent_cache_id. Return its PC.
                     return parent_pc;
@@ -774,7 +774,7 @@ fn update_frontier(frontier: &mut HashSet<Reg>, instr: &crate::ast::Instr, calle
 /// discharge-base walker — but applied to the precision frontier so
 /// `SpilledReg.precise` gets set on the lineage.
 ///
-/// Direction is BACKWARD (un-doing `instr`). `stack_access` is zovia's
+/// Direction is BACKWARD (un-doing `instr`). `stack_access` is alivio's
 /// `INSN_F_STACK_ACCESS` analog (a genuine slot-aligned register
 /// spill/fill); a plain stack data load/store leaves it false and is NOT
 /// followed (mirrors the kernel gate, keeps the suffix from running away).
@@ -836,7 +836,7 @@ fn update_stack_frontier(
 /// frame `f`: `reg_masks[f]` bit `i` (`Reg::bcf_idx`, 0..=10 where 10 =
 /// `BPF_REG_FP`/R10) tracks a register that needs precision; and
 /// `stack_masks[f]` bit `spi` tracks a spilled-scalar stack slot. Frames
-/// are indexed by the breadcrumb's call depth (zovia records this
+/// are indexed by the breadcrumb's call depth (alivio records this
 /// forward — the authoritative analogue of the kernel's `bt->frame`).
 struct BacktrackState {
     reg_masks: Vec<u16>,
@@ -943,7 +943,7 @@ fn spi_of(off: i16) -> Option<u32> {
 
 /// Whether a stack-relative LDX/STX continues the precision chain into
 /// its slot is read from the breadcrumb's `stack_access` flag —
-/// zovia's analog of the kernel's `hist->flags & INSN_F_STACK_ACCESS`,
+/// alivio's analog of the kernel's `hist->flags & INSN_F_STACK_ACCESS`,
 /// set forward only for a genuine register spill/fill (see
 /// [`crate::analysis::machine::history::Breadcrumb::stack_access`] and
 /// the forward marking in the memory transfer). The slot index is
@@ -956,7 +956,7 @@ fn spi_of(off: i16) -> Option<u32> {
 ///
 /// `Err(())` mirrors the kernel returning a negative errno (-ENOTSUPP /
 /// -EFAULT) from `backtrack_insn`: `backtrack_states` then aborts with
-/// `base = NULL`, which on the zovia side means "keep all accumulated
+/// `base = NULL`, which on the alivio side means "keep all accumulated
 /// path_conds" (sound, just not as tight a suffix).
 fn backtrack_insn_step(
     bt: &mut BacktrackState,
@@ -1038,7 +1038,7 @@ fn backtrack_insn_step(
             // already on `dst`, nothing further. Only a *register fill*
             // continues the chain into the slot, and the kernel gates
             // that solely on `hist->flags & INSN_F_STACK_ACCESS`
-            // (verifier.c:4612). zovia's `stack_access` breadcrumb flag
+            // (verifier.c:4612). alivio's `stack_access` breadcrumb flag
             // is that bit; the slot index comes from the insn's fixed
             // offset (kernel `insn_stack_access_spi`).
             if stack_access && let Some(spi) = spi_of(*off) {

@@ -4,8 +4,8 @@
  * code itself doesn't call read/write/close. Provide just the typedefs
  * and a few constants that the include chain references.
  */
-#ifndef _ZOVIA_STUB_UNISTD_H
-#define _ZOVIA_STUB_UNISTD_H
+#ifndef _ALIVIO_STUB_UNISTD_H
+#define _ALIVIO_STUB_UNISTD_H
 #include <sys/types.h>
 #define STDIN_FILENO  0
 #define STDOUT_FILENO 1

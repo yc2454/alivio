@@ -21,7 +21,7 @@ pub fn new_scalar_id() -> u32 {
 /// unsigned bounds in BOTH 64-bit and 32-bit views. The 32-bit halves
 /// describe the LOW 32 bits of the value interpreted as either signed
 /// or unsigned. Kernel keeps them consistent via reg_bounds_sync; in
-/// zovia we initialize them conservatively (full range) and let
+/// alivio we initialize them conservatively (full range) and let
 /// per-op transfers tighten them. range_within checks all 8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScalarBounds {
@@ -241,7 +241,7 @@ impl ScalarBounds {
         // its unsigned max MUST be >= 0x8000_0000_0000_0000. If a prior op
         // left umax capped below that (e.g. at i64::MAX), the reg is in
         // fact unsigned-unbounded above — the kernel keeps umax_value at
-        // U64_MAX. Restoring it (a WIDENING, hence sound) stops zovia
+        // U64_MAX. Restoring it (a WIDENING, hence sound) stops alivio
         // emitting a spurious `ULE(v, i64::MAX)` the kernel never has.
         // Symmetrically, a fully non-negative reg's umax is its smax.
         if self.smin >= 0 {
@@ -616,7 +616,7 @@ impl IntervalState {
     /// upstream kernel does NOT track a global packet_size — it tracks
     /// `reg->range` per packet pointer only, so two independent packet
     /// pointers can have independent ranges. Aggregating bounds globally
-    /// is a zovia-specific over-precision that would prune paths the
+    /// is a alivio-specific over-precision that would prune paths the
     /// kernel still explores, so this is unconditionally a no-op in
     /// this domain.
     pub fn set_packet_size_bound(&mut self, _min_size: u64) {}

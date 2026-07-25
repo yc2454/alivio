@@ -4,8 +4,8 @@
  * `imaxdiv()` in their BPF code — the include is for shared userspace
  * paths in the same source. Re-export <stdint.h> and call it good.
  */
-#ifndef _ZOVIA_STUB_INTTYPES_H
-#define _ZOVIA_STUB_INTTYPES_H
+#ifndef _ALIVIO_STUB_INTTYPES_H
+#define _ALIVIO_STUB_INTTYPES_H
 
 #include <stdint.h>
 

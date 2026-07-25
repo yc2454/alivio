@@ -4,7 +4,7 @@
 #
 # Mirrors main.rs thorough-mode children exactly: each pass clears ALL toggle
 # keys, sets only its own, and runs with the
-# ZOVIA_BCF_THOROUGH_PASS=1 marker (reg-filter discharge keys on it — without
+# ALIVIO_BCF_THOROUGH_PASS=1 marker (reg-filter discharge keys on it — without
 # the marker the "baseline" single-pass is NOT the thorough baseline child).
 #
 # Usage: pass_surgery.sh <obj> <outdir> [timeout_s=1800]
@@ -13,7 +13,7 @@ set -u
 OBJ="$1"; OUTDIR="$2"; TMO="${3:-1800}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-ZOVIA="$ROOT/target/release/zovia"
+ALIVIO="$ROOT/target/release/alivio"
 BASE="$(basename "$OBJ" .o)"
 mkdir -p "$OUTDIR"
 
@@ -24,15 +24,15 @@ run_pass() {
   # env -i would lose PATH etc; instead explicitly unset all toggle keys, then
   # set the pass's own. Env vars are set INLINE on the command (never $ENV).
   (
-    unset ZOVIA_KERNEL_ENGINE ZOVIA_KERNEL_ENGINE_AND ZOVIA_BCF_FAITHFUL_FOLD \
-          ZOVIA_BCF_FOLD_PRENARROW ZOVIA_BCF_REPLAY ZOVIA_BCF_ANCESTOR_DEPTH \
-          ZOVIA_EXP_FLAG_SKIP_BASE ZOVIA_EXP_LOOP_ENTRY_BASE \
-          ZOVIA_EXP_SKIP_LOOP_HEADER_UNSAFE ZOVIA_EXP_LOOP_SUFFIX_BASE
-    export ZOVIA_BCF_THOROUGH_PASS=1
+    unset ALIVIO_KERNEL_ENGINE ALIVIO_KERNEL_ENGINE_AND ALIVIO_BCF_FAITHFUL_FOLD \
+          ALIVIO_BCF_FOLD_PRENARROW ALIVIO_BCF_REPLAY ALIVIO_BCF_ANCESTOR_DEPTH \
+          ALIVIO_EXP_FLAG_SKIP_BASE ALIVIO_EXP_LOOP_ENTRY_BASE \
+          ALIVIO_EXP_SKIP_LOOP_HEADER_UNSAFE ALIVIO_EXP_LOOP_SUFFIX_BASE
+    export ALIVIO_BCF_THOROUGH_PASS=1
     # ${envs[@]+...} guards the empty-array expansion (baseline pass) against
     # set -u on bash 3.2 (macOS /bin/bash), which errors on "${envs[@]}".
     for kv in ${envs[@]+"${envs[@]}"}; do export "$kv"; done
-    timeout "$TMO" "$ZOVIA" -q --bcf --kernel-mode verify "$OBJ" \
+    timeout "$TMO" "$ALIVIO" -q --bcf --kernel-mode verify "$OBJ" \
       > "$OUTDIR/$BASE.pass_$name.log" 2>&1
     echo "rc=$?" >> "$OUTDIR/$BASE.pass_$name.log"
   )
@@ -52,8 +52,8 @@ run_pass() {
 
 # Pass definitions == main.rs `variations` (keep in sync).
 run_pass baseline
-run_pass a ZOVIA_KERNEL_ENGINE=1 ZOVIA_KERNEL_ENGINE_AND=1
-run_pass b ZOVIA_KERNEL_ENGINE=1
-run_pass c ZOVIA_KERNEL_ENGINE=1 ZOVIA_BCF_FAITHFUL_FOLD=1 \
-           ZOVIA_BCF_FOLD_PRENARROW=1 ZOVIA_BCF_REPLAY=1 ZOVIA_BCF_ANCESTOR_DEPTH=16
+run_pass a ALIVIO_KERNEL_ENGINE=1 ALIVIO_KERNEL_ENGINE_AND=1
+run_pass b ALIVIO_KERNEL_ENGINE=1
+run_pass c ALIVIO_KERNEL_ENGINE=1 ALIVIO_BCF_FAITHFUL_FOLD=1 \
+           ALIVIO_BCF_FOLD_PRENARROW=1 ALIVIO_BCF_REPLAY=1 ALIVIO_BCF_ANCESTOR_DEPTH=16
 rm -f "$OBJ.bcf-bundle"   # leave no partial sidecar for --cache-bundles to pick up

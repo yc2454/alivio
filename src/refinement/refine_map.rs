@@ -69,7 +69,7 @@ pub fn try_refine_map_access(
             sym.filter_path_conds_from_pc(bp, None);
         }
     }
-    if std::env::var("ZOVIA_BCF_TRACK_DEBUG_PC").is_ok() {
+    if std::env::var("ALIVIO_BCF_TRACK_DEBUG_PC").is_ok() {
         eprintln!(
             "[bcf-track] map-refine base={:?} size_reg={:?} base_pc={:?} path_conds {}->{} pcs={:?}",
             base,
@@ -112,7 +112,7 @@ pub fn try_refine_map_access(
     let size_is_var = size_const_val.is_none();
 
     // Width discipline: kernel uses 32-bit ops when both regs fit_s32
-    // (verifier.c:5306-5310). For zovia, default to fit_s32 of ptr alone
+    // (verifier.c:5306-5310). For alivio, default to fit_s32 of ptr alone
     // when there's no size_reg.
     let ptr_bounds = bcf_reg_bounds(state, base);
     let bit32 = if let Some(sz_reg) = size_reg {
@@ -124,7 +124,7 @@ pub fn try_refine_map_access(
     let bitsz: u16 = if bit32 { 32 } else { 64 };
 
     // Compute min_off for the conditional-DISJ check (kernel verifier.c:
-    // 5339, 5360). zovia tracks the pointer's signed lower bound directly.
+    // 5339, 5360). alivio tracks the pointer's signed lower bound directly.
     let (smin, _smax) = state.domain.get_interval(base);
     let min_off = smin.saturating_add(insn_off);
 
@@ -195,7 +195,7 @@ pub fn try_refine_map_access(
             return None;
         }
     };
-    if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
+    if std::env::var("ALIVIO_BCF_DUMP_SMT").is_ok() {
         eprintln!(
             "---- [bcf] SMT-LIB to cvc5 (map) ----\n{}\n---- end ----",
             smt

@@ -6,7 +6,7 @@ use super::{unreachable_base_pc, unreachable_target_regs};
 use crate::analysis::machine::env::VerifierEnv;
 use crate::analysis::machine::state::State;
 
-/// Emission census (ZOVIA_BCF_CENSUS=1, diagnosis-only): one line per bundle
+/// Emission census (ALIVIO_BCF_CENSUS=1, diagnosis-only): one line per bundle
 /// push ATTEMPT, tagged with the emission-class that produced the goal, so the
 /// per-class hash sets can be intersected offline against a kernel load's
 /// queried set ([ZK try_discharge] dmesg lines). `depth` = ancestor-chain
@@ -19,7 +19,7 @@ pub(crate) fn census_log(
     hash: u64,
     dup: bool,
 ) {
-    if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
+    if std::env::var("ALIVIO_BCF_CENSUS").ok().as_deref() == Some("1") {
         eprintln!(
             "[census] pc={} class={} depth={} rung={} hash={:016x} dup={}",
             reject_pc, class, depth, rung, hash, dup as u32
@@ -27,7 +27,7 @@ pub(crate) fn census_log(
     }
 }
 
-/// Attempt path-unreachable speculation on a zovia-infeasible state and
+/// Attempt path-unreachable speculation on a alivio-infeasible state and
 /// push the resulting `kind=BCF_BUNDLE_KIND_UNREACHABLE` bundle entry on
 /// success. Returns `true` iff an entry was emitted. Mirrors the pattern
 /// in `try_bcf_refine_stack` / `try_bcf_refine_map`.
@@ -45,7 +45,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // suffix only to rebuild the path condition; it must not itself attempt
     // to discharge (which would recurse and pollute the bundle).
     if (env.replay_mode || state.bcf.is_none())
-        && std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1")
+        && std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1")
     {
         eprintln!(
             "[disc-skip] reject@pc={} replay={} bcf_none={} parent_cid={:?}",
@@ -97,7 +97,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         let cid = landed.map(|(_, cid)| cid);
         (pp, cid)
     };
-    if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
+    if std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
         eprintln!(
             "[disc] reject@pc={} base_pc={:?} prev_insn_pc={:?} parent_cid={:?} base_cid={:?}",
             state.pc, base_pc, prev_insn_pc, state.parent_cache_id, base_cid_dbg
@@ -117,7 +117,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // cond_hash).
     let mut replay_goals_produced: usize = 0;
     {
-        if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
             eprintln!(
                 "[replay] CALL reject@pc={} base_cid={:?}",
                 state.pc, base_cid_dbg
@@ -131,7 +131,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                     rok.proof_bytes,
                     BCF_BUNDLE_KIND_UNREACHABLE,
                 );
-                if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[replay] HASH reject@pc={} hash={:016x}",
                         state.pc, rentry.cond_hash
@@ -177,7 +177,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         entry.proof_bytes.len(),
         entry.cond_hash
     );
-    if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
+    if std::env::var("ALIVIO_BCF_CENSUS").ok().as_deref() == Some("1") {
         census_log(
             "natural",
             state.pc,
@@ -295,7 +295,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         // classes are the ONLY emitters for it, so fall through to the
         // full fat path for THIS reject instead of returning early.
         if replay_goals_produced > 0 {
-            if let Ok(flush_path) = std::env::var("ZOVIA_BCF_EAGER_FLUSH") {
+            if let Ok(flush_path) = std::env::var("ALIVIO_BCF_EAGER_FLUSH") {
                 let tmp = format!("{}.tmp", flush_path);
                 if crate::refinement::bundle::write_bundle(
                     std::path::Path::new(&tmp),
@@ -314,7 +314,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
             return true;
         }
     }
-    if let Ok(prefix) = std::env::var("ZOVIA_BCF_DUMP_PROOF") {
+    if let Ok(prefix) = std::env::var("ALIVIO_BCF_DUMP_PROOF") {
         let idx = env.bcf_proofs.len();
         let path = format!("{}.{}.bcf", prefix, idx);
         match std::fs::write(&path, &entry.proof_bytes) {
@@ -323,12 +323,12 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
         }
     }
     env.bcf_proofs.push(entry);
-    // ZOVIA_BCF_EAGER_FLUSH (default-OFF): eagerly flush the accumulated
+    // ALIVIO_BCF_EAGER_FLUSH (default-OFF): eagerly flush the accumulated
     // bcf_proofs to a path after every discharge push, so the on-disk
     // bundle reflects current proofs even when the run is killed by a
     // wall-clock timeout before analyze() reaches its write_bundle.
     // Writes atomically (tmp+rename).
-    if let Ok(flush_path) = std::env::var("ZOVIA_BCF_EAGER_FLUSH") {
+    if let Ok(flush_path) = std::env::var("ALIVIO_BCF_EAGER_FLUSH") {
         let tmp = format!("{}.tmp", flush_path);
         if crate::refinement::bundle::write_bundle(std::path::Path::new(&tmp), &env.bcf_proofs)
             .is_ok()
@@ -526,7 +526,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
     // discharge succeeds, walk the parent_cache_id chain backward and
     // emit additional discharges anchored at each ancestor cache. The
     // kernel sometimes queries a hash whose suffix base is DEEPER than
-    // zovia's walker reaches in one segment of jmp_history — zovia's
+    // alivio's walker reaches in one segment of jmp_history — alivio's
     // jmp_history is segmented per-cache-event, so a single walker
     // call can only collect predicates within one segment; the kernel's
     // walker traverses one long history. Anchoring at each chain ancestor
@@ -586,7 +586,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                         extra_entry.cond_hash,
                         already_have,
                     );
-                    if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
+                    if std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
                         eprintln!(
                             "[disc-ancestor] depth={} anchor_pc={} anchor_cid={} prev_pc={:?} rw={} hash={:016x} dup={}",
                             depth,
@@ -635,7 +635,7 @@ pub(crate) fn try_emit_path_unreachable_entry(env: &mut VerifierEnv, state: &Sta
                         rentry.cond_hash,
                         ra_dup,
                     );
-                    if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
+                    if std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
                         eprintln!(
                             "[replay] ANCESTOR depth={} anchor_cid={} hash={:016x}",
                             depth, parent_cid, rentry.cond_hash

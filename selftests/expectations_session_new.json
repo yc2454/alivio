@@ -11,7 +11,7 @@
     "",
     "    jq -r '.files[]' selftests/expectations_session_new.json | \\",
     "      while read f; do",
-    "        ./target/release/zovia -q dev selftest-file \\",
+    "        ./target/release/alivio -q dev selftest-file \\",
     "          vendor/linux/tools/testing/selftests/bpf/progs/\"$f\" \\",
     "          --upstream vendor/linux",
     "      done",

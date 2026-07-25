@@ -15,7 +15,7 @@ Two modes:
   did. Output JSON shape is preserved so `tests/baselines/capture_baseline.sh`
   keeps working.
 
-Both modes shell out to `zovia dev verify-corpus --input-list ... --out ...`
+Both modes shell out to `alivio dev verify-corpus --input-list ... --out ...`
 to do the actual verification, then aggregate the JSONL records here.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_ZOVIA = "./target/release/zovia"
+DEFAULT_ALIVIO = "./target/release/alivio"
 
 
 def expand(p: str) -> Path:
@@ -43,7 +43,7 @@ def load_catalogue(path: Path) -> dict:
         return json.load(f)
 
 
-def run_zovia(zovia: str, files: list[Path], extra: list[str]) -> list[dict]:
+def run_alivio(alivio: str, files: list[Path], extra: list[str]) -> list[dict]:
     """Verify each file's sections, return parsed JSONL records."""
     if not files:
         return []
@@ -59,7 +59,7 @@ def run_zovia(zovia: str, files: list[Path], extra: list[str]) -> list[dict]:
                 seen.append(s)
                 seen_set.add(s)
         list_p.write_text("\n".join(seen) + "\n")
-        cmd = [zovia, "-q", *extra, "dev", "verify-corpus",
+        cmd = [alivio, "-q", *extra, "dev", "verify-corpus",
                "--input-list", str(list_p), "--out", str(out_p)]
         subprocess.run(cmd, stdout=subprocess.DEVNULL, check=True)
         return [json.loads(ln) for ln in out_p.read_text().splitlines() if ln.strip()]
@@ -133,7 +133,7 @@ def cmd_single(args) -> int:
         print(f"Error: ELF file not found: {elf}", file=sys.stderr)
         return 2
 
-    records = run_zovia(args.zovia, [elf], args.zovia_flag)
+    records = run_alivio(args.alivio, [elf], args.alivio_flag)
     actual, err, time_ms = classify_file(records, test.get("section"))
     print(f"Test:       {test['name']}")
     print(f"File:       {elf}")
@@ -155,7 +155,7 @@ def cmd_run(args) -> int:
     files = [f for f in files if f.exists()]
 
     started = datetime.datetime.now()
-    records = run_zovia(args.zovia, files, args.zovia_flag)
+    records = run_alivio(args.alivio, files, args.alivio_flag)
     duration = (datetime.datetime.now() - started).total_seconds()
 
     by_file: dict[str, list[dict]] = defaultdict(list)
@@ -244,7 +244,7 @@ def cmd_benchmark(args) -> int:
         return 0
 
     started = datetime.datetime.now()
-    records = run_zovia(args.zovia, [t[0] for t in tasks], args.zovia_flag)
+    records = run_alivio(args.alivio, [t[0] for t in tasks], args.alivio_flag)
     duration = (datetime.datetime.now() - started).total_seconds()
 
     by_file: dict[str, list[dict]] = defaultdict(list)
@@ -358,9 +358,9 @@ def cmd_benchmark(args) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--zovia", default=os.environ.get("ZOVIA", DEFAULT_ZOVIA))
-    p.add_argument("--zovia-flag", action="append", default=[],
-                   help="Pass an extra flag through to zovia. Repeatable.")
+    p.add_argument("--alivio", default=os.environ.get("ALIVIO", DEFAULT_ALIVIO))
+    p.add_argument("--alivio-flag", action="append", default=[],
+                   help="Pass an extra flag through to alivio. Repeatable.")
     p.add_argument("--output-dir", default="./results/prevail",
                    help="Where to drop JSON reports (default ./results/prevail). Empty string = no JSON.")
 

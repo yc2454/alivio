@@ -27,7 +27,7 @@ use widening::{
 /// iter_next kfunc call sites (those are handled by `process_iter_next_call`
 /// + iter_active_depths_differ) or at sync-callback-call helper sites
 /// (bpf_loop / bpf_for_each_map_elem / bpf_timer_set_callback — the
-/// callback's own iteration accounting drives convergence). zovia flags
+/// callback's own iteration accounting drives convergence). alivio flags
 /// both classes via `force_checkpoint=true` set at the `Call` insn. We
 /// gate on the insn kind plus the flag so MayGoto pcs (also
 /// force-checkpoint) still run the inf-loop check, matching the kernel's
@@ -46,9 +46,9 @@ fn is_inf_loop_skip_pc(prog: &Program, pc: usize) -> bool {
 /// an identical callsite chain. Combined with the `insn_idx ^ callsite`
 /// explored_state() bucketing (:2099-2105) this makes callee states cached
 /// from different call sites mutually invisible in the pruning scan.
-/// zovia keys explored_states by pc alone, so the scan applies this as an
+/// alivio keys explored_states by pc alone, so the scan applies this as an
 /// explicit per-candidate filter (equivalent modulo the kernel's rare
-/// hash-collision noise). return_pc is zovia's callsite analog (call insn
+/// hash-collision noise). return_pc is alivio's callsite analog (call insn
 /// + 1, consistent on both sides of the comparison; main frame = 0).
 fn same_callsites(a: &State, b: &State) -> bool {
     a.frames.depth() == b.frames.depth()
@@ -76,8 +76,8 @@ fn handle_loop_pruning(
     // Kernel-faithful iter-loop convergence: in an iterator-style loop
     // (body contains a force-checkpoint), the kernel converges at the
     // iter_next pc itself via `process_iter_next_call` →
-    // `widen_imprecise_scalars`. zovia's kfunc-site widening
-    // (kfunc.rs::iter_next_fork) is the analog. BUT zovia's
+    // `widen_imprecise_scalars`. alivio's kfunc-site widening
+    // (kfunc.rs::iter_next_fork) is the analog. BUT alivio's
     // `is_at_loop_point` makes EVERY back-edge target a pruning point —
     // a strict superset of kernel's `init_explored_state`'d pcs. If we
     // prune at a non-checkpoint back-edge target before the looped-back
@@ -563,11 +563,11 @@ pub fn should_prune(
     // no progress on the may_goto counter ⇒ stuck).
     // Only run the inf-loop trap at actual back-edge TARGETS (loop heads).
     // The kernel's is_state_visited fires at every prune point, but
-    // zovia's per-state liveness/precision bookkeeping isn't granular
+    // alivio's per-state liveness/precision bookkeeping isn't granular
     // enough to mirror the kernel's `live`-flag discrimination — so at
     // mid-loop convergence prune points (`is_at_loop_point=false`) the
     // check over-fires on legitimate loops whose iterations
-    // happen to produce byte-identical zovia abstract states even
+    // happen to produce byte-identical alivio abstract states even
     // though the kernel sees per-iter progress. Restricting to true
     // loop heads keeps the trap narrow enough to detect genuine
     // verifier-divergent infinite loops (the conditional_loop /
@@ -575,7 +575,7 @@ pub fn should_prune(
     // false rejects on legitimate loops.
     // Additionally skip when ANY frame has an active iterator: the kernel
     // gates iter-loop convergence on `iter_active_depths_differ` + SCC
-    // (`loop_entry` / `dfs_depth` / `branches`, verifier.c L1885+). zovia
+    // (`loop_entry` / `dfs_depth` / `branches`, verifier.c L1885+). alivio
     // tracks depth-differ but not SCC, so at body pcs inside an iter
     // loop where the depth has stabilized (legit pruning iteration), the
     // EXACT check fires on byte-identical body states that the kernel
@@ -597,15 +597,15 @@ pub fn should_prune(
             // cached state with branches==0 (kernel semantics) has had
             // its entire downstream DFS completed — a second arrival
             // that byte-matches it is the normal subsumption case, NOT
-            // a stuck loop. Without this gate zovia false-rejects
+            // a stuck loop. Without this gate alivio false-rejects
             // programs like pro_epilogue_goto_start where the first
             // back-edge arrival at the loop head takes a terminating
             // branch (e.g. r1=0 → if r1==0 → exit) and fully completes
             // before a second back-edge arrival via a different
             // predecessor path lands at the same state.
             //
-            // Zovia checks `dfs_paths` instead of `branches` because
-            // zovia's `branches` field has different (per-push)
+            // Alivio checks `dfs_paths` instead of `branches` because
+            // alivio's `branches` field has different (per-push)
             // accounting than the kernel's `branches`; changing it to
             // kernel semantics broke ~125 selftests (iters.c family
             // etc.). `dfs_paths` is the parallel kernel-faithful
@@ -625,7 +625,7 @@ pub fn should_prune(
             // path (where states_equal with RANGE_WITHIN/EXACT acts as
             // a HIT, not a reject).
             //
-            // Zovia's `state_exact_equal` only compares VALUES (types,
+            // Alivio's `state_exact_equal` only compares VALUES (types,
             // intervals, tnums, scalar_ids) — no parent-pointer
             // equivalent — so it false-positives on sibling-DFS-branch
             // value convergence. To approximate the kernel's

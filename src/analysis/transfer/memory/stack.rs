@@ -63,9 +63,9 @@ fn try_bcf_refine_stack(
     );
     // Dev hook: write each raw cvc5 proof to a sidecar `.bcf` file so it can
     // be scp'd to the Linux box and fed to `bcf-checker` directly without
-    // unpacking the bundle. Set `ZOVIA_BCF_DUMP_PROOF=<path-prefix>`; each
+    // unpacking the bundle. Set `ALIVIO_BCF_DUMP_PROOF=<path-prefix>`; each
     // proof writes to `<prefix>.<idx>.bcf` (idx is its position in the run).
-    if let Ok(prefix) = std::env::var("ZOVIA_BCF_DUMP_PROOF") {
+    if let Ok(prefix) = std::env::var("ALIVIO_BCF_DUMP_PROOF") {
         let idx = env.bcf_proofs.len();
         let path = format!("{}.{}.bcf", prefix, idx);
         match std::fs::write(&path, &entry.proof_bytes) {
@@ -73,7 +73,7 @@ fn try_bcf_refine_stack(
             Err(e) => log::warn!(target: "app", "[bcf] proof dump to {} failed: {}", path, e),
         }
     }
-    if std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1") {
+    if std::env::var("ALIVIO_BCF_CENSUS").ok().as_deref() == Some("1") {
         crate::refinement::emit::unreachable::census_log(
             "refine_stack",
             state.pc,

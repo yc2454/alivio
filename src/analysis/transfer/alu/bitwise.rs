@@ -72,7 +72,7 @@ pub(crate) fn handle_mov(state: &mut State, width: Width, dst: Reg, src: &Operan
             // the post-mov dst is tnum-const the kernel clears
             // `dst_reg->bcf_expr = -1` and does NOT copy the src chain —
             // the next reference materializes `bcf_val(K)` (the fold).
-            // Gate on TNUM-const exactly (not zovia's wider interval
+            // Gate on TNUM-const exactly (not alivio's wider interval
             // const — that over-folds where the kernel keeps the chain).
             if state.get_tnum(dst).is_const() {
                 if let Some(d) = dst.bcf_idx()
@@ -329,7 +329,7 @@ pub(crate) fn handle_and(state: &mut State, width: Width, dst: Reg, src: &Operan
 
     // scalar_min_max_and (verifier.c:15761), W64 only: for a 32-bit op
     // the kernel's 64-bit AND result is overwritten by zext_32_to_64 at
-    // the ALU tail (verifier.c:16262; zovia: alu/mod.rs W32 tail calls
+    // the ALU tail (verifier.c:16262; alivio: alu/mod.rs W32 tail calls
     // zext_32_into_64), so computing it here would intersect-in bounds
     // the kernel discards. The both-known case (__mark_reg_known) is
     // equivalent to the const tail below (the kernel's trailing
@@ -552,7 +552,7 @@ pub(crate) fn handle_or(state: &mut State, width: Width, dst: Reg, src: &Operand
 
     // scalar_min_max_or (verifier.c:15824), W64 only: an alu32 op's
     // 64-bit result is overwritten by zext_32_to_64 at the ALU tail
-    // (zovia: alu/mod.rs W32 tail zext_32_into_64). The both-known case
+    // (alivio: alu/mod.rs W32 tail zext_32_into_64). The both-known case
     // (__mark_reg_known) is equivalent to the const tail below.
     if width == Width::W64 && !(src_tnum.mask == 0 && new_t.mask == 0) {
         let umin_new = pre_umin.max(src_umin);
@@ -652,7 +652,7 @@ pub(crate) fn handle_xor(state: &mut State, width: Width, dst: Reg, src: &Operan
 
     // scalar_min_max_xor (verifier.c:15886), W64 only: an alu32 op's
     // 64-bit result is overwritten by zext_32_to_64 at the ALU tail
-    // (zovia: alu/mod.rs W32 tail zext_32_into_64). umin = tnum value,
+    // (alivio: alu/mod.rs W32 tail zext_32_into_64). umin = tnum value,
     // umax = value|mask, s64 by the cast rule. The both-known case
     // (__mark_reg_known) is equivalent to the const tail below.
     if width == Width::W64 && !(src_tnum.mask == 0 && new_t.mask == 0) {

@@ -41,7 +41,7 @@ impl std::fmt::Display for FrameLevel {
 /// are a separate array, so callee writes to r6-r9 never touch the
 /// caller's bindings, and `prepare_func_exit` discards the callee frame
 /// wholesale (only r0's reg state copies back, verifier.c:11708).
-/// Zovia's `SymbolicState` reg table is flat across frames, so the
+/// Alivio's `SymbolicState` reg table is flat across frames, so the
 /// caller's bindings must be saved at push and restored at pop.
 ///
 /// Always-equal on compare: the kernel's `states_equal`/`regsafe` never

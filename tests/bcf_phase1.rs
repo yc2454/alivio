@@ -2,13 +2,13 @@
 //! `shift_constraint.bpf.o`:
 //!   1. Returns ACCEPT (would REJECT without `--bcf`).
 //!   2. Writes a `.bcf-bundle` sidecar with the right magic.
-//!   3. Optionally (Linux-only when `$ZOVIA_BCF_CHECKER` is set): the
+//!   3. Optionally (Linux-only when `$ALIVIO_BCF_CHECKER` is set): the
 //!      embedded cvc5 proof bytes pass the BCF kernel proof checker
 //!      — the actual soundness gate.
 //!
 //! Vendored fixture: `bcf-tests/shift_constraint.bpf.o` (+ `.c` source).
 //!
-//! Skipped when cvc5 isn't present on the dev box (no `$ZOVIA_CVC5`,
+//! Skipped when cvc5 isn't present on the dev box (no `$ALIVIO_CVC5`,
 //! no platform default). Without cvc5 there's nothing to test.
 
 use std::path::PathBuf;
@@ -21,7 +21,7 @@ const BCF_BUNDLE_MAGIC_LE: [u8; 4] = [b'B', b'C', b'F', b'B'];
 /// crate from an integration test cleanly, so duplicate the cheap
 /// existence check. False = skip the test.
 fn cvc5_available() -> bool {
-    if let Ok(p) = std::env::var("ZOVIA_CVC5") {
+    if let Ok(p) = std::env::var("ALIVIO_CVC5") {
         if std::path::Path::new(&p).exists() {
             return true;
         }
@@ -40,7 +40,7 @@ fn cvc5_available() -> bool {
 #[test]
 fn phase1_shift_constraint_accepts_with_bcf() {
     if !cvc5_available() {
-        eprintln!("[skip] cvc5 binary not found; set ZOVIA_CVC5");
+        eprintln!("[skip] cvc5 binary not found; set ALIVIO_CVC5");
         return;
     }
 
@@ -55,14 +55,14 @@ fn phase1_shift_constraint_accepts_with_bcf() {
         .join("shift_constraint.bpf.o.bcf-bundle");
     let _ = std::fs::remove_file(&bundle); // start from a clean slate
 
-    let output = Command::new(env!("CARGO_BIN_EXE_zovia"))
+    let output = Command::new(env!("CARGO_BIN_EXE_alivio"))
         .arg("--bcf")
         .arg("-q")
         .arg("verify")
         .arg(&prog)
         .current_dir(&manifest_dir)
         .output()
-        .expect("failed to run zovia --bcf verify");
+        .expect("failed to run alivio --bcf verify");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -113,10 +113,10 @@ fn phase1_shift_constraint_accepts_with_bcf() {
     assert_eq!(&proof[0..4], &BCF_MAGIC_LE, "proof missing BCF magic");
 
     // --- Optional Sound-PASS gate (Linux-only). ---
-    if let Ok(checker) = std::env::var("ZOVIA_BCF_CHECKER") {
+    if let Ok(checker) = std::env::var("ALIVIO_BCF_CHECKER") {
         if std::path::Path::new(&checker).exists() {
             let tmp = std::env::temp_dir().join(format!(
-                "zovia-phase1-{}-{}.bcf",
+                "alivio-phase1-{}-{}.bcf",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -138,7 +138,7 @@ fn phase1_shift_constraint_accepts_with_bcf() {
                 cs
             );
         } else {
-            eprintln!("[note] ZOVIA_BCF_CHECKER set but path missing: {}", checker);
+            eprintln!("[note] ALIVIO_BCF_CHECKER set but path missing: {}", checker);
         }
     }
 

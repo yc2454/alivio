@@ -12,7 +12,7 @@ set -u
 LIST="$1"; OUTDIR="$2"; TMO="${3:-1800}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-ZOVIA="$ROOT/target/release/zovia"
+ALIVIO="$ROOT/target/release/alivio"
 mkdir -p "$OUTDIR"
 PASSED=(); FAILED=()
 

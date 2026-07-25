@@ -266,7 +266,7 @@ fn visit_insn(pc: usize, prog: &Program, env: &mut VerifierEnv) -> Result<Vec<us
             //    (verifier.c L17132-17136 `if (e == BRANCH)
             //    mark_prune_point(env, w)`). Without this, sparse-cache
             //    mode never caches at conditional-branch targets, so
-            //    zovia's vstate chain would miss kernel parents at
+            //    alivio's vstate chain would miss kernel parents at
             //    If-target PCs.
             init_explored_state(env, *target);
             mark_jmp_point(env, *target);

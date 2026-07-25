@@ -349,7 +349,7 @@ fn transfer_endian(
     // the `fit_u32` path → emits `VAR_U32 + bcf_bound_reg32`. Mirror
     // that here by using the actual reg bounds (via `bcf_reg_bounds`)
     // instead of `RegBounds::unknown()`, so the bound preds
-    // (`VAR ULE 0xffff`) appear in zovia's bcf graph too.
+    // (`VAR ULE 0xffff`) appear in alivio's bcf graph too.
     if let Some(d) = dst.bcf_idx()
         && let Some(bcf) = state.bcf.as_mut()
     {
@@ -357,7 +357,7 @@ fn transfer_endian(
         // (snapshot before apply_and_imm above). Kernel's
         // `check_reg_arg(dst, SRC_OP)` reads dst as a source for
         // bcf — emits `VAR_U32 + bound preds` if the prior tnum
-        // fit u32. Without this, zovia misses the bound-pred
+        // fit u32. Without this, alivio misses the bound-pred
         // conjuncts the kernel emits at the SRC read.
         let _src_expr = bcf.reg_expr(d, &pre_endian_bounds, false);
 
@@ -366,7 +366,7 @@ fn transfer_endian(
         // fresh. Mirror by clearing the cache and re-emitting an
         // unbounded VAR_64 (matches kernel-shape: byte-swap result
         // is not abstractly bounded post-`mark_reg_unknown`,
-        // independent of zovia's tighter domain bound from
+        // independent of alivio's tighter domain bound from
         // apply_and_imm above which is preserved for AI precision).
         bcf.clear_reg(d);
         let _ = bcf.reg_expr(d, &crate::refinement::symbolic::RegBounds::unknown(), false);
@@ -415,7 +415,7 @@ fn transfer_exit(env: &mut VerifierEnv, mut state: State) -> Vec<State> {
     // entire backward data-dep chain precise (e.g. loop4's accumulator
     // `ret` and shift temp via `w0|=w3`/`w0<<=w2`), defeating the loop
     // convergence the kernel achieves by keeping those imprecise. Gate
-    // on the SAME retval-enforcement condition zovia uses below (the
+    // on the SAME retval-enforcement condition alivio uses below (the
     // faithful mirror of "kernel reaches enforce_retval"). Per-path
     // lineage walk via parent_cache_id.
     let exit_enforces_retval = env.ctx.attach_flavor.as_deref() != Some("freplace")

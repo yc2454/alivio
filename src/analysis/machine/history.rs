@@ -18,7 +18,7 @@ pub struct Breadcrumb {
     /// Formatted by `State::reg_ranges_str()`.
     pub reg_ranges_str: String,
     pub depth: usize,
-    /// zovia's analog of the kernel's `INSN_F_STACK_ACCESS` jmp-history
+    /// alivio's analog of the kernel's `INSN_F_STACK_ACCESS` jmp-history
     /// flag. Set during the forward transfer (back-patched onto the
     /// just-recorded breadcrumb) iff this insn performed a *register
     /// spill or fill* the kernel records `INSN_F_STACK_ACCESS` for:
@@ -33,7 +33,7 @@ pub struct Breadcrumb {
     /// inflating the path-unreachable suffix and the non-prunable
     /// ancestor span).
     pub stack_access: bool,
-    /// zovia's analog of the kernel's per-jmp-history `linked_regs`
+    /// alivio's analog of the kernel's per-jmp-history `linked_regs`
     /// (verifier.c `push_insn_history(..., linked_regs_pack(...))` in
     /// `check_cond_jmp_op`). At a conditional jump, the set of scalar
     /// registers sharing the compared register's scalar id (kernel

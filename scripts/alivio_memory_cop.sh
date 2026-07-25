@@ -1,31 +1,31 @@
 #!/bin/bash
-# zovia memory cop: polls ps and SIGKILLs zovia workers when their
+# alivio memory cop: polls ps and SIGKILLs alivio workers when their
 # *cumulative* RSS exceeds a threshold. With --bcf thorough mode each
-# bench job spawns several zovia children; capping per-process lets the
+# bench job spawns several alivio children; capping per-process lets the
 # aggregate blow past system RAM while no single worker trips the cap.
 # Cumulative tracking is the meaningful budget — kill the largest worker
 # until we're back under cap.
 #
 # Usage:
-#   scripts/zovia_memory_cop.sh [CUMULATIVE_CAP_MB] [POLL_SEC]
+#   scripts/alivio_memory_cop.sh [CUMULATIVE_CAP_MB] [POLL_SEC]
 # Defaults: 32768 MB (32G), 5s poll.
 #
 # Logs each kill (with cumulative + per-victim RSS) to
-# /tmp/zovia_memory_cop.log.
+# /tmp/alivio_memory_cop.log.
 
 set -u
 CAP_MB=${1:-32768}
 POLL=${2:-5}
-LOG=/tmp/zovia_memory_cop.log
+LOG=/tmp/alivio_memory_cop.log
 
 echo "[cop] starting; cumulative cap=${CAP_MB}MB; poll=${POLL}s; log=$LOG" | tee -a "$LOG"
 
 while true; do
-  # Snapshot all zovia bench workers: "rss_kb pid obj_path".
-  # ps reports RSS in KB. Match `./target/release/zovia ` to scope to
+  # Snapshot all alivio bench workers: "rss_kb pid obj_path".
+  # ps reports RSS in KB. Match `./target/release/alivio ` to scope to
   # the bench binary and avoid other rust processes.
   snap=$(ps -ax -o rss,pid,command \
-         | awk '/[\.]\/target\/release\/zovia / {
+         | awk '/[\.]\/target\/release\/alivio / {
              obj="?";
              for (i=4;i<=NF;i++) if ($i ~ /\.o$/) { obj=$i; break }
              print $1, $2, obj
@@ -63,7 +63,7 @@ while true; do
 
     # Re-snapshot
     snap=$(ps -ax -o rss,pid,command \
-           | awk '/[\.]\/target\/release\/zovia / {
+           | awk '/[\.]\/target\/release\/alivio / {
                obj="?";
                for (i=4;i<=NF;i++) if ($i ~ /\.o$/) { obj=$i; break }
                print $1, $2, obj

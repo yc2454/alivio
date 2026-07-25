@@ -252,11 +252,11 @@ fn run_verify(args: VerifyArgs, mut config: VerifierConfig) {
         // writing this same path); the merge must start from empty each
         // run so re-verifying an object is idempotent rather than
         // accumulating prior runs' entries.
-        // ⚠️ ZOVIA_BUNDLE_KEEP=1 disables the clear: useful for
+        // ⚠️ ALIVIO_BUNDLE_KEEP=1 disables the clear: useful for
         // cross-run accumulation (e.g., running with multiple kernel-
         // engine heuristics to build a superset bundle for byte-match
         // closure).
-        if std::env::var("ZOVIA_BUNDLE_KEEP").ok().as_deref() != Some("1") {
+        if std::env::var("ALIVIO_BUNDLE_KEEP").ok().as_deref() != Some("1") {
             let _ = std::fs::remove_file(&bundle_path);
         }
         config.bcf_bundle_out = Some(bundle_path);

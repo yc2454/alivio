@@ -1,15 +1,15 @@
 #!/bin/bash
 # LEGACY anchor bundle builder.
 # ⚠️ Superseded by calico_anchor_unified_bundle.sh, which relies on
-# zovia's internal thorough mode (default on with --bcf) instead of
+# alivio's internal thorough mode (default on with --bcf) instead of
 # driving the per-pass loop from this script.
 #
 # Builds a kernel-loadable BCF bundle for the calico anchor object
 # (clang-15_-O1_felix_bin_bpf_to_tnl_debug_v6.o, 7 programs).
 #
-# Iterates over all 7 programs, running zovia in three modes and
-# accumulating bundle entries via ZOVIA_BUNDLE_KEEP=1:
-#   1. flag-OFF (default zovia behavior — dense caching)
+# Iterates over all 7 programs, running alivio in three modes and
+# accumulating bundle entries via ALIVIO_BUNDLE_KEEP=1:
+#   1. flag-OFF (default alivio behavior — dense caching)
 #   2. flag-ON AND mode (sparser caching → more exploration → more entries)
 #   3. flag-ON OR  mode (default flag-ON behavior)
 #
@@ -21,10 +21,10 @@
 # (kernel 6.18.0-rc4-g47b3934f7ad8 with BCF patches).
 #
 # Usage:
-#   ANCHOR=/path/to/anchor.o ZOVIA=./target/release/zovia ./calico_anchor_unified_bundle.sh
+#   ANCHOR=/path/to/anchor.o ALIVIO=./target/release/alivio ./calico_anchor_unified_bundle.sh
 
 set -u
-ZOVIA=${ZOVIA:-./target/release/zovia}
+ALIVIO=${ALIVIO:-./target/release/alivio}
 ANCHOR=${ANCHOR:-/tmp/anchor_to_tnl_debug.o}
 BUNDLE=$ANCHOR.bcf-bundle
 
@@ -44,16 +44,16 @@ for prog in "${PROGS[@]}"; do
   echo ""
   echo "### $prog ###"
   echo "  flag-OFF:"
-  ZOVIA_BUNDLE_KEEP=1 \
-    "$ZOVIA" --bcf --kernel-mode verify "$ANCHOR" --func "$prog" 2>&1 \
+  ALIVIO_BUNDLE_KEEP=1 \
+    "$ALIVIO" --bcf --kernel-mode verify "$ANCHOR" --func "$prog" 2>&1 \
     | grep -E 'Verified|bundle:|FAILURE|TIMEOUT|Aborting' | tail -2 | sed 's/^/    /'
   echo "  flag-ON AND:"
-  ZOVIA_KERNEL_ENGINE=1 ZOVIA_KERNEL_ENGINE_AND=1 ZOVIA_BUNDLE_KEEP=1 \
-    "$ZOVIA" --bcf --kernel-mode verify "$ANCHOR" --func "$prog" 2>&1 \
+  ALIVIO_KERNEL_ENGINE=1 ALIVIO_KERNEL_ENGINE_AND=1 ALIVIO_BUNDLE_KEEP=1 \
+    "$ALIVIO" --bcf --kernel-mode verify "$ANCHOR" --func "$prog" 2>&1 \
     | grep -E 'Verified|bundle:|FAILURE|TIMEOUT|Aborting' | tail -2 | sed 's/^/    /'
   echo "  flag-ON OR :"
-  ZOVIA_KERNEL_ENGINE=1 ZOVIA_BUNDLE_KEEP=1 \
-    "$ZOVIA" --bcf --kernel-mode verify "$ANCHOR" --func "$prog" 2>&1 \
+  ALIVIO_KERNEL_ENGINE=1 ALIVIO_BUNDLE_KEEP=1 \
+    "$ALIVIO" --bcf --kernel-mode verify "$ANCHOR" --func "$prog" 2>&1 \
     | grep -E 'Verified|bundle:|FAILURE|TIMEOUT|Aborting' | tail -2 | sed 's/^/    /'
 done
 echo ""

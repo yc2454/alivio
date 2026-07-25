@@ -16,7 +16,7 @@
 //!
 //! ## Environment
 //!
-//! By default we look at `$ZOVIA_CVC5` and then the macOS dev path
+//! By default we look at `$ALIVIO_CVC5` and then the macOS dev path
 //! `/Users/yalucai/cvc5-bcf/install/bin/cvc5`. Override via the env var.
 
 use std::io::Write;
@@ -74,10 +74,10 @@ pub type Result<T> = std::result::Result<T, SolverError>;
 /// Locate the BCF-format proof checker binary (Linux-only). Returns `None`
 /// when it's not present — this is the expected case on macOS dev hosts.
 ///
-/// Precedence: `$ZOVIA_BCF_CHECKER`, then the Linux default.
+/// Precedence: `$ALIVIO_BCF_CHECKER`, then the Linux default.
 #[allow(dead_code)]
 pub fn bcf_checker_path() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("ZOVIA_BCF_CHECKER") {
+    if let Ok(p) = std::env::var("ALIVIO_BCF_CHECKER") {
         let pb = PathBuf::from(p);
         return pb.exists().then_some(pb);
     }
@@ -123,10 +123,10 @@ pub fn validate_proof_bytes(bytes: &[u8]) -> Result<bool> {
 
 /// Locate the BCF-patched cvc5 binary.
 ///
-/// Precedence: `$ZOVIA_CVC5`, then platform default (macOS dev path, then Linux
+/// Precedence: `$ALIVIO_CVC5`, then platform default (macOS dev path, then Linux
 /// build path). Returns `CvcBinaryMissing` if none exists.
 pub fn cvc5_path() -> Result<PathBuf> {
-    if let Ok(p) = std::env::var("ZOVIA_CVC5") {
+    if let Ok(p) = std::env::var("ALIVIO_CVC5") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return Ok(pb);
@@ -173,7 +173,7 @@ pub fn solve(smtlib: &str) -> Result<Vec<u8>> {
     let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(cached) = memo.lock().unwrap().get(smtlib) {
         let hits = HITS.fetch_add(1, Ordering::Relaxed) + 1;
-        if std::env::var("ZOVIA_SOLVER_STATS").is_ok() && hits.is_multiple_of(500) {
+        if std::env::var("ALIVIO_SOLVER_STATS").is_ok() && hits.is_multiple_of(500) {
             eprintln!("[solver] calls={} memo_hits={}", calls, hits);
         }
         return match cached {
@@ -181,7 +181,7 @@ pub fn solve(smtlib: &str) -> Result<Vec<u8>> {
             Err(msg) => Err(SolverError::NotUnsat(msg.clone())),
         };
     }
-    if std::env::var("ZOVIA_SOLVER_STATS").is_ok() && calls.is_multiple_of(500) {
+    if std::env::var("ALIVIO_SOLVER_STATS").is_ok() && calls.is_multiple_of(500) {
         eprintln!(
             "[solver] calls={} memo_hits={}",
             calls,
@@ -217,7 +217,7 @@ fn solve_uncached(smtlib: &str) -> Result<Vec<u8>> {
         let mut f = std::fs::File::create(&smt_path)?;
         f.write_all(smtlib.as_bytes())?;
     }
-    if let Ok(dump_dir) = std::env::var("ZOVIA_BCF_DUMP_SMT") {
+    if let Ok(dump_dir) = std::env::var("ALIVIO_BCF_DUMP_SMT") {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -279,7 +279,7 @@ fn truncate(mut s: String, max: usize) -> String {
     s
 }
 
-/// Minimal tempdir wrapper: creates `$TMPDIR/zovia-bcf-<rand>/` and removes it
+/// Minimal tempdir wrapper: creates `$TMPDIR/alivio-bcf-<rand>/` and removes it
 /// on drop. Avoids pulling in the `tempfile` crate for one use site.
 struct TempDir(PathBuf);
 
@@ -308,7 +308,7 @@ fn tempdir() -> std::io::Result<TempDir> {
         .unwrap_or(0);
     let pid = std::process::id();
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = base.join(format!("zovia-bcf-{}-{}-{}", pid, stamp, seq));
+    let dir = base.join(format!("alivio-bcf-{}-{}-{}", pid, stamp, seq));
     std::fs::create_dir(&dir)?;
     Ok(TempDir(dir))
 }
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn solve_toy_unsat() {
         if cvc5_path().is_err() {
-            eprintln!("[skip] cvc5 binary not found; set ZOVIA_CVC5 to enable");
+            eprintln!("[skip] cvc5 binary not found; set ALIVIO_CVC5 to enable");
             return;
         }
 

@@ -2,16 +2,16 @@
 """tok_diff.py — decode + diff two BCF canonical-goal byte streams.
 
 The single most decisive instrument of the 2026-07-12 session: it closed
-0x003e1542d2fdd1d6 (children_unsafe marking gap, zovia fix 7d77c68) and
-0xb809d31ada13b036 (csum_diff orphan bound-pair, zovia fix 1bb382b) by
+0x003e1542d2fdd1d6 (children_unsafe marking gap, alivio fix 7d77c68) and
+0xb809d31ada13b036 (csum_diff orphan bound-pair, alivio fix 1bb382b) by
 showing the EXACT conjunct-level delta between the kernel-queried goal
-and zovia's nearest emission.
+and alivio's nearest emission.
 
 Accepts either source format for each input:
   * kernel dmesg chunks:  lines containing `hash=0x<H> off=<N> bytes: ..`
     (grep them from dmesg/serial capture into a file; chunks are
     reassembled by offset)
-  * zovia census line:    a single line `.. bytes: ..` or a bare
+  * alivio census line:    a single line `.. bytes: ..` or a bare
     whitespace-separated hex byte stream
     (e.g. `grep -m1 'hash=0x<H> bytes:' census.log | sed 's/.*bytes: //'`)
 
@@ -34,7 +34,7 @@ A conjunct fails to decode -> printed raw; extend the table, don't guess.
 
 Reading the diff (the divergence taxonomy, one line each):
   * extra conjunct = orphaned BOUND-PAIR on a var only one side has
-      -> return-range narrowing divergence (see zovia_narrower_than_kernel
+      -> return-range narrowing divergence (see alivio_narrower_than_kernel
          pre-cache list, transfer/call/transfer.rs; fix 1bb382b pattern)
   * same slot, (vN op K) vs (K' op K) folded
       -> value collapsed on one side (replay-base placement or state

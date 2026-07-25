@@ -3,8 +3,8 @@
  * Mirrors include/uapi/asm-generic/ioctl.h. Only `test_lirc_mode2_kern.c`
  * needs this from BPF compile context (for LIRC_MODE2_* macros).
  */
-#ifndef _ZOVIA_STUB_ASM_IOCTL_H
-#define _ZOVIA_STUB_ASM_IOCTL_H
+#ifndef _ALIVIO_STUB_ASM_IOCTL_H
+#define _ALIVIO_STUB_ASM_IOCTL_H
 
 #define _IOC_NRBITS     8
 #define _IOC_TYPEBITS   8

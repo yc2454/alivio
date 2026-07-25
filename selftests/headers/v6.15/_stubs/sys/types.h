@@ -4,8 +4,8 @@
  * symbols they actually consume from sys/types in the BPF compile path.
  * Pull in the kernel UAPI types and add the POSIX aliases.
  */
-#ifndef _ZOVIA_STUB_SYS_TYPES_H
-#define _ZOVIA_STUB_SYS_TYPES_H
+#ifndef _ALIVIO_STUB_SYS_TYPES_H
+#define _ALIVIO_STUB_SYS_TYPES_H
 
 #include <linux/types.h>
 #include <linux/posix_types.h>  /* __kernel_pid_t, __kernel_uid32_t, … */

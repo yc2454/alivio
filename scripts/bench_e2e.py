@@ -9,17 +9,17 @@ VM load of bundles already on disk. Each VM load batch stays
 `--vm-jobs`-parallel. (`--skip-bundle-build` and `--no-kernel-test`
 degenerate to the single-phase paths.)
 
-  Build (parallel, zovia-side): build the bundle via a single
-    `zovia --bcf --kernel-mode verify <obj>` invocation. By default
-    `--bcf` enables thorough mode internally (zovia spawns its own
+  Build (parallel, alivio-side): build the bundle via a single
+    `alivio --bcf --kernel-mode verify <obj>` invocation. By default
+    `--bcf` enables thorough mode internally (alivio spawns its own
     multi-pass children with varied state-cache placement and merges
     their discharge entries). The legacy harness that drove three
-    separate zovia invocations from this script lives at
+    separate alivio invocations from this script lives at
     `bench_e2e_legacy.py`.
   Load (kernel-side via cloudlab→VM ssh chain):
     ship anchor + bundle, run test_loader, parse loaded=N/M.
 
-**Partial-bundle policy** (2026-05-27): zovia writes the bundle to disk
+**Partial-bundle policy** (2026-05-27): alivio writes the bundle to disk
 at section-completion / section-failure boundaries, so a TIMEOUT-killed
 worker may still leave a usable partial bundle on disk. Phase 2 ships
 *any* bundle file that exists, regardless of the build's exit status.
@@ -30,13 +30,13 @@ does not have to correlate with load success; per-row `note` records
 whether the build completed or hit the timeout.
 
 Output: TSV with columns
-  obj  zovia_ok  bundle_bytes  zovia_elapsed  kernel_loaded  kernel_total
+  obj  alivio_ok  bundle_bytes  alivio_elapsed  kernel_loaded  kernel_total
 
 Usage:
   scripts/bench_e2e.py --list /tmp/calico_repr_list.txt --jobs 8 \\
       --out /tmp/bench_calico71.tsv --kernel-test
 
-  # skip the kernel-load step (just build bundles + measure zovia):
+  # skip the kernel-load step (just build bundles + measure alivio):
   scripts/bench_e2e.py --list ... --no-kernel-test
 
   # rerun only the kernel-load step against existing bundles:
@@ -128,12 +128,12 @@ def lookup_prog_type(obj_path: str, types_map: dict[str, str]) -> Optional[str]:
     return _SEC_TO_TYPE.get(head)
 
 
-# ───── Phase 1: parallel zovia bundle build ─────────────────────────
+# ───── Phase 1: parallel alivio bundle build ─────────────────────────
 
 
-def is_bundle_fresh(obj_path: str, zovia_bin: str, harness: str = __file__) -> bool:
+def is_bundle_fresh(obj_path: str, alivio_bin: str, harness: str = __file__) -> bool:
     """Bundle on disk is reusable iff its mtime is newer than every input
-    that could have changed its contents: the .o, the zovia binary, and
+    that could have changed its contents: the .o, the alivio binary, and
     this harness. Returns False if the bundle is missing.
     """
     bundle = f"{obj_path}.bcf-bundle"
@@ -141,17 +141,17 @@ def is_bundle_fresh(obj_path: str, zovia_bin: str, harness: str = __file__) -> b
         return False
     try:
         b_m = os.path.getmtime(bundle)
-        return all(b_m >= os.path.getmtime(p) for p in (obj_path, zovia_bin, harness))
+        return all(b_m >= os.path.getmtime(p) for p in (obj_path, alivio_bin, harness))
     except OSError:
         return False
 
 
 def build_one(args):
-    obj_path, zovia_bin, timeout, cache_bundles = args
+    obj_path, alivio_bin, timeout, cache_bundles = args
     bundle = f"{obj_path}.bcf-bundle"
 
-    # Cache hit: bundle is newer than (.o, zovia, harness). Skip rebuild.
-    if cache_bundles and is_bundle_fresh(obj_path, zovia_bin):
+    # Cache hit: bundle is newer than (.o, alivio, harness). Skip rebuild.
+    if cache_bundles and is_bundle_fresh(obj_path, alivio_bin):
         size = os.path.getsize(bundle)
         return (obj_path, True, size, 0.0, "cached")
 
@@ -161,14 +161,14 @@ def build_one(args):
     except OSError:
         pass
 
-    # zovia's --bcf flag enables internal thorough mode by default: it
+    # alivio's --bcf flag enables internal thorough mode by default: it
     # spawns its own multi-pass children with varied state-cache
     # placement and merges their discharge entries into the same
     # bundle file. One invocation per object is now sufficient.
-    cmd = [zovia_bin, "-q", "--bcf", "--kernel-mode", "verify", obj_path]
+    cmd = [alivio_bin, "-q", "--bcf", "--kernel-mode", "verify", obj_path]
     t0 = time.time()
     note = ""
-    # --bcf thorough mode spawns child zovia workers for multi-pass
+    # --bcf thorough mode spawns child alivio workers for multi-pass
     # state-cache placement. subprocess.run(..., timeout=) only kills the
     # parent on TimeoutExpired, leaving the children to keep eating RAM
     # well past the deadline. Run the parent in its own process group and
@@ -193,7 +193,7 @@ def build_one(args):
     elapsed = time.time() - t0
     ok = os.path.exists(bundle)
     size = os.path.getsize(bundle) if ok else 0
-    # Partial-bundle policy: even on TIMEOUT, if zovia wrote a bundle
+    # Partial-bundle policy: even on TIMEOUT, if alivio wrote a bundle
     # at some section boundary before being killed, ship it. Empirically
     # validated (2026-05-27) on cilium bpf_host where a 360 KB partial
     # covering only the prefix sections still loaded 32/32 — the kernel
@@ -204,12 +204,12 @@ def build_one(args):
     return (obj_path, ok, size, elapsed, note)
 
 
-def phase1_build_bundles(objs: list[str], zovia: str, jobs: int, timeout: int,
+def phase1_build_bundles(objs: list[str], alivio: str, jobs: int, timeout: int,
                          cache_bundles: bool = False) -> list[tuple]:
     cache_note = " [cache enabled]" if cache_bundles else ""
     print(f"[bench] phase 1: building bundles for {len(objs)} objects "
           f"(jobs={jobs}, per-obj timeout={timeout}s){cache_note}", file=sys.stderr)
-    work = [(o, zovia, timeout, cache_bundles) for o in objs]
+    work = [(o, alivio, timeout, cache_bundles) for o in objs]
     results: list[tuple] = []
     with ProcessPoolExecutor(max_workers=jobs) as ex:
         futs = {ex.submit(build_one, w): w[0] for w in work}
@@ -433,7 +433,7 @@ rm -rf "$WORK"
 
 # ───── TSV row formatting (shared by pipeline + non-pipeline paths) ──
 
-TSV_HEADER = ("obj\tzovia_ok\tbundle_bytes\tzovia_elapsed\tpp_loaded\t"
+TSV_HEADER = ("obj\talivio_ok\tbundle_bytes\talivio_elapsed\tpp_loaded\t"
               "pp_total\twhole_full\tfirst_fail\tnotes\n")
 
 
@@ -453,7 +453,7 @@ def format_tsv_row(p1_tuple: tuple, kres_tuple: Optional[tuple]) -> str:
 
 
 def pipelined_build_and_load(
-    objs: list[str], zovia: str, jobs: int, timeout: int, cache_bundles: bool,
+    objs: list[str], alivio: str, jobs: int, timeout: int, cache_bundles: bool,
     cloudlab_host: str, phase2_timeout: int, vm_jobs: int, run_per_prog: bool,
     per_call_timeout: int, types_map: dict[str, str], ctl_socket: str,
     out_path: str,
@@ -531,7 +531,7 @@ def pipelined_build_and_load(
     consumer_thread = threading.Thread(target=consumer, daemon=True)
     consumer_thread.start()
 
-    work = [(o, zovia, timeout, cache_bundles) for o in objs]
+    work = [(o, alivio, timeout, cache_bundles) for o in objs]
     n_done = 0
     with ProcessPoolExecutor(max_workers=jobs) as ex:
         futs = {ex.submit(build_one, w): w[0] for w in work}
@@ -569,11 +569,11 @@ def pipelined_build_and_load(
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", required=True, help="file of .o paths, one per line")
-    ap.add_argument("--zovia", default="./target/release/zovia")
+    ap.add_argument("--alivio", default="./target/release/alivio")
     ap.add_argument("--jobs", type=int, default=8)
-    ap.add_argument("--timeout", type=int, default=300, help="per-object zovia timeout (s)")
+    ap.add_argument("--timeout", type=int, default=300, help="per-object alivio timeout (s)")
     ap.add_argument("--cloudlab", help="cloudlab ssh target (e.g. yc1795@ms0802.utah.cloudlab.us). "
-                    "if unset, read from /Users/yalucai/bpf-next-zovia git remote.")
+                    "if unset, read from /Users/yalucai/bpf-next-alivio git remote.")
     ap.add_argument("--out", default="/tmp/bench_e2e.tsv")
     ap.add_argument("--kernel-test", action="store_true", default=True,
                     help="run phase 2 kernel-load test (default on)")
@@ -583,16 +583,16 @@ def main() -> int:
     ap.add_argument("--cache-bundles", dest="cache_bundles", action="store_true",
                     default=True,
                     help="reuse an existing .bcf-bundle sidecar iff its mtime is "
-                         "newer than (.o, zovia binary, this harness); stale "
+                         "newer than (.o, alivio binary, this harness); stale "
                          "entries are rebuilt. DEFAULT: ON. Bundles are persisted "
-                         "next to their .o (zovia writes <obj>.bcf-bundle), so a "
+                         "next to their .o (alivio writes <obj>.bcf-bundle), so a "
                          "machine restart mid-batch doesn't discard already-built "
                          "work — the next run resumes from the on-disk sidecars.")
     ap.add_argument("--no-cache-bundles", dest="cache_bundles", action="store_false",
                     help="force a fresh rebuild of every bundle, ignoring on-disk "
                          "sidecars. Use for a strictly deterministic per-commit "
                          "gate run. (mtime check already invalidates bundles when "
-                         "the zovia binary or .o change, so caching is safe across "
+                         "the alivio binary or .o change, so caching is safe across "
                          "rebuilds; this is the belt-and-suspenders option.)")
     ap.add_argument("--vm-jobs", type=int, default=4,
                     help="parallel test_loader processes on the VM (default 4)")
@@ -616,7 +616,7 @@ def main() -> int:
     # Resolve cloudlab from git remote if not provided
     if args.kernel_test and not args.cloudlab:
         r = subprocess.run(
-            ["git", "-C", "/Users/yalucai/bpf-next-zovia", "remote", "get-url", "cloudlab"],
+            ["git", "-C", "/Users/yalucai/bpf-next-alivio", "remote", "get-url", "cloudlab"],
             capture_output=True, text=True, check=True,
         )
         url = r.stdout.strip()
@@ -665,7 +665,7 @@ def main() -> int:
         elif args.kernel_test:
             # Build + load, overlapped. Writes args.out incrementally.
             p1_by_obj, kresults = pipelined_build_and_load(
-                objs, args.zovia, args.jobs, args.timeout, args.cache_bundles,
+                objs, args.alivio, args.jobs, args.timeout, args.cache_bundles,
                 args.cloudlab, args.phase2_timeout, args.vm_jobs,
                 args.per_prog, args.per_call_timeout, types_map, ssh_socket,
                 args.out,
@@ -673,7 +673,7 @@ def main() -> int:
             tsv_already_written = True
         else:
             # Build only, no kernel load.
-            p1 = phase1_build_bundles(objs, args.zovia, args.jobs, args.timeout,
+            p1 = phase1_build_bundles(objs, args.alivio, args.jobs, args.timeout,
                                       cache_bundles=args.cache_bundles)
             p1_by_obj = {r[0]: r for r in p1}
     finally:

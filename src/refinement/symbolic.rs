@@ -154,7 +154,7 @@ pub struct SymbolicState {
     /// Used at discharge time for the kernel-mirror per-reg fresh-VAR
     /// rewrite: when `lhs_materialize_pc < base_pc`, the kernel's
     /// `bcf_track` replay re-materializes the LHS reg fresh — assigning
-    /// a new bcf_expr distinct from any other reg's. Zovia's live state
+    /// a new bcf_expr distinct from any other reg's. Alivio's live state
     /// may alias the LHS reg's expr with another reg's via spill/fill
     /// propagation; without the rewrite, the canonical hash collapses
     /// two semantically-distinct regs into one VAR.
@@ -188,7 +188,7 @@ pub struct SymbolicState {
     /// reject the kernel selects a SMALL register set by recursively
     /// materializing the rejecting comparison's operand regs and their
     /// value-expression dependencies. Reproducing that selection in
-    /// zovia's register-filtered discharge requires knowing which reg
+    /// alivio's register-filtered discharge requires knowing which reg
     /// each leaf VAR came from.
     pub var_origin: std::collections::HashMap<u32, usize>,
     /// Set true ONLY during a faithful base→reject replay (`reset_for_replay`).
@@ -372,7 +372,7 @@ impl SymbolicState {
     pub fn expr32(&mut self, slot: u32) -> u32 {
         // Inspect under immutable borrow first, drop it before mutating.
         let (code, params, first_arg) = {
-            if self.expr_at(slot).is_none() && std::env::var("ZOVIA_BCF_REPLAY_DEBUG").is_ok() {
+            if self.expr_at(slot).is_none() && std::env::var("ALIVIO_BCF_REPLAY_DEBUG").is_ok() {
                 eprintln!(
                     "[expr32-BAD] slot={} next_slot={} n_exprs={} reg_expr={:?}",
                     slot,
@@ -597,7 +597,7 @@ impl SymbolicState {
     /// [`filter_path_conds_from_pc`] but the window is the maximal
     /// TRAILING run of recorded conds with pc >= base_pc, not every entry
     /// numerically >= base_pc. The kernel's bcf_track replay is a linear
-    /// re-execution base→reject of ITS trajectory suffix; when zovia's
+    /// re-execution base→reject of ITS trajectory suffix; when alivio's
     /// path crossed higher-pc code BEFORE the base (subprog call), the
     /// numeric filter wrongly keeps those carried conds and every emitted
     /// form is polluted. Retention of L (prev-push) + its bound preds
@@ -663,7 +663,7 @@ impl SymbolicState {
     ///
     /// The kernel's reject hash is the canonical hash of a small,
     /// register-filtered conjunction (e.g. `{V0=proto2, V1=tcp}`), not
-    /// the full PC-suffix conjunction. zovia's PC-suffix filter pulls in
+    /// the full PC-suffix conjunction. alivio's PC-suffix filter pulls in
     /// intervening unrelated-register branches; this restores the clean
     /// subset once a provenance-seeded goal set is known. The goal set is
     /// computed by the caller via VAR→reg provenance (def-use closure).
@@ -844,8 +844,8 @@ impl SymbolicState {
     /// happened inside or outside a fresh kernel `bcf_track` replay
     /// starting at base_pc.
     pub fn bind_reg(&mut self, reg: usize, idx: u32) {
-        // ZOVIA_DBG_MAT=1: backtrace the caller of a probed bind.
-        if std::env::var("ZOVIA_DBG_MAT").ok().as_deref() == Some("1")
+        // ALIVIO_DBG_MAT=1: backtrace the caller of a probed bind.
+        if std::env::var("ALIVIO_DBG_MAT").ok().as_deref() == Some("1")
             && reg == 3
             && self.current_pc == 661
         {
@@ -1008,7 +1008,7 @@ impl SymbolicState {
     }
 
     /// 64-bit bound predicates. Mirrors kernel's `bcf_bound_reg`
-    /// (verifier.c:861). zovia's Domain doesn't track umin/umax directly
+    /// (verifier.c:861). alivio's Domain doesn't track umin/umax directly
     /// for 64-bit, so we approximate from the signed interval when it's
     /// fully non-negative.
     fn bound_reg64(&mut self, expr: u32, bounds: &RegBounds) {
@@ -1053,9 +1053,9 @@ impl SymbolicState {
             Some(idx) => idx,
             None => {
                 let idx = self.materialize_reg(reg, bounds);
-                // DIAGNOSIS-ONLY (ZOVIA_DBG_MAT=1): print every VAR
+                // DIAGNOSIS-ONLY (ALIVIO_DBG_MAT=1): print every VAR
                 // materialization with its bounds.
-                if std::env::var("ZOVIA_DBG_MAT").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DBG_MAT").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[mat] reg=r{} pc={} const={:?} smin={:#x} smax={:#x} umin={:#x} umax={:#x} s32=[{},{}] u32=[{:#x},{:#x}]",
                         reg,
@@ -1104,7 +1104,7 @@ impl SymbolicState {
     fn materialize_reg(&mut self, reg: usize, bounds: &RegBounds) -> u32 {
         // R10 is the frame pointer with offset 0 from itself — special-case
         // it to a const 0 so stack-pointer arithmetic chains symbolize.
-        // This is zovia-specific; the kernel handles R10 via the verifier's
+        // This is alivio-specific; the kernel handles R10 via the verifier's
         // ptr-type system instead.
         if reg == 10 {
             return self.add_val64(0);
@@ -1455,7 +1455,7 @@ mod tests {
     }
 
     /// R10 is special: always materializes as BV_VAL(0, 64) regardless of
-    /// the bounds passed in. Mirrors zovia's existing `materialize_reg64`.
+    /// the bounds passed in. Mirrors alivio's existing `materialize_reg64`.
     #[test]
     fn reg_expr_r10_is_const_zero() {
         let mut s = SymbolicState::new();

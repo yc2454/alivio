@@ -7,8 +7,8 @@
  *
  * Extend as needed; values match Linux x86_64 ABI.
  */
-#ifndef _ZOVIA_STUB_ASM_UNISTD_64_H
-#define _ZOVIA_STUB_ASM_UNISTD_64_H
+#ifndef _ALIVIO_STUB_ASM_UNISTD_64_H
+#define _ALIVIO_STUB_ASM_UNISTD_64_H
 
 #define __NR_nanosleep   35
 

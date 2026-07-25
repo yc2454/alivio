@@ -131,7 +131,7 @@ pub(crate) fn validate_helper_args(
         // Faithful mirror of the kernel: check_helper_call rejects with
         // -EINVAL when get_func_proto(func_id) returns NULL (unknown
         // helper id, or a helper not available to this program type).
-        // zovia previously skipped (warn + return, no env.fail) and let
+        // alivio previously skipped (warn + return, no env.fail) and let
         // analysis continue, accepting programs the kernel rejects — the
         // systemic BCF-corpus false-accept root mechanism. An
         // unknown/unmodeled helper id ⇒ REJECT.

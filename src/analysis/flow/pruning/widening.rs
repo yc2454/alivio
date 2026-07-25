@@ -17,7 +17,7 @@
 //
 // (ii) lives in `kfunc.rs::iter_next_fork →
 // widen_imprecise_scalars_at_iter_next_call` — a kernel-faithful
-// implementation already in zovia. The helpers below support (iii) by
+// implementation already in alivio. The helpers below support (iii) by
 // identifying back-edges, loop heads, and iter-loop convergence
 // conditions so `handle_loop_pruning` knows when to defer the back-
 // edge target prune so the looped-back state can re-reach iter_next

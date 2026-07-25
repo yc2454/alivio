@@ -6,7 +6,7 @@
 // consumed by `clean_verifier_state` to decide which stack slots matter
 // when comparing a cur state against a cached one.
 //
-// Why this replaces the static `live_slots` for slot cleaning: zovia's
+// Why this replaces the static `live_slots` for slot cleaning: alivio's
 // static per-byte stack liveness cannot see stack bytes read by a HELPER
 // through a pointer argument (e.g. `r2 = r10-24; call map_lookup_elem` —
 // the key bytes). Those slots look dead → `stack_subsumed_by`'s

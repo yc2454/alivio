@@ -1,7 +1,7 @@
 //! Path-unreachable speculation site.
 //!
 //! Mirrors BCF's `bcf_prove_unreachable` (cheat-sheet §4d). Called from
-//! [`crate::analysis::transfer`] at points where zovia accepts natively
+//! [`crate::analysis::transfer`] at points where alivio accepts natively
 //! but the kernel verifier would reject and emit a path-unreachable
 //! BCF request — currently only the Mov-from-NotInit case for
 //! `unreachable_arsh` (paper §unreachable-arsh).
@@ -61,7 +61,7 @@ thread_local! {
         const { std::cell::Cell::new(None) };
     // When set, the window filter is the TRAJECTORY-suffix rule
     // (filter_path_conds_traj_suffix) instead of the numeric pc rule —
-    // mirrors the kernel's linear base→reject replay when zovia's path
+    // mirrors the kernel's linear base→reject replay when alivio's path
     // crossed higher-pc code before the base. ADDITIVE via union modes.
     static TRAJ_SUFFIX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -318,7 +318,7 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
         // PRE-NARROW materialization: the kernel's bcf_reg_expr
         // materializes a reg at its FIRST reference using the range as of
         // ENTERING that insn — i.e. BEFORE the branch's own narrowing.
-        // zovia's `lhs_bounds` is post-narrow (the taken side), so a reg
+        // alivio's `lhs_bounds` is post-narrow (the taken side), so a reg
         // narrowed to a const by its own first-reference branch would
         // wrongly fold to a `K op K` literal; the pre-narrow range keeps
         // it a VAR{bound} the kernel-faithful way. Mirrors kernel
@@ -331,7 +331,7 @@ pub(crate) fn faithful_fold_pass(sym: &mut SymbolicState, base_pc: Option<usize>
         // recorded COND, not a bound pred). Carried conds (pc < base)
         // reflect the reg's FINAL narrowed range carried into the suffix
         // → post-narrow `lhs_bounds`. NB: a cond whose narrowing is
-        // pre-window in the kernel but in-window under zovia's wider
+        // pre-window in the kernel but in-window under alivio's wider
         // replay window cannot be served by this per-branch rule — that
         // requires replay-base placement, not a pre/post toggle.
         let use_pre = prenarrow_on && base_pc.map(|bp| pc >= bp).unwrap_or(false);
@@ -491,7 +491,7 @@ fn try_prove_unreachable_inner(
             // caller's unfiltered discharges already cover this anchor).
             match sym.provenance_goal_set(hops) {
                 Some(goal) => {
-                    if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
+                    if std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
                         let pre = sym.path_conds.len();
                         sym.filter_path_conds_by_regs(&goal);
                         let mut g: Vec<usize> = goal.into_iter().collect();
@@ -585,7 +585,7 @@ fn try_prove_unreachable_inner(
     // fresh-replay behavior: when `bcf_reg_expr` takes the
     // `tnum_is_const → bcf_val(K)` path (no `bcf_bound_reg32` call),
     // no bound preds exist for that VAR in the kernel's bcf graph.
-    // Zovia inherits the bound preds from its full-trace bcf state
+    // Alivio inherits the bound preds from its full-trace bcf state
     // (kept by `filter_path_conds_from_pc`'s subset rule for vars(L)),
     // but after we rewrite L to `K op K`, those bound preds become
     // canonical-hash garbage (extra conjuncts kernel doesn't have).
@@ -782,7 +782,7 @@ fn try_prove_unreachable_inner(
         faithful_fold_pass(&mut sym, base_pc);
     }
 
-    if std::env::var("ZOVIA_BCF_DUMP_PATH_COND_PCS").is_ok() {
+    if std::env::var("ALIVIO_BCF_DUMP_PATH_COND_PCS").is_ok() {
         // Build slot→record-index map (path_conds/args hold SLOTS, exprs is
         // record-indexed; slot advances by slot_len() per record).
         let mut slot_to_idx: std::collections::HashMap<u32, usize> =
@@ -849,7 +849,7 @@ fn try_prove_unreachable_inner(
     // Loop-suffix-base discharge variant. Emitted ADDITIVELY by the caller
     // alongside the normal discharge (deduped by hash), so it can only ADD
     // the kernel's post-loop obligation, never drop another reject's.
-    // When the reject's recorded path crossed a bounded loop, zovia (which
+    // When the reject's recorded path crossed a bounded loop, alivio (which
     // unrolls it) accumulates one cond per iteration at the loop's back-edge
     // insn — e.g. 31× `r8!=32` (loop-back) + 31× `r8<r1` (continue) + the exit
     // `r8==32`. The kernel's bcf_track base is the LOOP EXIT (back-edge src+1):
@@ -897,7 +897,7 @@ fn try_prove_unreachable_inner(
                 if kc.is_empty() || kc.len() == n {
                     return None; // filter changed nothing → no distinct variant
                 }
-                if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
                     eprintln!(
                         "[loop-suffix-base] src={} exit={} conds {}->{}",
                         src,
@@ -961,7 +961,7 @@ fn try_prove_unreachable_inner(
         // flag-clear side where R1 pinned to 0). The kernel's fresh bcf_track
         // replay starting AT this branch sees the masked reg as tnum-const and
         // emits `bcf_val(K)` directly (no cached VAR) — so its obligation has
-        // the folded literal, not `VAR op K`. zovia's FAITHFUL_FOLD keeps the
+        // the folded literal, not `VAR op K`. alivio's FAITHFUL_FOLD keeps the
         // reg cached (materialized at the mask insn just before), so we fold it
         // here explicitly to match. Done BEFORE collecting kept_branch_vars so
         // the now-orphaned reg VAR's bound preds drop out (kernel has none).
@@ -1012,7 +1012,7 @@ fn try_prove_unreachable_inner(
         if kc.is_empty() || kc.len() == n {
             return None; // filter changed nothing → no distinct variant
         }
-        if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
             eprintln!(
                 "[flag-skip-base] exit={} anchor_pc={} conds {}->{}",
                 exit,
@@ -1035,7 +1035,7 @@ fn try_prove_unreachable_inner(
     // body never runs and no back-edge cond is recorded. The kernel anchors
     // bcf_track at that loop-header bound check — its obligation has the bound
     // check (`0 u>= 0` if R1 const, or `0 u>= zext(R1)` if symbolic) + the
-    // proto suffix, and NO loop-iteration conds. zovia records the same bound
+    // proto suffix, and NO loop-iteration conds. alivio records the same bound
     // check (lhs already const 0) but its base_pc discharges anchor pre-loop
     // (including extra prefix) and its FAITHFUL_FOLD over-collapses the
     // symbolic `0 u>= zext(R1)` to the trivially-true `1 != 0`. Re-anchor at
@@ -1133,7 +1133,7 @@ fn try_prove_unreachable_inner(
         if kc.is_empty() || kc.len() == n {
             return None;
         }
-        if std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1") {
             eprintln!(
                 "[loop-entry-base] anchor_pc={} conds {}->{}",
                 anchor_pc,
@@ -1172,7 +1172,7 @@ fn try_prove_unreachable_inner(
             return None;
         }
     };
-    if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
+    if std::env::var("ALIVIO_BCF_DUMP_SMT").is_ok() {
         eprintln!(
             "---- [bcf] SMT-LIB to cvc5 (path-unreachable) ----\n{}\n---- end ----",
             smt
@@ -1251,7 +1251,7 @@ pub fn build_unreachable_from_replay(mut sym: SymbolicState) -> Option<Unreachab
         }
     };
     let smt = smtlib::encode(&sym).ok()?;
-    if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
+    if std::env::var("ALIVIO_BCF_DUMP_SMT").is_ok() {
         eprintln!(
             "---- [bcf] SMT-LIB to cvc5 (replay) ----\n{}\n---- end ----",
             smt
@@ -1260,7 +1260,7 @@ pub fn build_unreachable_from_replay(mut sym: SymbolicState) -> Option<Unreachab
     // Formation-time census (diagnosis): the post-prove [census] lines can't
     // distinguish never-formed from formed-but-prove-declined; log both the
     // formed hash and the solve outcome.
-    let census = std::env::var("ZOVIA_BCF_CENSUS").ok().as_deref() == Some("1");
+    let census = std::env::var("ALIVIO_BCF_CENSUS").ok().as_deref() == Some("1");
     let formed_hash = if census {
         Some(super::canonical_hash::hash_expr(goal_root, &sym.exprs))
     } else {

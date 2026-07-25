@@ -1354,7 +1354,7 @@
     },
     "loop3.c": {
       "expect": "reject",
-      "note": "Negative test: prog_tests/bpf_verif_scale.c test_verif_scale_loop3_fail() loads loop3.bpf.o with expect_fail=true. The 2^32-iteration do/while exceeds BPF_COMPLEXITY_LIMIT_INSNS — the kernel rejects via the instruction limit, which zovia mirrors as a complexity-limit timeout (runner scores (reject, Timeout) => Pass). Was mis-auto-classified as accept by batch 6; corrected 2026-06-01."
+      "note": "Negative test: prog_tests/bpf_verif_scale.c test_verif_scale_loop3_fail() loads loop3.bpf.o with expect_fail=true. The 2^32-iteration do/while exceeds BPF_COMPLEXITY_LIMIT_INSNS — the kernel rejects via the instruction limit, which alivio mirrors as a complexity-limit timeout (runner scores (reject, Timeout) => Pass). Was mis-auto-classified as accept by batch 6; corrected 2026-06-01."
     },
     "loop4.c": {
       "expect": "accept",

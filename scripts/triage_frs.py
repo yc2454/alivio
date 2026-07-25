@@ -82,10 +82,10 @@ def classify(reason: str) -> str:
 
 
 def run_one(args):
-    zovia, upstream, path, timeout = args
+    alivio, upstream, path, timeout = args
     fname = os.path.basename(path)
     cmd = [
-        zovia,
+        alivio,
         "-q",
         "--kernel-mode",
         "dev",
@@ -117,7 +117,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", default="/tmp/cur_kmode_v10.tsv",
                     help="prior sweep TSV with FALSE_REJECT entries")
-    ap.add_argument("--zovia", default="./target/release/zovia")
+    ap.add_argument("--alivio", default="./target/release/alivio")
     ap.add_argument("--upstream", default="vendor/linux")
     ap.add_argument("--progs-dir",
                     default="vendor/linux/tools/testing/selftests/bpf/progs")
@@ -151,7 +151,7 @@ def main():
     done = 0
     with ProcessPoolExecutor(max_workers=a.jobs) as ex:
         futs = {
-            ex.submit(run_one, (a.zovia, a.upstream, str(p), a.timeout)): p
+            ex.submit(run_one, (a.alivio, a.upstream, str(p), a.timeout)): p
             for p in paths
         }
         for fut in as_completed(futs):

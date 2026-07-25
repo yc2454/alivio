@@ -25,10 +25,10 @@ use std::collections::HashSet;
 /// next-inner frame's `return_pc`. Regs not in
 /// `live_regs_before[frame_ip]` are reset to `NotInit`; stack
 /// slots not in `live_slots[frame_ip]` are dropped (kernel's
-/// `STACK_INVALID` equivalent — zovia stores slots sparsely in a
+/// `STACK_INVALID` equivalent — alivio stores slots sparsely in a
 /// `BTreeMap`, so removal == invalidation).
 ///
-/// **Soundness:** zovia's existing subsumption already filters
+/// **Soundness:** alivio's existing subsumption already filters
 /// dead regs/slots out of the comparison via the same
 /// `live_regs` / `live_slots` sets (see `domain_subsumed_by`,
 /// `stack_subsumed_by`); this mutation just bakes in the same
@@ -205,7 +205,7 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
 /// refinement at `cur`'s reject site, walk `cur`'s
 /// `parent_cache_id` lineage and mark every cached ancestor
 /// `children_unsafe` so it can no longer prune a later arrival.
-/// Without this, zovia subsumes the kernel's *second* route to
+/// Without this, alivio subsumes the kernel's *second* route to
 /// the same reject against the first route's cached ancestor and
 /// never emits the second route's distinct path-unreachable
 /// bundle entry. The chain (not all-states-at-pc) is
@@ -222,7 +222,7 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
 /// bound — mark the whole lineage (conservative).
 /// Kernel `bcf_refine` marks `parents[0..vstate_cnt-1]` children_unsafe
 /// (verifier.c:24684): the state chain `cur->parent .. st`, EXCLUDING
-/// `base = st->parent`. zovia's `parent_cache_id` chain IS that checkpoint
+/// `base = st->parent`. alivio's `parent_cache_id` chain IS that checkpoint
 /// chain, so this walks it from `cur.parent_cache_id` up to (but not
 /// including) `base_cache_id` and marks each cached state. This is the
 /// FAITHFUL bound — a bounded state chain, not a pc window — replacing the
@@ -234,7 +234,7 @@ pub fn clean_verifier_state(env: &mut VerifierEnv, cid: u32) {
 pub fn mark_path_children_unsafe(env: &mut VerifierEnv, cur: &State, base_cache_id: Option<u32>) {
     let mut id = cur.parent_cache_id;
     let mut budget: usize = 16_384;
-    let dump = std::env::var("ZOVIA_DUMP_DISCHARGE").ok().as_deref() == Some("1");
+    let dump = std::env::var("ALIVIO_DUMP_DISCHARGE").ok().as_deref() == Some("1");
     let mut marked = 0usize;
     let mut first_pc: Option<usize> = None;
     let mut last_pc: Option<usize> = None;

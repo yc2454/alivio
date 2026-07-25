@@ -123,7 +123,7 @@ static int run_per_prog(const char *prog_path, enum bpf_prog_type forced_type, c
 	if (bundle_path) bundle = map_file(bundle_path, &bundle_size);
 
 	/* pass 1: enumerate program names + ELF section names (stable
-	 * order). The section name is the join key against zovia, which
+	 * order). The section name is the join key against alivio, which
 	 * reports verdicts per ELF section; libbpf is authoritative on
 	 * the section↔program relationship (a multi-FUNC section yields
 	 * several programs sharing one section name — that asymmetry is
@@ -160,7 +160,7 @@ static int run_per_prog(const char *prog_path, enum bpf_prog_type forced_type, c
 	 * verifier core emitted) apart from a *post-verifier* load failure
 	 * (EINVAL after do_check completed — JIT / do_misc_fixups /
 	 * fixup_call_args). The latter is NOT a verifier false-accept: the
-	 * kernel verifier and zovia (a verifier mirror) agree the program
+	 * kernel verifier and alivio (a verifier mirror) agree the program
 	 * is safe; the divergence is in a non-verifier kernel stage. */
 	const size_t logsz = 16u << 20;
 	char *logbuf = malloc(logsz);

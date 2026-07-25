@@ -510,7 +510,7 @@ mod tests {
     #[test]
     fn shift_constraint_end_to_end_via_cvc5() {
         if solver::cvc5_path().is_err() {
-            eprintln!("[skip] cvc5 binary not found; set ZOVIA_CVC5 to enable");
+            eprintln!("[skip] cvc5 binary not found; set ALIVIO_CVC5 to enable");
             return;
         }
         let state = build_shift_constraint();

@@ -2,7 +2,7 @@
 """calico-337 sweep: BUILD driver (machine-agnostic, Mac or CloudLab box).
 
 Builds ONE bundle per source-variant (the clang-15 rep), to CLEAN EXIT.
-Bundles are written incrementally by zovia, so a killed build = INCOMPLETE
+Bundles are written incrementally by alivio, so a killed build = INCOMPLETE
 bundle = false kernel reject. Therefore we run to rc=0; the cap is only a
 safety net and a cap-hit is recorded as rc='timeout' (distinct signal).
 
@@ -21,7 +21,7 @@ even if RAM is tight (so it can't deadlock). Light objects fly N-wide; heavy
 stretches naturally drop to whatever fits.
 
 Usage:
-  build_sweep.py <list.tsv> <base_dir> <zovia_bin> <out.tsv> <cap_s> \
+  build_sweep.py <list.tsv> <base_dir> <alivio_bin> <out.tsv> <cap_s> \
       [--sibling-check] [--jobs N] [--min-free-gb G]
     base_dir = dir that contains calico/ (Mac: ~/BCF/bpf-progs ; box: /users/yc1795/BCF/bpf-progs)
 """
@@ -77,12 +77,12 @@ def md5(p):
             h.update(c)
     return h.hexdigest()
 
-def build_one(abs_obj, zovia, cap):
+def build_one(abs_obj, alivio, cap):
     bundle = abs_obj + ".bcf-bundle"
     try: os.remove(bundle)
     except FileNotFoundError: pass
     env = os.environ.copy()
-    cmd = [zovia, "--kernel-mode", "verify", "--bcf", abs_obj]
+    cmd = [alivio, "--kernel-mode", "verify", "--bcf", abs_obj]
     t0 = time.monotonic()
     try:
         with open("/tmp/bs_build.log", "w") as lf:
@@ -99,13 +99,13 @@ def arg(flag, default):
     return a[a.index(flag) + 1] if flag in a else default
 
 def main():
-    lst, base, zovia, out, cap = sys.argv[1:6]
+    lst, base, alivio, out, cap = sys.argv[1:6]
     cap = int(cap)
     sibcheck = "--sibling-check" in sys.argv[6:]
     skip_existing = "--skip-existing" in sys.argv[6:]
     jobs = int(arg("--jobs", "1"))
     min_free = float(arg("--min-free-gb", "8"))
-    zovia_mtime = os.path.getmtime(zovia)
+    alivio_mtime = os.path.getmtime(alivio)
     rows = list(csv.DictReader(open(lst), delimiter="\t"))
     n = len(rows)
     res = [None] * n
@@ -120,7 +120,7 @@ def main():
                       "rc": "missing", "bundle_bytes": 0, "md5": "-", "sibling": "-"}
             print(f"[{i+1}/{n}] MISSING {rep_rel}", flush=True); return
         bundle = abs_obj + ".bcf-bundle"
-        if skip_existing and os.path.exists(bundle) and os.path.getmtime(bundle) > zovia_mtime \
+        if skip_existing and os.path.exists(bundle) and os.path.getmtime(bundle) > alivio_mtime \
                 and os.path.getsize(bundle) > 0:
             size = os.path.getsize(bundle); m = md5(bundle)
             res[i] = {"variant": r["variant"], "rep_rel": rep_rel, "wall_s": 0,
@@ -131,7 +131,7 @@ def main():
             return
         admit(min_free)
         try:
-            wall, rc, size, bundle = build_one(abs_obj, zovia, cap)
+            wall, rc, size, bundle = build_one(abs_obj, alivio, cap)
         finally:
             release()
         m = md5(bundle) if size else "-"
@@ -141,7 +141,7 @@ def main():
             if sibs and os.path.exists(os.path.join(base, sibs[0])):
                 admit(min_free)
                 try:
-                    sw, src, ssz, sbun = build_one(os.path.join(base, sibs[0]), zovia, cap)
+                    sw, src, ssz, sbun = build_one(os.path.join(base, sibs[0]), alivio, cap)
                 finally:
                     release()
                 smd5 = md5(sbun) if ssz else "-"

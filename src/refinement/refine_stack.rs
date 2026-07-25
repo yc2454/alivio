@@ -86,7 +86,7 @@ pub fn try_refine_stack_oob(
     // range, not the absolute pointer value. In interval mode `base`
     // (the materialized stack pointer) has no scalar interval (⊤), so
     // `bcf_reg_bounds(base)` / `get_interval(base)` are useless here.
-    // zovia's faithful equivalent of the kernel's `reg->off + var_off`
+    // alivio's faithful equivalent of the kernel's `reg->off + var_off`
     // is the pointer-offset-to-frame-anchor distance R10→base.
     let (dist_lo, dist_hi) = state.domain.get_distance_interval(base, Reg::R10);
 
@@ -111,7 +111,7 @@ pub fn try_refine_stack_oob(
     // Low-side check: kernel adds the low predicate only when it has
     // NOT already proven the lower bound safe — `if (min_off <
     // lower_bound)` (verifier.c:5339), `min_off = ptr_reg->smin_value
-    // + off`. zovia's `ptr_reg->smin_value` = the frame-relative
+    // + off`. alivio's `ptr_reg->smin_value` = the frame-relative
     // offset min (`dist_lo`); `off` = the access insn offset.
     let min_off = dist_lo + instruction_offset;
     let oob = if min_off < lower_bound {
@@ -136,7 +136,7 @@ pub fn try_refine_stack_oob(
             return None;
         }
     };
-    if std::env::var("ZOVIA_BCF_DUMP_SMT").is_ok() {
+    if std::env::var("ALIVIO_BCF_DUMP_SMT").is_ok() {
         eprintln!("---- [bcf] SMT-LIB to cvc5 ----\n{}\n---- end ----", smt);
     }
     match solver::solve(&smt) {

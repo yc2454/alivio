@@ -170,7 +170,7 @@ pub(crate) fn handle_add(
     //     reg's BCF expr for pure const offset bookkeeping — only the
     //     variable contribution flows through `bcf_expr`. This mirrors
     //     kernel behavior at adjust_ptr_min_max_vals (verifier.c:15185).
-    //     Without this, zovia would embed the -16 of `r2 += -16` into
+    //     Without this, alivio would embed the -16 of `r2 += -16` into
     //     the symbolic expression, diverging structurally from kernel. ---
     let dst_bounds_pre = bcf_reg_bounds(state, dst);
     let src_bounds_pre = match src {
@@ -544,7 +544,7 @@ pub(crate) fn handle_mul(state: &mut State, width: Width, dst: Reg, src: &Operan
 
     // BCF: kernel routes BPF_MUL through bcf_alu (in is_safe set) —
     // build MUL(reg_expr(dst), reg_expr(src)). Was a STALE-bcf_expr
-    // gap (no build, no clear): zovia widens the tnum to unknown but
+    // gap (no build, no clear): alivio widens the tnum to unknown but
     // the symbolic expr must still mirror the kernel exactly.
     emit_bcf_alu_binop(
         state,
@@ -678,7 +678,7 @@ pub(crate) fn handle_div(state: &mut State, width: Width, dst: Reg, src: &Operan
     // BCF: mirror kernel `is_safe_to_compute_dst_reg_range`
     // (verifier.c:16050) — BPF_DIV is not in the safe set, so the
     // kernel takes the `__mark_reg_unknown` path which clears
-    // `bcf_expr = -1`. zovia may keep a more precise tnum (sound for
+    // `bcf_expr = -1`. alivio may keep a more precise tnum (sound for
     // bounds) but the symbolic expr MUST match the kernel: clear it
     // so a later branch materializes a fresh VAR exactly as the
     // kernel does. Stale expr = faithfulness + latent soundness bug.

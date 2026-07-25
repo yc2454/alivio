@@ -147,7 +147,7 @@ impl State {
         // ADD_CONST link on the source, (b) assigns a fresh id only if
         // the source has none AND `!tnum_is_const(var_off)` (consts
         // never link). A NARROWING spill breaks the relation
-        // (`spilled_ptr.id = 0`). The old zovia gate (`size <= 8`, no
+        // (`spilled_ptr.id = 0`). The old alivio gate (`size <= 8`, no
         // const/width checks) linked consts and truncated values the
         // kernel keeps unlinked, feeding the sync_linked_regs-mirror
         // fanout with links the kernel can't have.
@@ -163,7 +163,7 @@ impl State {
                     self.scalar_ids.remove(&reg);
                     self.scalar_id_off.remove(&reg);
                 }
-                // Kernel `tnum_is_const(var_off)`; zovia's tnum map can
+                // Kernel `tnum_is_const(var_off)`; alivio's tnum map can
                 // lag the interval domain, so a pinned interval counts
                 // as const too (a kernel reg with umin==umax always has
                 // const var_off).
@@ -720,7 +720,7 @@ impl State {
                         })
                     })
                 });
-                if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
+                if std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
                     let dst_bind = dst
                         .bcf_idx()
                         .and_then(|ri| self.bcf.as_ref().and_then(|b| b.get_reg(ri)));
@@ -780,7 +780,7 @@ impl State {
             self.scalar_ids.remove(&dst);
             self.scalar_id_off.remove(&dst);
             self.precise_regs.remove(&dst);
-            // zovia-only tnum sub-slice precision; the kernel reaches
+            // alivio-only tnum sub-slice precision; the kernel reaches
             // these states via __mark_reg_unknown (bcf_expr = -1). Clear
             // so we never carry a false whole-slot expr for a sub-read.
             restore_slot_bcf_expr(self, dst, None);

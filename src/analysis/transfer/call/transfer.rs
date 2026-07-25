@@ -34,7 +34,7 @@ use crate::analysis::transfer::alu::helpers::bcf_reg_bounds;
 /// `try_emit_path_unreachable_entry` only drops the path on a checkable
 /// cvc5 unsat proof of the accumulated `path_cond`, so a genuinely
 /// unsafe program is still rejected. Scoped to the arg-validation
-/// reject class (`InvalidArgType`, zovia's `check_func_arg` /
+/// reject class (`InvalidArgType`, alivio's `check_func_arg` /
 /// `check_helper_mem_access` analog).
 fn try_discharge_helper_arg_reject(env: &mut VerifierEnv, state: &State, pc: usize) -> bool {
     if matches!(env.error, Some(VerificationError::InvalidArgType { .. }))
@@ -906,13 +906,13 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
         state.set_tnum(Reg::R0, Tnum::unknown());
     }
     // Pre-materialize R0's BCF cache with **kernel-view** bounds
-    // (unbounded scalar) — ONLY when zovia's domain would narrow R0
+    // (unbounded scalar) — ONLY when alivio's domain would narrow R0
     // tighter than the kernel's `do_refine_retval_range`. The kernel's
     // helper proto dictates which helpers narrow R0; for helpers
     // whose proto returns an unbounded scalar (e.g.
     // `bpf_get_prandom_u32` / `bpf_get_smp_processor_id`), the kernel's
-    // `bcf_reg_expr` caches R0 as `VAR_64`. zovia's `apply_return_bounds`
-    // below tightens R0 to `[0, u32::MAX]` for those (zovia-only
+    // `bcf_reg_expr` caches R0 as `VAR_64`. alivio's `apply_return_bounds`
+    // below tightens R0 to `[0, u32::MAX]` for those (alivio-only
     // precision), which would otherwise drive `materialize_reg` into
     // the `fit_u32` branch and cache R0 as `ZEXT(VAR_32)` — diverging
     // from the kernel's runtime CONJ. Pre-caching with unknown bounds
@@ -920,26 +920,26 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
     //
     // For helpers where the kernel ALSO narrows (the `do_refine_retval_range`
     // set — error-return helpers, `bpf_probe_read_str` family, etc.),
-    // zovia and the kernel agree on bounds. Skipping the pre-cache here
+    // alivio and the kernel agree on bounds. Skipping the pre-cache here
     // lets `materialize_reg` fire lazily with the narrowed bounds, which
     // matches the kernel's `bcf_reg_expr` choice of SEXT(VAR_32) +
     // `bcf_bound_reg` preds at the first symbolic use.
-    let zovia_narrower_than_kernel = matches!(
+    let alivio_narrower_than_kernel = matches!(
         helper,
         constants::BPF_GET_PRANDOM_U32
             | constants::BPF_GET_CGROUP_CLASS_ID
             | constants::BPF_GET_HASH_RECALC
-            // "0 on success / -errno" group below: zovia narrows R0 to
+            // "0 on success / -errno" group below: alivio narrows R0 to
             // [-MAX_ERRNO, 0], but the kernel's `do_refine_retval_range`
             // (verifier.c) refines ONLY get_stack / get_task_stack /
             // probe_read{,_kernel,_user}_str / get_smp_processor_id —
             // every other RET_INTEGER helper (incl. these) stays a
-            // fully-unbounded scalar (`mark_reg_unknown`). So zovia must
+            // fully-unbounded scalar (`mark_reg_unknown`). So alivio must
             // pre-cache R0's bcf_expr as the kernel-shape unbounded
             // VAR_64; otherwise materialize_reg takes the fit_s32 path
             // (32-bit var + spurious bcf_bound_reg32 preds), diverging
             // from the kernel CONJ.
-            // The abstract-domain bound below is kept (zovia-only
+            // The abstract-domain bound below is kept (alivio-only
             // verification precision); only the BCF goal is made faithful.
             | constants::BPF_MAP_UPDATE_ELEM
             | constants::BPF_MAP_DELETE_ELEM
@@ -959,15 +959,15 @@ pub(super) fn apply_return_bounds(state: &mut State, helper: u32) {
             | constants::BPF_SKB_VLAN_PUSH
             | constants::BPF_SKB_VLAN_POP
             | constants::BPF_SOCK_MAP_UPDATE
-            // CSUM_DIFF: zovia narrows R0 to [-MAX_ERRNO, 0xffffffff]
+            // CSUM_DIFF: alivio narrows R0 to [-MAX_ERRNO, 0xffffffff]
             // (apply_return_bounds below) but the kernel's
             // do_refine_retval_range does NOT — its R0 stays a fully
             // unbounded scalar, so bcf_reg_expr at the first read emits a
             // bare VAR_64 with NO bound preds. Without the pre-cache,
-            // zovia's first read would emit an orphaned bound pair.
+            // alivio's first read would emit an orphaned bound pair.
             | constants::BPF_CSUM_DIFF
     );
-    if zovia_narrower_than_kernel
+    if alivio_narrower_than_kernel
         && let Some(bcf) = state.bcf.as_mut()
         && let Some(d) = Reg::R0.bcf_idx()
     {

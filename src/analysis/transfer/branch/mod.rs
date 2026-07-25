@@ -239,9 +239,9 @@ pub(crate) fn transfer_if(
 
     // Check for statically determined branches
     if let Some(outcome) = condition_outcome(&state, width, left, op, &right) {
-        // The dead side is unreachable in zovia's view. If the kernel
+        // The dead side is unreachable in alivio's view. If the kernel
         // would explore that side and reject (e.g. unreachable_arsh's
-        // PC 5: zovia statically rules out "w1 == 0xffffff78" but the
+        // PC 5: alivio statically rules out "w1 == 0xffffff78" but the
         // kernel's tnum loses precision on the ARSH+AND chain and
         // still explores it, hitting R2 !read_ok at PC 6), speculate
         // by attempting cvc5 unsat of the dead side's path_cond and
@@ -257,9 +257,9 @@ pub(crate) fn transfer_if(
         // every `bcf_prove_unreachable` call site in BCF (set1/0014) is
         // reactive — at a real mem-access / check_reg_arg rejection,
         // never on a statically-dead branch side. This site exists only
-        // because zone/DBM makes zovia more precise than the kernel
+        // because zone/DBM makes alivio more precise than the kernel
         // (ruling out branches the kernel explores), so the single-pass
-        // design pre-emitted proofs "in case". In kernel mode zovia
+        // design pre-emitted proofs "in case". In kernel mode alivio
         // hits the *same* rejections as the kernel, so path-unreachable
         // is handled reactively (conflict-eq at the load/!read_ok sites
         // + refine_*). Restrict eager speculation to zone mode (legacy,
@@ -291,7 +291,7 @@ pub(crate) fn transfer_if(
     }
 
     // Speculatively emit a path-unreachable BCF bundle entry for any
-    // branch state that zovia's abstract domain proves infeasible but
+    // branch state that alivio's abstract domain proves infeasible but
     // the kernel would explore (typically because the kernel's tnum
     // tracking loses precision across the ALU chain — see
     // `unreachable_arsh` for the ARSH+AND example). The kernel

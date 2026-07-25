@@ -330,7 +330,7 @@ pub fn analyze_program_full(
     // --- BCF bundle emit ---
     // Each entry in bcf_proofs is an INDEPENDENT cvc5-proven UNSAT goal
     // for a specific rejection site discharged earlier in this analysis.
-    // Dropping them when env.error is set (i.e. zovia hit a later
+    // Dropping them when env.error is set (i.e. alivio hit a later
     // precision bug) silently loses real, verified proofs that would
     // make the kernel-side BCF discharge HIT. The bundle's downstream
     // consumer (kernel discharge in test_loader) treats each entry as
@@ -502,12 +502,12 @@ pub fn analyze_exception_cb(
     env.error
 }
 
-/// Trace helper for ZOVIA_TRACE_PC_RANGE=LO:HI focused tracing.
+/// Trace helper for ALIVIO_TRACE_PC_RANGE=LO:HI focused tracing.
 /// Returns true if `pc` is within the configured trace range.
 pub(crate) fn trace_pc_in_range(pc: usize) -> bool {
     static RANGE: std::sync::OnceLock<Option<(usize, usize)>> = std::sync::OnceLock::new();
     let range = RANGE.get_or_init(|| {
-        std::env::var("ZOVIA_TRACE_PC_RANGE").ok().and_then(|s| {
+        std::env::var("ALIVIO_TRACE_PC_RANGE").ok().and_then(|s| {
             let parts: Vec<&str> = s.split(':').collect();
             if parts.len() == 2 {
                 Some((parts[0].trim().parse().ok()?, parts[1].trim().parse().ok()?))

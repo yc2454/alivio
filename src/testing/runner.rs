@@ -70,8 +70,8 @@ pub(crate) fn out_of_scope_reason(path: &str) -> Option<&'static str> {
         .and_then(|s| s.to_str())
         .unwrap_or("");
     // `dev selftest-baseline-write-upstream` compiles each `.c` into a
-    // tempfile like `/tmp/zovia_selftest_<name>.o`. Strip the prefix.
-    let test_name = stem.strip_prefix("zovia_selftest_").unwrap_or(stem);
+    // tempfile like `/tmp/alivio_selftest_<name>.o`. Strip the prefix.
+    let test_name = stem.strip_prefix("alivio_selftest_").unwrap_or(stem);
     match test_name {
         // libbpf static linking — these tests are designed to be
         // `bpf_linker`-merged from multiple `.o` before kernel
@@ -106,7 +106,7 @@ pub(crate) fn out_of_scope_reason_per_func(path: &str, func_name: &str) -> Optio
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("");
-    let test_name = stem.strip_prefix("zovia_selftest_").unwrap_or(stem);
+    let test_name = stem.strip_prefix("alivio_selftest_").unwrap_or(stem);
     match (test_name, func_name) {
         // libbpf bpf_map__set_value_size grows `int array[1]` to a
         // userspace-chosen size before kernel load. Without the resize
@@ -190,7 +190,7 @@ pub struct Analyzer {
     pub maps: Vec<BpfMapDef>,
     pub btf: BtfContext,
     /// Optional kernel target BTF (e.g. a snapshot of `/sys/kernel/btf/vmlinux`
-    /// from the cloudlab VM zovia is mirroring). When present, CO-RE
+    /// from the cloudlab VM alivio is mirroring). When present, CO-RE
     /// relocation application kicks in during ELF→AST lowering for
     /// objects carrying a `.BTF.ext` section. Mirrors libbpf's
     /// `bpf_object__relocate_core` behavior. Default `None` preserves

@@ -1,5 +1,5 @@
 import re,sys
-# decode a zovia single-line "[zovia] bcf_canonical_hash: buf.len=N hash=0x.. bytes: XX XX..."
+# decode a alivio single-line "[alivio] bcf_canonical_hash: buf.len=N hash=0x.. bytes: XX XX..."
 def u16(b,o): return b[o]|(b[o+1]<<8)
 def u32(b,o): return b[o]|(b[o+1]<<8)|(b[o+2]<<16)|(b[o+3]<<24)
 OPS={0x10:'==',0x50:'!=',0x20:'u>',0x30:'u>=',0x60:'s>',0x70:'s>=',0xa0:'u<',0xb0:'u<=',

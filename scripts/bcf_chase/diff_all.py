@@ -1,9 +1,9 @@
 import re,collections,sys
-import render_zovia as rz
+import render_alivio as rz
 def norm(cs): return sorted(re.sub(r'v\d+','V',c) for c in cs)
 def diff(a,b):
     ca=collections.Counter(a); cb=collections.Counter(b); return sum((ca-cb).values())+sum((cb-ca).values())
-# 1) parse zovia emitted log ONCE -> {hash: norm multiset} for proto-mark entries
+# 1) parse alivio emitted log ONCE -> {hash: norm multiset} for proto-mark entries
 emit={}
 for line in open('/tmp/fs5.log'):
     if 'bcf_canonical_hash' not in line or '00 00 00 21' not in line: continue
@@ -35,4 +35,4 @@ print("symdiff distribution:",dict(Counter(r[2] for r in out)))
 for h,bh,sd,only_t,only_e in out:
     print(f"\n[{h}] symdiff={sd} closest_emit={bh}")
     print("  only_in_KERNEL:",only_t)
-    print("  only_in_zovia :",only_e)
+    print("  only_in_alivio :",only_e)

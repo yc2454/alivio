@@ -1,5 +1,5 @@
-#ifndef _ZOVIA_STUB_LINUX_ERRNO_H
-#define _ZOVIA_STUB_LINUX_ERRNO_H
+#ifndef _ALIVIO_STUB_LINUX_ERRNO_H
+#define _ALIVIO_STUB_LINUX_ERRNO_H
 #define EPERM   1
 #define ENOENT  2
 #define ESRCH   3

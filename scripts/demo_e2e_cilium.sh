@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# End-to-end demo: zovia proves what the kernel can't.
+# End-to-end demo: alivio proves what the kernel can't.
 #
 # Target: cilium wireguard datapath (clang-17, -O1). 18 BPF programs.
 # Without a proof bundle the kernel rejects one of them.
-# zovia produces the bundle. With the bundle the kernel accepts all 18.
+# alivio produces the bundle. With the bundle the kernel accepts all 18.
 #
 # Three steps, run live. Each step has a "PAUSE" — press Enter to continue.
 
 set -e
-ZOVIA="$HOME/eBPF-Zone-Verifier/target/release/zovia"
+ALIVIO="$HOME/eBPF-Zone-Verifier/target/release/alivio"
 OBJ_LOCAL="$HOME/BCF/bpf-progs/cilium/clang-17_-O1_bpf_wireguard.o"
 OBJ_NAME="clang-17_-O1_bpf_wireguard.o"
 CL_HOST="yc1795@ms0802.utah.cloudlab.us"
@@ -82,19 +82,19 @@ echo "  ↑ tail_nodeport_ipv6_dsr REJECTED (errno=13 / EACCES)"
 echo "  ↑ cilium wireguard load: 17/18 — incomplete."
 pause
 
-# ─── STEP B: run zovia, produce bundle ──
-banner "Step [B]  zovia (userspace) verifies + emits proof bundle"
+# ─── STEP B: run alivio, produce bundle ──
+banner "Step [B]  alivio (userspace) verifies + emits proof bundle"
 cat <<'EXPLAIN_B'
-zovia:   the userspace eBPF abstract-interpretation verifier we built.
+alivio:   the userspace eBPF abstract-interpretation verifier we built.
 
-Bundle:  the sidecar `.bcf-bundle` file zovia emits next to the .o.
+Bundle:  the sidecar `.bcf-bundle` file alivio emits next to the .o.
          Layout:  HEADER (16B magic+count) + ENTRIES table + payloads.
          Each entry is a tuple
              (cond_hash, kind, goal_bytes, proof_bytes)
          where
              cond_hash    canonical hash of the path condition the
                           kernel verifier will compute when it hits
-                          the same reject site (kernel and zovia
+                          the same reject site (kernel and alivio
                           agree byte-for-byte on this hash);
              kind         UNREACHABLE (the path is dead) or REFINE
                           (tighten a bound);
@@ -106,9 +106,9 @@ Bundle:  the sidecar `.bcf-bundle` file zovia emits next to the .o.
                           in-kernel).
 EXPLAIN_B
 echo
-echo "\$ zovia verify --kernel-mode --bcf $OBJ_NAME"
+echo "\$ alivio verify --kernel-mode --bcf $OBJ_NAME"
 echo
-time "$ZOVIA" verify --kernel-mode --bcf /tmp/$OBJ_NAME 2>&1 | \
+time "$ALIVIO" verify --kernel-mode --bcf /tmp/$OBJ_NAME 2>&1 | \
     grep -E "Total|Pass|Fail|Timeout|Error|bundle|wrote" | tail -8
 echo
 ls -la /tmp/${OBJ_NAME}.bcf-bundle | awk '{print "Bundle:", $NF, $5, "bytes"}'
@@ -156,7 +156,7 @@ Loader:  tl2  — our patched fork of test_loader (sits at /root/bcf/sweep/tl2.c
                 surface as upstream.
 Args:    --type classifier        same as Step [A]
          --per-prog               same as Step [A]
-         <obj.o> <obj.o.bcf-bundle>   binary + the proof bundle from zovia
+         <obj.o> <obj.o.bcf-bundle>   binary + the proof bundle from alivio
 EXPLAIN_C
 echo
 echo "\$ ssh VM '$LOADER_BCF --type classifier --per-prog $VM_DIR/$OBJ_NAME $VM_DIR/${OBJ_NAME}.bcf-bundle'"

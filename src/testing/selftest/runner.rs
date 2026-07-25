@@ -111,10 +111,10 @@ pub const PER_FILE_OVERRIDES: &[(&str, PerFileOverride)] = &[
     // real 1M insn budget — NOT by state pruning. A log_level=2 kernel
     // trace of `loop1::nested_loops` shows ZERO pruning
     // (no `: safe`, no `from N to M`), tracks the loop counter as a
-    // PRECISE incrementing constant (identical to zovia), and keeps
+    // PRECISE incrementing constant (identical to alivio), and keeps
     // unrolling within the 1M budget. So the kernel
     // accepts these purely because `for(...)` is bounded and fits the 1M
-    // budget; there is no convergence mechanism to mirror. zovia matches
+    // budget; there is no convergence mechanism to mirror. alivio matches
     // the kernel when given the same 1M budget + kernel-equivalent
     // per-PC cache (verifier.c:19222 utility eviction, no fixed cap;
     // 64 like `get_branch_snapshot.c`). Without these, the default
@@ -133,7 +133,7 @@ pub const PER_FILE_OVERRIDES: &[(&str, PerFileOverride)] = &[
     // loop4.c: a *pruning* case (20-iter loop, per-iter `if(skb->len)`
     // branch => 2^20 fan-out the kernel collapses to 524 insns/18
     // states by keeping the accumulator imprecise). Three faithful
-    // pieces make zovia match the kernel here:
+    // pieces make alivio match the kernel here:
     //   1. precision fidelity (commits e7ec278/557968c: no forward ALU
     //      precision prop; exit-R0 sink gated to retval-enforcing prog
     //      types like the kernel) => R0/R3 imprecise so the branch
@@ -368,7 +368,7 @@ fn run_file_with_dirs_inner(
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "selftest".to_string());
-    let obj = std::env::temp_dir().join(format!("zovia_selftest_{stem}.o"));
+    let obj = std::env::temp_dir().join(format!("alivio_selftest_{stem}.o"));
     let _ = std::fs::remove_file(&obj);
 
     clang::compile_with_iquote_cached(

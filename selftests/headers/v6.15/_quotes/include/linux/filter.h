@@ -8,8 +8,8 @@
  * filter.h is much larger; if a new corpus file fails to compile
  * because something here is missing, add the minimal definition.
  */
-#ifndef __ZOVIA_STUB_LINUX_FILTER_H__
-#define __ZOVIA_STUB_LINUX_FILTER_H__
+#ifndef __ALIVIO_STUB_LINUX_FILTER_H__
+#define __ALIVIO_STUB_LINUX_FILTER_H__
 
 #include <linux/bpf.h>
 
@@ -77,4 +77,4 @@
         .imm   = IMM })
 #endif
 
-#endif /* __ZOVIA_STUB_LINUX_FILTER_H__ */
+#endif /* __ALIVIO_STUB_LINUX_FILTER_H__ */

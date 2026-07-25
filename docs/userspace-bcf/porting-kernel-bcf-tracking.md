@@ -1,11 +1,11 @@
-# Porting kernel BCF tracking into zovia
+# Porting kernel BCF tracking into alivio
 
 **Why:** End-to-end test on `shift_constraint` (2026-05-13) showed
-`bcf_bundle_try_discharge` fails with `-ENOENT` because zovia's BCF
+`bcf_bundle_try_discharge` fails with `-ENOENT` because alivio's BCF
 expression DAG diverges structurally from the kernel's for the same
 program. Bundle plumbing works through-and-through; only DAG shape is wrong.
 
-See [`memory/feedback_kernel_vs_zovia_divergence.md`](.) for the diagnostic
+See [`memory/feedback_kernel_vs_alivio_divergence.md`](.) for the diagnostic
 table. This doc is the concrete porting spec for fixing it.
 
 ## The kernel's architecture (read this first)
@@ -56,12 +56,12 @@ which appends to `br_conds`. These become the path condition aggregated by
 | `do_check_cond_jmp_op` (20880-20922) | branch path-cond | `jmp32 = (class == BPF_JMP32)`; uses `bcf_reg_expr(reg, jmp32)` for both operands; emits `BOOL_op(dst_expr, src_expr)` directly into `bcf_add_cond`. |
 | `__bcf_refine_access_bound` (5291) | refinement obligation | If both `ptr_reg` and `size_reg` `fit_s32`, calls `bcf_expr32` on both and uses `bit32=true` for the predicate. Three structural cases (ptr const / size const / both var) — see below. |
 
-## What zovia does today (and where it breaks)
+## What alivio does today (and where it breaks)
 
-zovia's `src/refinement/symbolic.rs` and `src/analysis/transfer/alu/*.rs`
+alivio's `src/refinement/symbolic.rs` and `src/analysis/transfer/alu/*.rs`
 implicitly assume every BCF op is 64-bit. Concrete bugs observed:
 
-| Pattern | Kernel | Zovia |
+| Pattern | Kernel | Alivio |
 |---|---|---|
 | `w0 &= 255` (32-bit AND, ALU32 class) | `ZEXT_64(AND_32(EXTRACT_32(r0), VAL_32(0xff)))` | `AND_64(ZEXT(EXTRACT_32(r0)), VAL_64(0xff))` |
 | `r1 >>= 1` where r1 fits in u32 | `ZEXT_64(RSH_32(AND_32-output, VAL_32(1)))` | `RSH_64(ZEXT(EXTRACT_32(AND_64-output)), VAL_64(1))` |
@@ -70,7 +70,7 @@ implicitly assume every BCF op is 64-bit. Concrete bugs observed:
 
 Two root causes:
 
-**RC1 — no `subreg` discipline.** zovia's `add_alu(op, a, b, bits)` already
+**RC1 — no `subreg` discipline.** alivio's `add_alu(op, a, b, bits)` already
 takes `bits`, but callers always pass 64 and there's no `bcf_expr32`-style
 peeling. Need to introduce `BcfRegState::get_expr(subreg)` analogous to the
 kernel's `bcf_reg_expr`.
@@ -78,7 +78,7 @@ kernel's `bcf_reg_expr`.
 **RC2 — no `op_u32` / `op_s32` post-op narrowing.** The kernel checks
 `fit_u32(dst_reg)` / `fit_s32(dst_reg)` AFTER the abstract op runs and uses
 those to upgrade an ALU64 op to 32-bit BCF when the result still fits.
-zovia doesn't do this.
+alivio doesn't do this.
 
 ## The porting plan
 
@@ -90,7 +90,7 @@ Required reading before touching code:
 - `verifier.c:20880-20923` (branch path-cond)
 - `verifier.c:5291-5391` (`__bcf_refine_access_bound`)
 
-### Step 1 — extend zovia's symbolic API with width discipline
+### Step 1 — extend alivio's symbolic API with width discipline
 
 In `src/refinement/symbolic.rs`:
 
@@ -118,7 +118,7 @@ compat with existing call sites; gradually retire.
 
 ### Step 2 — introduce `BcfRegState` with kernel-style caching
 
-Currently zovia binds a single `bcf_expr` per reg via `bind_reg`. The
+Currently alivio binds a single `bcf_expr` per reg via `bind_reg`. The
 kernel caches the 64-bit form and re-derives 32-bit form on demand.
 Replicate that:
 
@@ -150,12 +150,12 @@ For each ALU op:
 8. `bind_reg(dst, result)`.
 
 For MOV (`bitwise.rs:handle_mov`), the kernel just does the equivalent of
-`reg_expr(src, alu32)` + `ZEXT` when alu32 (which is what zovia already does).
+`reg_expr(src, alu32)` + `ZEXT` when alu32 (which is what alivio already does).
 Verify it still matches after step 2 changes.
 
 ### Step 4 — rewrite branch-condition tracking
 
-Find zovia's branch-cond builder. Probably in `src/analysis/transfer/jump/` or
+Find alivio's branch-cond builder. Probably in `src/analysis/transfer/jump/` or
 inlined in the path-split logic. The fix: at each branch, use
 `reg_expr(reg, jmp32)` for both operands, build `BOOL_op(dst_expr, src_expr)`
 directly (no extra ZEXT around the predicate itself; the predicate is
@@ -182,7 +182,7 @@ After steps 1-5 land:
 ```bash
 cargo build
 cargo test --lib refinement      # unit tests
-./target/debug/zovia --bcf verify bcf-tests/shift_constraint.bpf.o
+./target/debug/alivio --bcf verify bcf-tests/shift_constraint.bpf.o
 ```
 
 The bundle file gets regenerated. Deploy:
@@ -202,7 +202,7 @@ Success criterion: `test_loader` exits 0 with "SUCCESS: loaded prog fd=N".
 
 If the dump still shows hash mismatch, the `kexpr[]` walker (which we
 can quickly revive from the WIP debug branch tag `wip-debug-2026-05-13`)
-lets us diff the new zovia DAG against the kernel's without further
+lets us diff the new alivio DAG against the kernel's without further
 rebuilds.
 
 ### Step 7 — Phase 2 corpus regression check
@@ -226,17 +226,17 @@ deltas vs the baseline 24/42 cilium / 7/9 collected.
 - Step 6-7 (validation): ~half day.
 
 Total ~2 days end to end if no surprises. Most likely surprise:
-discovering zovia's domain transfer doesn't expose `fit_u32` / `fit_s32`
+discovering alivio's domain transfer doesn't expose `fit_u32` / `fit_s32`
 in a convenient place. Solution: pipe the post-op bounds through ALU
 transfer signatures.
 
 ## Not in scope for this port
 
-- The 0014 BCF-tracking-mode rerun (`bcf_track` re-do_check). zovia is
+- The 0014 BCF-tracking-mode rerun (`bcf_track` re-do_check). alivio is
   single-pass; we don't need the rerun, the tracking happens naturally
   during the first pass.
 - `bcf_extend` optimizations (`is_zext_32_to_64` short-circuits). Add
   later if perf bites; for Phase 3 correctness is what matters.
-- Multi-path-cond CONJ-nesting (zovia builds flat; kernel builds
+- Multi-path-cond CONJ-nesting (alivio builds flat; kernel builds
   inner-CONJ-wrapped). Matters for multi-branch programs — defer until
   we hit a corpus case where it bites.

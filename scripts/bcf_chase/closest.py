@@ -1,12 +1,12 @@
 import re,collections,sys
-import render_zovia as rz
-# Usage: closest.py <target_kernel_chunked_file> <zovia_hashbytes_log> [signature_hex]
+import render_alivio as rz
+# Usage: closest.py <target_kernel_chunked_file> <alivio_hashbytes_log> [signature_hex]
 #   target = chunked `bcf_canonical_hash off=N bytes:` lines for ONE missed hash.
-#   log    = ZOVIA_BCF_DUMP_HASH_BYTES=1 stderr (one `[zovia] bcf_canonical_hash` line per emitted goal).
+#   log    = ALIVIO_BCF_DUMP_HASH_BYTES=1 stderr (one `[alivio] bcf_canonical_hash` line per emitted goal).
 #   signature = optional byte filter to restrict the candidate family (default "00 00 00 21",
 #               the proto-mark 0x21000000 const). Use "" to compare against ALL emitted entries.
 # Ranks emitted entries by conjunct-multiset symmetric difference to the target (var-renamed to V),
-# so you can see exactly which prefix/anchor/fold conjuncts the kernel wants that zovia didn't emit.
+# so you can see exactly which prefix/anchor/fold conjuncts the kernel wants that alivio didn't emit.
 TGT=sys.argv[1] if len(sys.argv)>1 else '/tmp/miss_2f57.txt'
 LOG=sys.argv[2] if len(sys.argv)>2 else '/tmp/hashbytes.log'
 SIG=sys.argv[3] if len(sys.argv)>3 else '00 00 00 21'

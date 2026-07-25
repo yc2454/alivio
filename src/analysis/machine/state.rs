@@ -153,7 +153,7 @@ pub struct State {
     /// branches, loop_entry}` (verifier.c v6.15 L1675+, L1885+). Drives
     /// the `force_exact` gate in `is_state_visited` that decides whether
     /// subsumption uses RANGE_WITHIN (strict, inside an open SCC) or
-    /// NOT_EXACT (lax, outside). Without this gate, zovia silently
+    /// NOT_EXACT (lax, outside). Without this gate, alivio silently
     /// subsumes iter-loop body states whose `r6=0` vs `r6=1` would force
     /// the kernel to explore both, masking the deps2-family soundness
     /// FAs.
@@ -169,7 +169,7 @@ pub struct State {
     pub dfs_depth: u32,
     pub branches: u32,
     /// Kernel-faithful "open paths through this cached state" counter,
-    /// parallel to `branches` (which has zovia-internal accounting tied
+    /// parallel to `branches` (which has alivio-internal accounting tied
     /// to subsumption / cleaning / loop-entry tracking and cannot be
     /// changed without breaking dozens of selftests). `dfs_paths` mirrors
     /// the kernel `bpf_verifier_state.branches` field semantics exactly:
@@ -187,7 +187,7 @@ pub struct State {
     /// trap, mirroring kernel verifier.c L19024
     /// `if (sl->state.branches)`). The existing `branches` field is
     /// untouched because the subsumption/eviction/loop-entry call
-    /// sites in zovia have been tuned against its bumped-per-push
+    /// sites in alivio have been tuned against its bumped-per-push
     /// semantics.
     pub dfs_paths: u32,
     pub loop_entry_cache_id: Option<u32>,
@@ -195,7 +195,7 @@ pub struct State {
     /// Per-path counters for the `add_new_state` sparse-cache heuristic
     /// (kernel-engine mode). The kernel's linear `do_check` flow
     /// uses env-wide `insn_processed` / `jmps_processed` because cur
-    /// IS the one in-flight path. Zovia's worklist interleaves paths,
+    /// IS the one in-flight path. Alivio's worklist interleaves paths,
     /// so we instead carry per-path counters on each State (cloned at
     /// branches; bumped in run_worklist per popped insn / jmp). The
     /// `prev_*_at_cache` snapshots are set at the most recent cache
@@ -1160,7 +1160,7 @@ impl State {
     /// frame. Kernel `bcf_expr` lives in `bpf_reg_state` (bpf_verifier.h:207)
     /// — per-reg, per-frame — so the caller's bindings survive the callee
     /// untouched and return at `prepare_func_exit` (the callee frame is
-    /// discarded wholesale; only r0's reg state copies back). Zovia's flat
+    /// discarded wholesale; only r0's reg state copies back). Alivio's flat
     /// `SymbolicState` reg table needs the explicit save/restore: without
     /// it a callee write to r6-r9 would clobber the caller's binding.
     fn snapshot_caller_bcf_regs(&mut self) {

@@ -339,7 +339,7 @@ mod tests {
         let expected_proof = entry.proof_bytes.clone();
         let expected_goal_bytes = serialize_goal(entry.goal_root, &entry.goal_exprs);
 
-        let dir = std::env::temp_dir().join(format!("zovia-bundle-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("alivio-bundle-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("test.bcf-bundle");
         let total = write_bundle(&path, &[entry]).expect("write");
@@ -395,7 +395,7 @@ mod tests {
         let b = RefineEntry::new(3, b_exprs, vec![0xde, 0xad], BCF_BUNDLE_KIND_REFINE);
         assert_ne!(a.cond_hash, b.cond_hash);
 
-        let dir = std::env::temp_dir().join(format!("zovia-bundle-2ent-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("alivio-bundle-2ent-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("two.bcf-bundle");
         write_bundle(&path, &[a.clone(), b.clone()]).expect("write");

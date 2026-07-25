@@ -452,7 +452,7 @@ pub(crate) fn update_alu_types(
             // (PtrToMapValue − PtrToMapValue) must also demote so the
             // following deref is correctly rejected "R0 invalid mem
             // access 'scalar'" (verifier_value_ptr_arith.c::
-            // access_value_ptr_value_ptr_2). Without this zovia kept dst
+            // access_value_ptr_value_ptr_2). Without this alivio kept dst
             // a map_value pointer and accepted the load. The DBM domain
             // already carries the scalar bounds via `apply_sub_reg` in
             // handle_sub (packet ptr-sub additionally preserves the
@@ -1476,7 +1476,7 @@ pub(crate) fn update_call_types(
         // why a later `if pkt+N <= pkt_end` is feasible again). Without
         // this, a stale `packet_size < K` from a pre-helper "too small"
         // check makes the post-helper `pkt+N <= pkt_end` (N >= K) edge
-        // domain-inconsistent and zovia drops the kernel's real path.
+        // domain-inconsistent and alivio drops the kernel's real path.
         // Mirrors the
         // function-entry `clear_packet_size_bounds` "start fresh"
         // rationale — same reason, different geometry-change trigger.

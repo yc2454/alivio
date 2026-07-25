@@ -12,8 +12,8 @@
 #            BTO (build timeout s, def 900), LTO (per-load timeout s, def 1200)
 set -u
 export PATH=$HOME/.cargo/bin:$PATH
-export ZOVIA_CVC5=/users/yc1795/BCF/output/cvc5-libs/bin/cvc5
-export Z=$HOME/eBPF-Zone-Verifier/target/release/zovia
+export ALIVIO_CVC5=/users/yc1795/BCF/output/cvc5-libs/bin/cvc5
+export Z=$HOME/eBPF-Zone-Verifier/target/release/alivio
 export SP=$HOME/BCF/sweep_pivot
 export VMKEY=$HOME/BCF/imgs/bookworm.id_rsa
 export BTO=${BTO:-900}

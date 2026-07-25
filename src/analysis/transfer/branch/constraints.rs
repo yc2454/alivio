@@ -55,7 +55,7 @@ pub fn apply_jmp_constraints(
     // without refining numeric bounds when either operand is a pointer.
     // Narrowly mirror that for the PtrToCtx-vs-Imm case: ctx is a
     // non-nullable, non-arithmetic pointer with no useful numeric value
-    // to refine. zovia's unconditional refinement was the missing piece
+    // to refine. alivio's unconditional refinement was the missing piece
     // behind the conditional_loop FA (verifier_cfg.c): visit-2 of the
     // loop head had r1=PtrToCtx refined to [0,0] (taken edge of
     // `r1 == 0`) while cached visit-1 kept r1 unrefined, so the
@@ -318,7 +318,7 @@ fn refine_ne_imm(domain: &mut NumericDomain, left: Reg, imm: i64) {
     // for a full-range scalar (helper RET_INTEGER), `!= 0` gives
     // umin 0→1 while smin stays S64_MIN (the value may be a negative
     // errno). The signed interval above cannot carry this fact; without
-    // it a later `if reg != 0` cannot fold one-sided and zovia walks a
+    // it a later `if reg != 0` cannot fold one-sided and alivio walks a
     // contradictory arm the kernel never visits.
     let uval = imm as u64;
     let (umin, umax) = domain.get_u64_bounds(left);

@@ -356,7 +356,7 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
         ScalarValue | NotInit => {
             // Base-verifier mode (no BCF round-trip): `state.bcf` is None,
             // so there is no bundle and no kernel oracle to re-check a
-            // dropped path. zovia IS the verifier here, so a load via a
+            // dropped path. alivio IS the verifier here, so a load via a
             // scalar / uninitialized base is a hard reject — exactly as the
             // kernel's `check_mem_access` rejects "R%d invalid mem access".
             // Without this, the unprovable-path DROP below (which exists
@@ -410,7 +410,7 @@ pub fn check_load(env: &mut VerifierEnv, state: &State, base: Reg, size: i64, of
                 return;
             }
             // On cvc5-can't-prove, drop THIS path instead of halting
-            // whole-section analysis. Rationale: zovia's interval-only
+            // whole-section analysis. Rationale: alivio's interval-only
             // kernel-mode can produce spurious unreachable paths
             // (same-predicate correlation lost in the interval domain),
             // and halting blocks DFS from exploring other branches that

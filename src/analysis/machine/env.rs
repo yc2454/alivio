@@ -98,9 +98,9 @@ pub struct VerifierEnv<'a> {
 
     /// When true, ALU ops that the kernel models with
     /// `__mark_reg_unknown`-style imprecision (e.g. `BPF_MOD`) clear
-    /// dst bounds completely instead of refining via zovia's more
+    /// dst bounds completely instead of refining via alivio's more
     /// precise interval. Set from `config.domain_mode ==
-    /// DomainMode::Interval` (i.e. `--kernel-mode`). Lets zovia surface
+    /// DomainMode::Interval` (i.e. `--kernel-mode`). Lets alivio surface
     /// the same kernel-side "unbounded min" rejections at later
     /// pointer-arith sites so BCF can emit a bound-refine discharge.
     pub kernel_faithful_alu: bool,
@@ -359,7 +359,7 @@ impl<'a> VerifierEnv<'a> {
     /// Compute the PC at which all `target_regs`' definition chains have
     /// bottomed out (the kernel's "base state" PC). Query-only mirror of
     /// `backtrack_states` (vendor verifier.c; in
-    /// `/Users/yalucai/bpf-next-zovia/kernel/bpf/verifier.c` at the
+    /// `/Users/yalucai/bpf-next-alivio/kernel/bpf/verifier.c` at the
     /// `backtrack_states` definition): walks backward through the linear
     /// breadcrumb history starting from `history_idx`, applying a
     /// **faithful port of the kernel's `backtrack_insn`**
@@ -393,7 +393,7 @@ impl<'a> VerifierEnv<'a> {
     /// `-EFAULT` in that case too) or when the walk runs out.
     /// For a cached state identified by its `cache_id`, return the PC
     /// of the instruction processed IMMEDIATELY BEFORE the cache event
-    /// — zovia's analog of the kernel's `vstate->last_insn_idx`. Used
+    /// — alivio's analog of the kernel's `vstate->last_insn_idx`. Used
     /// by `filter_path_conds_from_pc` to mirror the kernel's
     /// `record_path_cond` push at `bcf_track` replay start: only
     /// triggers if prev_insn was a scalar conditional branch
@@ -421,7 +421,7 @@ impl<'a> VerifierEnv<'a> {
     /// Resolve a cache_id to its state — live (`explored_states`) first,
     /// then retired (`retired_states`, the kernel free_list analog).
     /// Kernel parent-chain walks (`st->parent`) never dangle because
-    /// evicted states stay allocated until `branches == 0`; every zovia
+    /// evicted states stay allocated until `branches == 0`; every alivio
     /// chain walk must resolve through this instead of raw
     /// `cache_loc_by_id` + `explored_states`.
     pub fn state_by_cache_id(&self, cid: u32) -> Option<(usize, &State)> {
@@ -455,7 +455,7 @@ impl<'a> VerifierEnv<'a> {
     /// on miss/hit-ratio eviction the state moves to `env->free_list`
     /// (`sl->in_free_list = true; list_add(&env->free_list)`) followed by
     /// `maybe_free_verifier_state`, which frees ONLY when `branches == 0`.
-    /// zovia analog: drop immediately when no live descendants reference
+    /// alivio analog: drop immediately when no live descendants reference
     /// it, otherwise park it in `retired_states` for parent-chain walks.
     pub fn retire_state(&mut self, cid: u32, pc: usize, state: State) {
         if state.branches == 0 {

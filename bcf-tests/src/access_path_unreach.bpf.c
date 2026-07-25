@@ -6,7 +6,7 @@
  * Pattern: along the fall-through of the *second* branch, path_conds
  * accumulate `r1 != 6` (from the first branch's not-taken edge) and then
  * `r1 == 6` (this branch's not-taken edge). That reversed-opcode pair on
- * the same `reg eq/neq const` is a syntactic contradiction. zovia's
+ * the same `reg eq/neq const` is a syntactic contradiction. alivio's
  * interval/zone domain can't represent the `r1 != 6` disequality, so it
  * does NOT report the path inconsistent and would walk into the
  * type-collapsed `r4` load.

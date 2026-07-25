@@ -56,7 +56,7 @@ int main(void) {
         return 1;
     }
 
-    struct zovia_bcf_expr *exprs = NULL;
+    struct alivio_bcf_expr *exprs = NULL;
     uint32_t **arg_bufs = NULL;
     if (expr_count > 0) {
         exprs    = calloc(expr_count, sizeof(*exprs));
@@ -97,7 +97,7 @@ int main(void) {
         return 1;
     }
 
-    uint64_t h = zovia_canonical_hash(root, exprs, expr_count);
+    uint64_t h = alivio_canonical_hash(root, exprs, expr_count);
     printf("%016llx\n", (unsigned long long)h);
 
     for (uint32_t i = 0; i < expr_count; i++) free(arg_bufs[i]);

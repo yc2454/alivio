@@ -3,7 +3,7 @@
 One Linux host (Ubuntu 22.04+ / Debian 12+, sudo, KVM). Cloudlab Ubuntu
 profiles work as-is.
 
-zovia sits on top of [BCF](https://github.com/SunHao-0/BCF): we reuse its
+alivio sits on top of [BCF](https://github.com/SunHao-0/BCF): we reuse its
 deps, VM image, in-VM bpftool/cvc5, qemu launcher, and patched libbpf. We
 ship our own kernel `bzImage` and the verifier binary.
 
@@ -76,8 +76,8 @@ cd ~/BCF
 We don't run `./scripts/build.sh kernel` — it would clone bpf-next and
 re-apply BCF's patches, which (a) takes ~30 min, (b) currently fails on
 patch drift, and (c) wouldn't give us the right libbpf anyway (our
-loaders use `bpf_program__set_bcf_bundle()`, a zovia addition not in
-upstream BCF). We fetch zovia's prebuilt kernel + libbpf in step 4
+loaders use `bpf_program__set_bcf_bundle()`, a alivio addition not in
+upstream BCF). We fetch alivio's prebuilt kernel + libbpf in step 4
 instead.
 
 > **Heads-up if `build.sh solver` fails partway through:** it decides
@@ -90,7 +90,7 @@ instead.
 > rm -rf ~/BCF/build/cvc5-*
 > ```
 
-## 4. Fetch zovia's prebuilt kernel + libbpf
+## 4. Fetch alivio's prebuilt kernel + libbpf
 
 ```bash
 # 4a. Kernel bzImage → drops into BCF's output dir
@@ -101,25 +101,25 @@ echo "0755cb22fd116733714dad663c80bfd122bfbe247cd565691f3385bfc5249d6a  $HOME/BC
 
 # 4b. Patched libbpf → drops into the path step 7's gcc -I expects
 mkdir -p ~/BCF/build/bpf-next/tools/lib
-wget -O /tmp/libbpf-zovia.tar.gz \
-    https://github.com/yc2454/eBPF-Zone-Verifier/releases/download/kernel-47b3934f7ad8/libbpf-zovia.tar.gz
-echo "3c4221b1d6275d2506d408c0f3d704a2d9b0a86b5a07f0b223810ffa93d844a9  /tmp/libbpf-zovia.tar.gz" \
+wget -O /tmp/libbpf-alivio.tar.gz \
+    https://github.com/yc2454/eBPF-Zone-Verifier/releases/download/kernel-47b3934f7ad8/libbpf-alivio.tar.gz
+echo "3c4221b1d6275d2506d408c0f3d704a2d9b0a86b5a07f0b223810ffa93d844a9  /tmp/libbpf-alivio.tar.gz" \
     | sha256sum -c -
-tar -xzf /tmp/libbpf-zovia.tar.gz -C ~/BCF/build/bpf-next/tools/lib
+tar -xzf /tmp/libbpf-alivio.tar.gz -C ~/BCF/build/bpf-next/tools/lib
 ```
 
 Current pin: kernel `6.18.0-rc4-g47b3934f7ad8` (branch `userspace-bcf`),
-libbpf = bpf-next + BCF set5 + 3 zovia patches (adds
+libbpf = bpf-next + BCF set5 + 3 alivio patches (adds
 `bpf_program__set_bcf_bundle`).
 
-## 5. Build zovia
+## 5. Build alivio
 
 ```bash
 git clone https://github.com/yc2454/eBPF-Zone-Verifier.git ~/eBPF-Zone-Verifier
 cd ~/eBPF-Zone-Verifier
 git checkout 37d9fdeca8dd75f12bab435546ade867f9539eb5 # Stable commit
 cargo build --release
-export ZOVIA_CVC5=~/BCF/output/cvc5-libs/bin/cvc5
+export ALIVIO_CVC5=~/BCF/output/cvc5-libs/bin/cvc5
 ```
 
 Add the `export` line to `~/.bashrc` to persist.
@@ -164,7 +164,7 @@ EOF
 ```bash
 cd ~/eBPF-Zone-Verifier
 OBJ=~/BCF/examples/shift_constraint.bpf.o
-./target/release/zovia --bcf --kernel-mode verify "$OBJ"   # writes $OBJ.bcf-bundle
+./target/release/alivio --bcf --kernel-mode verify "$OBJ"   # writes $OBJ.bcf-bundle
 
 ssh -i ~/BCF/imgs/bookworm.id_rsa -p 10023 root@localhost \
   "/root/bcf/sweep/test_loader /root/bcf/examples/shift_constraint.bpf.o \
@@ -175,7 +175,7 @@ ssh -i ~/BCF/imgs/bookworm.id_rsa -p 10023 root@localhost \
 ## 9. Interactive end-to-end demo
 
 Once the smoke test passes, [`scripts/demo_e2e.sh`](scripts/demo_e2e.sh)
-walks any BPF object through the full kernel-rejects → zovia-discharges →
+walks any BPF object through the full kernel-rejects → alivio-discharges →
 kernel-accepts story, with pauses between steps and a bundle-contents
 dump:
 
@@ -184,7 +184,7 @@ dump:
 ```
 
 Three good starter objects ship with BCF — each is a small program the
-kernel verifier rejects on its own but zovia can discharge:
+kernel verifier rejects on its own but alivio can discharge:
 
 ```bash
 ~/eBPF-Zone-Verifier/scripts/demo_e2e.sh ~/BCF/examples/shift_constraint.bpf.o
@@ -202,11 +202,11 @@ is `classifier`; pass `--type xdp` / `kprobe` / etc. for other hooks.
 
 | Variable                    | Purpose                                                       |
 |-----------------------------|---------------------------------------------------------------|
-| `ZOVIA_CVC5`                | Absolute path to cvc5 (`~/BCF/output/cvc5-libs/bin/cvc5`)     |
-| `ZOVIA_BUNDLE_KEEP=1`       | Append discharge entries (multi-pass bundle build)            |
-| `ZOVIA_KERNEL_ENGINE=1`     | Enable kernel-shape exploration engine                        |
-| `ZOVIA_KERNEL_ENGINE_AND=1` | AND-mode bundle merge (with `ZOVIA_KERNEL_ENGINE=1`)          |
-| `ZOVIA_BCF_DUMP_SMT=1`      | Dump per-site SMT-LIB to disk (debugging)                     |
+| `ALIVIO_CVC5`                | Absolute path to cvc5 (`~/BCF/output/cvc5-libs/bin/cvc5`)     |
+| `ALIVIO_BUNDLE_KEEP=1`       | Append discharge entries (multi-pass bundle build)            |
+| `ALIVIO_KERNEL_ENGINE=1`     | Enable kernel-shape exploration engine                        |
+| `ALIVIO_KERNEL_ENGINE_AND=1` | AND-mode bundle merge (with `ALIVIO_KERNEL_ENGINE=1`)          |
+| `ALIVIO_BCF_DUMP_SMT=1`      | Dump per-site SMT-LIB to disk (debugging)                     |
 
 ## Troubleshooting
 
@@ -214,9 +214,9 @@ is `classifier`; pass `--type xdp` / `kprobe` / etc. for other hooks.
 
 **`ld: cannot find -lbpf`** — Don't use `-lbpf`. Link `$LIBBPF/bpf/libbpf.a` directly (step 7).
 
-**`test_loader: -EACCES` / "invalid bpf_bundle"** — zovia and the kernel are out of sync. Confirm both at the same SHA.
+**`test_loader: -EACCES` / "invalid bpf_bundle"** — alivio and the kernel are out of sync. Confirm both at the same SHA.
 
-**`cvc5 binary not found`** — `export ZOVIA_CVC5=~/BCF/output/cvc5-libs/bin/cvc5`; re-run `build.sh solver` if missing.
+**`cvc5 binary not found`** — `export ALIVIO_CVC5=~/BCF/output/cvc5-libs/bin/cvc5`; re-run `build.sh solver` if missing.
 
 **VM hangs on `boot_vm.sh`** — Stale virtiofsd socket: `rm -f ~/BCF/output/bpf-test.sock` and retry.
 

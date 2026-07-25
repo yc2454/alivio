@@ -197,7 +197,7 @@ pub(crate) fn record_path_cond_for_side(
         {
             props.push((id, e));
         }
-        let dbg_ss = std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
+        let dbg_ss = std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
         if dbg_ss && (655..=660).contains(&src_pc) {
             let rdiag = if let Operand::Reg(r) = right {
                 format!(

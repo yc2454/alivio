@@ -324,16 +324,16 @@ Both limits are enforced by the validator. The `max entries per PC` cap exists t
 
 ```bash
 # Generate a certificate for a test program (zone-mode analysis)
-zovia pcc-gen  <prog.json> <test_name> [cert_out.json]
+alivio pcc-gen  <prog.json> <test_name> [cert_out.json]
 
 # Check a program against an existing certificate (interval-mode)
-zovia pcc-check <prog.json> <test_name> <cert.json>
+alivio pcc-check <prog.json> <test_name> <cert.json>
 
 # Generate and immediately check (round-trip)
-zovia pcc-cycle <prog.json> <test_name> [cert_out.json]
+alivio pcc-cycle <prog.json> <test_name> [cert_out.json]
 
 # Run all cases in a regression file
-zovia pcc-regress [cert_cases.json]
+alivio pcc-regress [cert_cases.json]
 ```
 
 ## Trust Model

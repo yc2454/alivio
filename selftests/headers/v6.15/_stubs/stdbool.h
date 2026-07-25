@@ -1,5 +1,5 @@
-#ifndef _ZOVIA_STUB_STDBOOL_H
-#define _ZOVIA_STUB_STDBOOL_H
+#ifndef _ALIVIO_STUB_STDBOOL_H
+#define _ALIVIO_STUB_STDBOOL_H
 #define bool _Bool
 #define true 1
 #define false 0

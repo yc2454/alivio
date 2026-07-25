@@ -23,7 +23,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
 ) -> Vec<(i32, crate::refinement::refine_unreachable::UnreachableOk)> {
     // Each goal is tagged with its reset-ladder rung: -1 = the plain replay
     // (no reset point), k >= 0 = the pc of the If the bcf was reset after.
-    // Diagnosis-only (ZOVIA_BCF_CENSUS); does not affect emission.
+    // Diagnosis-only (ALIVIO_BCF_CENSUS); does not affect emission.
 
     let empty = Vec::new();
     // 1. Retrieve the cached base State (with its register/domain state).
@@ -56,7 +56,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
         path.push((bc.pc, bc.instr));
         cur = bc.parent_idx;
     }
-    let dbg = std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
+    let dbg = std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
     if path.is_empty() {
         return empty;
     }
@@ -110,7 +110,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
             // when the kernel's counters fire there, the demanded goal's
             // suffix starts at the post-call insn with first-refs
             // materializing fresh bounds; the reset-rung supplies that
-            // shape even when zovia has no cached anchor there.
+            // shape even when alivio has no cached anchor there.
             if i > 0 && matches!(path[i - 1].1, Instr::Call { .. }) {
                 reset_points.push((Some(i), true));
             }
@@ -121,7 +121,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
     // original reject's errno is a local in the caller (check_helper_call's
     // -EACCES → bcf_prove_unreachable), not verifier-global state, so the
     // replay's own check_helper_call passes and path conds keep recording.
-    // zovia's env.error is global and still holds the triggering reject
+    // alivio's env.error is global and still holds the triggering reject
     // here; without the stash, transfer_call's `env.failed()` kills the
     // replay at the FIRST helper call on the suffix. Each rung starts
     // error-free; a rung's own fresh failure dies with that rung and must
@@ -141,7 +141,7 @@ pub(crate) fn try_prove_unreachable_via_replay(
         // If match), scalar dst/src only. Rung variants re-reset
         // downstream, wiping this push — correct (their anchor is the
         // rung insn).
-        if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
+        if std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
             let dbg = env.state_by_cache_id(base_cid).and_then(|(pc, c)| {
                 c.history_idx
                     .and_then(|h| env.history.get(h))
@@ -302,7 +302,7 @@ pub(crate) fn replay_to_reject(
     base_cid: u32,
     // Anchor the EXECUTION one cache level earlier (the base's parent
     // cache entry) and reset the bcf at the base boundary. The kernel's
-    // bcf_track replays from the pristine `st->parent` snapshot; zovia's
+    // bcf_track replays from the pristine `st->parent` snapshot; alivio's
     // explored-cache entries are MUTATED at caching (mark_all_scalars_
     // imprecise + loop-header widening), so replaying with the cache
     // entry's regs materializes WIDENED operand bounds. Executing from
@@ -320,7 +320,7 @@ pub(crate) fn replay_to_reject(
     // bcf at the k-th-FROM-LAST re-arrival at the anchor's pc within the
     // path (k = the value; 1 = last crossing) and re-record the boundary
     // branch — the kernel's base is a checkpoint on the CURRENT lineage
-    // whose segment starts at that crossing, a state zovia may never have
+    // whose segment starts at that crossing, a state alivio may never have
     // cached (adds are cadence-gated). None = no crossing reset (all
     // existing variants byte-stable).
     reset_at_crossing: Option<usize>,
@@ -395,7 +395,7 @@ pub(crate) fn replay_to_reject(
         reset_at = Some(crossings[crossings.len() - k]);
         crossing_engaged = true;
     }
-    if std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
+    if std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1") {
         eprintln!(
             "[replay-refine] STRUCT base_cid={} base_hidx={:?} stopped_at_base={} path[0]={} path[last]={} len={}",
             base_cid,
@@ -421,7 +421,7 @@ pub(crate) fn replay_to_reject(
         return Some(st);
     }
 
-    let dbg = std::env::var("ZOVIA_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
+    let dbg = std::env::var("ALIVIO_BCF_REPLAY_DEBUG").ok().as_deref() == Some("1");
     let saved_error = env.error.take();
     let mut base_state = exec_state;
     base_state.reset_bcf_for_replay();

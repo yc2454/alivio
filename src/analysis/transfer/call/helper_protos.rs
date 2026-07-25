@@ -850,7 +850,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         // MEM|PTR_MAYBE_NULL|MEM_RDONLY data, arg4=ARG_CONST_SIZE_OR_ZERO
         // data_len, RET_INTEGER. Returned from bpf_base_func_proto
         // (kernel/bpf/helpers.c) → available to ~all prog types, so the
-        // prior "Invalid helper ID 177" reject was a zovia-only false
+        // prior "Invalid helper ID 177" reject was a alivio-only false
         // positive (≤-BCF preserved). fmt/fmt_size mirror bpf_trace_printk
         // (ConstSize-bounded, no explicit pair); data/data_len mirror the
         // nullable tail of bpf_snprintf.
@@ -1208,7 +1208,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         // (the ctx-shape check is per-prog-type and the kernel rejects
         // mismatches at the helper-dispatch layer; we'd need
         // prog_type_allowlist to fully model — out of scope here, ≤BCF
-        // preserved because the prior reject was a zovia-only false neg).
+        // preserved because the prior reject was a alivio-only false neg).
         constants::BPF_SETSOCKOPT => CallProto::with_args([
             Anything,  // R1: ctx (sock_addr/sock_ops) or btf-sock (unlocked)
             Anything,  // R2: level
@@ -1354,7 +1354,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         .mem_size_pairs(&pairs::PROBE_WRITE_USER)
         .ret(RetKind::Scalar),
         // bpf_sysctl_get_name(ctx, buf, len, flags) -> int. buf is
-        // MEM_WRITE; modeled as PtrToUninitMem (zovia's writable-mem
+        // MEM_WRITE; modeled as PtrToUninitMem (alivio's writable-mem
         // gate, mirrors existing get_sockopt / check_mtu pattern).
         constants::BPF_SYSCTL_GET_NAME => CallProto::with_args([
             PtrToCtx,       // R1: bpf_sysctl
@@ -1579,7 +1579,7 @@ pub fn get_helper_proto(helper: u32) -> Option<CallProto> {
         ]),
 
         // ---- per-cpu / this-cpu ptr (R0 typing legacy) ----
-        // Kernel arg1 = ARG_PTR_TO_PERCPU_BTF_ID. zovia accepts the
+        // Kernel arg1 = ARG_PTR_TO_PERCPU_BTF_ID. alivio accepts the
         // input via legacy R0-typing in update_call_types which handles
         // both `PtrToBtfId` (typed __ksym) and `PtrToMapKptr` (per-cpu
         // map field) inputs. The arg-side `Anything` lets either pass;

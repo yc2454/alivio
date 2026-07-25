@@ -358,7 +358,7 @@ pub const F_LOAD_WITH_STRICT_ALIGNMENT: u32 = 1 << 1;
 /// Kernel `BPF_F_TEST_STATE_FREQ` (include/uapi/linux/bpf.h, value `1U
 /// << 3`). When set, the kernel's `is_state_visited` flips
 /// `force_new_state=true` (verifier.c v6.15 L18998) which makes every
-/// processed instruction a state-cache addition point. In zovia we
+/// processed instruction a state-cache addition point. In alivio we
 /// honor the flag by disabling subsumption-hit pruning entirely: every
 /// visit is explored independently. This matches the kernel's intended
 /// "behavior is undefined" debugging flag and is the load-bearing

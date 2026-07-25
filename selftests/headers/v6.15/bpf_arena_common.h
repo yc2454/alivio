@@ -8,8 +8,8 @@
  * these programs goes through the unified arena CallProto that W5.5
  * landed.
  */
-#ifndef _ZOVIA_STUB_BPF_ARENA_COMMON_H
-#define _ZOVIA_STUB_BPF_ARENA_COMMON_H
+#ifndef _ALIVIO_STUB_BPF_ARENA_COMMON_H
+#define _ALIVIO_STUB_BPF_ARENA_COMMON_H
 
 #ifndef __arena
 #define __arena __attribute__((address_space(1)))

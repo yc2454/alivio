@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Faithfulness scorecard: zovia (per ELF section) vs the per-program
+Faithfulness scorecard: alivio (per ELF section) vs the per-program
 kernel oracle (test_loader --per-prog, section-keyed), joined on the
 ELF section name.
 
@@ -11,37 +11,37 @@ Inputs:
                     PERPROG FAIL [i] sec=<S> <name> errno=<E>
                     PERPROG SUMMARY loaded=x/n
   --list FILE     Mac absolute object paths (basename joins the oracle)
-  [--zovia P] [--timeout S] [--out J]
+  [--alivio P] [--timeout S] [--out J]
 
 Per ELF section S of an object:
   oracle verdict(S): the set of libbpf programs whose section_name==S.
     1:1 section  -> that program's OK/FAIL.
     multi-prog S -> kernel-accepts-S iff ALL its programs OK (a section
       "loads" only if every program in it loads); flagged `multi`.
-  zovia verdict(S): PASS/FAIL from `Section 'S'... PASS|FAIL`.
+  alivio verdict(S): PASS/FAIL from `Section 'S'... PASS|FAIL`.
 
 Classification (the honest faithfulness table):
-  CA correct-accept  kernel OK   & zovia PASS
-  CR correct-reject  kernel FAIL & zovia FAIL
-  FA FALSE ACCEPT    kernel FAIL & zovia PASS & zovia produced NO bundle
-                       <-- the soundness gate (must be 0). zovia claims
+  CA correct-accept  kernel OK   & alivio PASS
+  CR correct-reject  kernel FAIL & alivio FAIL
+  FA FALSE ACCEPT    kernel FAIL & alivio PASS & alivio produced NO bundle
+                       <-- the soundness gate (must be 0). alivio claims
                        a kernel-rejected program safe with NOTHING
                        backing it.
-  BP bundle-producer kernel FAIL & zovia PASS & zovia DID emit a bundle.
-                       The bundle's existence proves bare zovia rejected;
-                       zovia emitted a proof obligation the kernel
+  BP bundle-producer kernel FAIL & alivio PASS & alivio DID emit a bundle.
+                       The bundle's existence proves bare alivio rejected;
+                       alivio emitted a proof obligation the kernel
                        independently re-checks. NOT a soundness defect —
                        an L3-convergence question (does it discharge on
                        the VM?). Same status shift_constraint had before
                        its #1 fix. See feedback_fa_definition_no_bundle.
-  FR false-reject    kernel OK   & zovia FAIL
-  plus: unmatched-zovia (section zovia verified, no libbpf program),
-        unmatched-oracle (libbpf program's section zovia didn't report).
-`multi`-tagged rows are counted but reported separately (one zovia
+  FR false-reject    kernel OK   & alivio FAIL
+  plus: unmatched-alivio (section alivio verified, no libbpf program),
+        unmatched-oracle (libbpf program's section alivio didn't report).
+`multi`-tagged rows are counted but reported separately (one alivio
 verdict vs several kernel programs — inherently coarser).
 
 Bundle attribution is OBJECT-level (`<obj>.bcf-bundle` existence after a
-clean run with the stale file pre-deleted), not per-section: zovia
+clean run with the stale file pre-deleted), not per-section: alivio
 writes one object-level bundle and prints `Section …` only in the final
 SUMMARY, so there is no reliable per-section interleaving to parse. In
 the BCF-rejected corpus this is sound by construction — the
@@ -54,7 +54,7 @@ import argparse, json, re, subprocess, sys, time
 from pathlib import Path
 from collections import defaultdict
 
-ZOVIA = "target/release/zovia"
+ALIVIO = "target/release/alivio"
 SEC_RE = re.compile(r"^Section '(.+?)'\.\.\. (PASS|FAIL)\s*$", re.M)
 PP_RE = re.compile(
     r"^PERPROG (OK|FAIL)\s+\[\d+\] sec=(\S+) (\S+)"
@@ -69,7 +69,7 @@ def parse_oracle(path: str) -> dict:
     `kind` (test_loader, per failing program):
       "POSTVERIF" — the kernel VERIFIER accepted the program; the load
         failed only at a post-verifier pass (do_misc_fixups /
-        fixup_call_args / JIT, -EINVAL). zovia is a *verifier* mirror,
+        fixup_call_args / JIT, -EINVAL). alivio is a *verifier* mirror,
         so accepting such a program is faithful, NOT a false-accept.
       "VREJECT"   — a genuine verifier-core reject (the soundness gate).
       ""          — OK programs / older oracle without kind=.
@@ -103,7 +103,7 @@ def _verifier_ok(p) -> bool:
 BUNDLE_RE = re.compile(r"wrote bundle: \S+ \((\d+) entries, \d+ bytes\)")
 
 
-def run_zovia(zov: str, obj: Path, timeout: float) -> dict:
+def run_alivio(zov: str, obj: Path, timeout: float) -> dict:
     """Returns {"secs": {section: (passed_bool, reason_or_None)},
                 "bundle": bool, "entries": int}.
 
@@ -149,20 +149,20 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--oracle", required=True)
     ap.add_argument("--list", required=True)
-    ap.add_argument("--zovia", default=ZOVIA)
+    ap.add_argument("--alivio", default=ALIVIO)
     ap.add_argument("--timeout", type=float, default=150)
     ap.add_argument("--jobs", type=int, default=8,
-                    help="parallel zovia workers (default 8 = P-cores; "
-                         "machine is 8P+4E). Only the independent zovia "
+                    help="parallel alivio workers (default 8 = P-cores; "
+                         "machine is 8P+4E). Only the independent alivio "
                          "subprocess runs are parallelized; classification/"
                          "aggregation stays serial & deterministic.")
     ap.add_argument("--out")
     ap.add_argument("--checkpoint", default=None,
-                    help="resumable cache of the EXPENSIVE per-object zovia "
+                    help="resumable cache of the EXPENSIVE per-object alivio "
                          "results. Default /tmp/fa_scorecard_<oracle-stem>"
                          ".cache.json. Auto-resumes (skips done objects); an "
                          "interrupt loses only in-flight workers. Cache is "
-                         "keyed on the zovia binary fingerprint and ignored "
+                         "keyed on the alivio binary fingerprint and ignored "
                          "if the binary changed (rebuild => fresh).")
     ap.add_argument("--fresh", action="store_true",
                     help="ignore any existing checkpoint and recompute all.")
@@ -173,18 +173,18 @@ def main() -> int:
     agg = defaultdict(int)
     fa_list, bp_list, fr_list, postverif_list, rows = [], [], [], [], []
 
-    # Phase 1 (PARALLEL): run the expensive, independent zovia subprocess
-    # per object. zovia is single-threaded so --jobs workers ~= --jobs
+    # Phase 1 (PARALLEL): run the expensive, independent alivio subprocess
+    # per object. alivio is single-threaded so --jobs workers ~= --jobs
     # P-cores of throughput. Nothing here touches shared scorecard state.
     runnable = [o for o in objs if o.exists() and o.name in oracle]
     for o in objs:
         if o not in runnable:
             print(f"[skip] {o.name} (no oracle or file)")
 
-    # Resumable checkpoint of zovia results (the 30-45min cost). The
+    # Resumable checkpoint of alivio results (the 30-45min cost). The
     # cheap classification (Phase 2) is always recomputed deterministically
     # from these — so we only ever checkpoint the expensive intermediate.
-    zp = Path(a.zovia)
+    zp = Path(a.alivio)
     try:
         st = zp.stat()
         zfp = f"{zp.resolve()}:{st.st_mtime_ns}:{st.st_size}"
@@ -195,18 +195,18 @@ def main() -> int:
     if ckpt.exists() and not a.fresh:
         try:
             blob = json.loads(ckpt.read_text())
-            if blob.get("_zovia_fp") == zfp:
+            if blob.get("_alivio_fp") == zfp:
                 zcache = blob.get("results", {})
                 print(f"[resume] {len(zcache)} objects from {ckpt} "
-                      f"(zovia binary unchanged)")
+                      f"(alivio binary unchanged)")
             else:
-                print(f"[fresh] {ckpt} is from a different zovia binary — ignoring")
+                print(f"[fresh] {ckpt} is from a different alivio binary — ignoring")
         except (json.JSONDecodeError, OSError):
             print(f"[fresh] {ckpt} unreadable — ignoring")
 
     def _flush():
         tmp = ckpt.with_suffix(ckpt.suffix + ".tmp")
-        tmp.write_text(json.dumps({"_zovia_fp": zfp, "results": zcache}))
+        tmp.write_text(json.dumps({"_alivio_fp": zfp, "results": zcache}))
         tmp.replace(ckpt)  # atomic
 
     todo = [o for o in runnable if str(o) not in zcache]
@@ -215,7 +215,7 @@ def main() -> int:
     import concurrent.futures
     if todo:
         with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as ex:
-            fut = {ex.submit(run_zovia, a.zovia, o, a.timeout): o for o in todo}
+            fut = {ex.submit(run_alivio, a.alivio, o, a.timeout): o for o in todo}
             for i, f in enumerate(concurrent.futures.as_completed(fut), 1):
                 zcache[str(fut[f])] = f.result()
                 _flush()  # after every object: interrupt loses only in-flight
@@ -228,14 +228,14 @@ def main() -> int:
         ksec = oracle[base]
         zres = zcache.get(str(obj))
         if not zres or not zres.get("secs"):
-            print(f"[skip] {base} (zovia no output / timeout)")
+            print(f"[skip] {base} (alivio no output / timeout)")
             continue
         zsec = zres["secs"]
         z_bundle = zres["bundle"]
         z_entries = zres["entries"]
         for sec, progs in ksec.items():
             multi = len(progs) > 1
-            # zovia mirrors the kernel *verifier*; compare against the
+            # alivio mirrors the kernel *verifier*; compare against the
             # verifier verdict, not the load verdict. A section "passes
             # the verifier" iff every program in it is verifier-ok
             # (loaded, or POSTVERIF = verifier-accepted, post-verifier
@@ -256,10 +256,10 @@ def main() -> int:
             elif (not kernel_ok) and (not zpass):
                 cls = "CR"
             elif (not kernel_ok) and zpass:
-                # zovia accepts a kernel-rejected program. Soundness gate:
-                # real FALSE-ACCEPT only if zovia produced NO bundle (no
+                # alivio accepts a kernel-rejected program. Soundness gate:
+                # real FALSE-ACCEPT only if alivio produced NO bundle (no
                 # proof obligation — claims safe with nothing backing it).
-                # If a bundle WAS emitted, bare zovia rejected and emitted
+                # If a bundle WAS emitted, bare alivio rejected and emitted
                 # a proof the kernel re-checks ⇒ BP (L3-pending), not a
                 # soundness defect. See feedback_fa_definition_no_bundle.
                 if z_bundle:
@@ -287,7 +287,7 @@ def main() -> int:
             rows.append((base, sec, tag, cls, "PV" if postverif else ""))
         for sec in zsec:
             if sec not in ksec:
-                agg["unmatched_zovia"] += 1
+                agg["unmatched_alivio"] += 1
         print(f"[ok] {base}: "
               f"CA={agg['CA']} CR={agg['CR']} FA={agg['FA']} FR={agg['FR']}"
               f" (running totals)")
@@ -296,12 +296,12 @@ def main() -> int:
     for k in ("CA", "CR", "FA", "BP", "FR"):
         print(f"  {k}: {agg[k]}  "
               f"(1:1={agg[f'{k}_1:1']}, multi={agg[f'{k}_multi']})")
-    print(f"  unmatched_oracle(libbpf prog, zovia silent): "
+    print(f"  unmatched_oracle(libbpf prog, alivio silent): "
           f"{agg['unmatched_oracle']}")
-    print(f"  unmatched_zovia(zovia sec, no libbpf prog): "
-          f"{agg['unmatched_zovia']}")
+    print(f"  unmatched_alivio(alivio sec, no libbpf prog): "
+          f"{agg['unmatched_alivio']}")
     if fa_list:
-        print("\n  *** FALSE ACCEPTS (kernel REJECT, zovia PASS, "
+        print("\n  *** FALSE ACCEPTS (kernel REJECT, alivio PASS, "
               "NO bundle — soundness gate) ***")
         for base, sec, names, errnos in fa_list:
             print(f"   {base} sec={sec} progs={names} kernel_errno={errnos}")
@@ -310,7 +310,7 @@ def main() -> int:
               "(soundness gate held) ***")
     if bp_list:
         print(f"\n  BUNDLE-PRODUCERS: {len(bp_list)} sections — kernel "
-              f"REJECT, zovia PASS but EMITTED a bundle (bare zovia "
+              f"REJECT, alivio PASS but EMITTED a bundle (bare alivio "
               f"rejected; proof obligation the kernel re-checks). NOT a "
               f"soundness FA — L3-convergence question (validate discharge "
               f"on the VM). Pre-#1-fix shift_constraint had this status.")
@@ -318,16 +318,16 @@ def main() -> int:
             print(f"   {base} sec={sec} progs={names} "
                   f"kernel_errno={errnos} bundle_entries={ent}")
     print(f"\n  false-rejects: {len(fr_list)} "
-          f"(kernel OK, zovia FAIL — faithfulness-of-reason gap)")
+          f"(kernel OK, alivio FAIL — faithfulness-of-reason gap)")
     if postverif_list:
         print(f"\n  POSTVERIF: {len(postverif_list)} sections — kernel "
               f"VERIFIER accepts, load fails at a post-verifier pass "
-              f"(JIT/fixup -EINVAL). zovia-as-verifier is faithful here; "
-              f"NOT counted as FA. Breakdown by zovia class: "
+              f"(JIT/fixup -EINVAL). alivio-as-verifier is faithful here; "
+              f"NOT counted as FA. Breakdown by alivio class: "
               f"CA={agg['POSTVERIF_CA']} FR={agg['POSTVERIF_FR']}.")
         for base, sec, names, errnos, cls in postverif_list:
             print(f"   {base} sec={sec} progs={names} "
-                  f"kernel_errno={errnos} zovia={cls}")
+                  f"kernel_errno={errnos} alivio={cls}")
     if a.out:
         json.dump({"agg": dict(agg), "fa": fa_list, "bp": bp_list,
                    "fr": fr_list, "postverif": postverif_list,

@@ -23,7 +23,7 @@ use crate::analysis::machine::state::State;
 /// `bcf_prove_unreachable` (verifier.c:24611-24620): every R0..R9 that
 /// is not NOT_INIT and not a const non-scalar, then the backtrack
 /// suffix base PC over that set. The kernel's `bcf_track` emits
-/// br_conds only for that suffix; without this filter zovia's
+/// br_conds only for that suffix; without this filter alivio's
 /// path_cond goal carries spurious leading conditions (from its full
 /// abstract-interpretation path) and its canonical hash misses the
 /// kernel's bundle lookup. Shared by `unreachable_base_pc` (base/anchor)
@@ -58,7 +58,7 @@ pub(crate) fn unreachable_target_regs(
         // (verifier.c:24611-24620): skip a register that is
         // `type != SCALAR_VALUE && tnum_is_const(reg->var_off)`.
         //
-        // zovia has no single per-register var_off tnum, but the interval
+        // alivio has no single per-register var_off tnum, but the interval
         // domain carries the faithful analog on `PtrOffset.var_off` (its doc:
         // "kernel tnum_range(reg->var_off)"): `tnum_is_const(var_off)` holds
         // iff the pointer's offset range is a single point (`min == max`), or
@@ -95,7 +95,7 @@ pub(crate) fn unreachable_base_pc(env: &VerifierEnv, state: &State) -> Option<us
         state.parent_cache_id,
         &targets,
     );
-    if std::env::var("ZOVIA_DUMP_REGMASK").ok().as_deref() == Some("1") {
+    if std::env::var("ALIVIO_DUMP_REGMASK").ok().as_deref() == Some("1") {
         let mut mask: u32 = 0;
         for &r in &targets {
             mask |= 1u32 << (r as u32);

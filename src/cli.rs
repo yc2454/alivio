@@ -12,9 +12,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "zovia",
+    name = "alivio",
     version,
-    about = "eBPF zone verifier",
+    about = "Userspace mirror of the Linux kernel BPF verifier, with BCF proof-bundle generation",
     disable_help_subcommand = true
 )]
 pub struct Cli {
@@ -28,7 +28,7 @@ pub struct Cli {
 // Verifier-tuning flags shared by every subcommand.
 //
 // All flags are `global = true` so they may appear before *or* after the
-// subcommand name. Old scripts (`zovia -q --max-insn N selftest-suite …`)
+// subcommand name. Old scripts (`alivio -q --max-insn N selftest-suite …`)
 // keep working unchanged.
 #[derive(Args, Debug)]
 pub struct GlobalOpts {

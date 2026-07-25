@@ -186,7 +186,7 @@ pub fn compile_with_iquote<P: AsRef<Path>, Q: AsRef<Path>>(
 // so re-compiling each time burns the bulk of the wall clock for no
 // reason. Cache keyed on (source SHA, include-set fingerprint,
 // defines): on hit we just copy the cached .o; on miss we clang and
-// store. Cache survives across runs (`target/zovia-selftest-cache/`)
+// store. Cache survives across runs (`target/alivio-selftest-cache/`)
 // and across `cargo build` (only `cargo clean` wipes it).
 //
 // The include-set fingerprint is computed once per sweep by walking
@@ -234,7 +234,7 @@ fn collect_header_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// (path, mtime_secs, size). Compute once per sweep — caller threads
 /// the result through to per-file compiles.
 pub fn fingerprint_include_set(include_dirs: &[PathBuf], iquote_dirs: &[PathBuf]) -> u64 {
-    let mut h = fnv1a_64(b"zovia-include-set-v1");
+    let mut h = fnv1a_64(b"alivio-include-set-v1");
     for dir in include_dirs.iter().chain(iquote_dirs.iter()) {
         let mut entries: Vec<PathBuf> = Vec::new();
         collect_header_files(dir, &mut entries);
@@ -277,7 +277,7 @@ fn compile_cache_key(src: &Path, include_fingerprint: u64, defines: &[&str]) -> 
 }
 
 fn compile_cache_dir() -> PathBuf {
-    PathBuf::from("target/zovia-selftest-cache")
+    PathBuf::from("target/alivio-selftest-cache")
 }
 
 /// Cache-aware variant of [`compile_with_iquote`]. On hit, copies the
@@ -329,7 +329,7 @@ mod tests {
             eprintln!("skipping: {} not found", headers.display());
             return;
         }
-        let tmp = std::env::temp_dir().join("zovia_clang_gotol.o");
+        let tmp = std::env::temp_dir().join("alivio_clang_gotol.o");
         let _ = fs::remove_file(&tmp);
 
         let inc = default_include_dirs(&headers);

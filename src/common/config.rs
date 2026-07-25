@@ -27,7 +27,7 @@ pub struct VerifierConfig {
     /// In BASE mode this mirrors the kernel's `BPF_COMPLEXITY_LIMIT_INSNS`
     /// (1M): hitting it is a FAITHFUL kernel reject (a program too complex
     /// to verify at runtime, e.g. loop3). In BCF mode the effective limit is
-    /// `bcf_max_insn` instead — zovia is then an OFFLINE bundle generator,
+    /// `bcf_max_insn` instead — alivio is then an OFFLINE bundle generator,
     /// not the runtime verifier, and (unlike the kernel) it does NOT
     /// fail-fast at a reject: it discharges via cvc5 and keeps exploring, so
     /// it inherently walks a larger state space than the kernel's fail-fast
@@ -56,7 +56,7 @@ pub struct VerifierConfig {
     /// FIFO ceiling (the privileged kernel bounds per-insn state lists
     /// via miss/hit eviction + clean_verifier_state, not a fixed cap).
     /// Kept at 8: fully removing it (→0) times out large objects
-    /// because zovia lacks clean_verifier_state, so uncapped lists
+    /// because alivio lacks clean_verifier_state, so uncapped lists
     /// explode. The cap is a crutch for that missing mechanism
     /// (clean_verifier_state must land before the cap can be removed).
     pub max_states_per_pc: usize,
@@ -68,7 +68,7 @@ pub struct VerifierConfig {
     pub debug_pc: Option<usize>,
 
     /// Optional path to a target kernel BTF blob (e.g. a snapshot of
-    /// `/sys/kernel/btf/vmlinux` from the kernel zovia is mirroring).
+    /// `/sys/kernel/btf/vmlinux` from the kernel alivio is mirroring).
     /// When set, enables CO-RE relocation application during ELF→AST
     /// lowering. Default `None` preserves the prior unrelocated path.
     /// Mirrors libbpf's CO-RE setup: programs with `.BTF.ext` records

@@ -57,7 +57,7 @@ _IGNORED_FR_MARKERS = ("NOTFOUNDINANYOF", "EXCEEDSMAXIMUMKNOWN")
 # as IGNORED_FR and kept OUT of the headline FALSE_REJECT count.
 #   * handle_raw_tp_writable_bare (test_module_attach) — the writable raw_tp
 #     ctx type `bpf_testmod_test_writable_ctx` lives ONLY in the test module's
-#     BTF (bpf_testmod.ko), absent from vmlinux AND the program .o, so zovia
+#     BTF (bpf_testmod.ko), absent from vmlinux AND the program .o, so alivio
 #     (offline, no module BTF) cannot type the ctx arg. Closing it needs
 #     BPF_PROG array-idiom-vs-pt_regs-field disambiguation + a synthetic
 #     module-struct layout + writable-ptr stores — fragile low-value plumbing
@@ -84,17 +84,17 @@ def classify(tag: str) -> str:
 
 
 def run_one(args) -> tuple[str, list[tuple[str, str]], str | None]:
-    zovia, upstream, path, timeout = args
+    alivio, upstream, path, timeout = args
     fname = os.path.basename(path)
     # --kernel-mode (Interval domain + no bounded-loop detection + single
     # loop entry) is the FAITHFUL lens and matches how the cilium-42 gate
-    # (fa_scorecard.py) already runs zovia. Zone-DBM is a kernel-absent
+    # (fa_scorecard.py) already runs alivio. Zone-DBM is a kernel-absent
     # relational domain; running the sweep under it MASKED real soundness
-    # FALSE_ACCEPTs (zovia's kernel-faithful logic wrongly accepting progs
+    # FALSE_ACCEPTs (alivio's kernel-faithful logic wrongly accepting progs
     # the kernel rejects — the DBM happened to catch them). We do NOT want
     # that crutch: kernel-mode is the ground truth and the exposed FAs are
     # real verifier-fidelity bugs to FIX, not patch over.
-    cmd = [zovia, "-q", "--kernel-mode", "dev", "selftest-file", path, "--upstream", upstream]
+    cmd = [alivio, "-q", "--kernel-mode", "dev", "selftest-file", path, "--upstream", upstream]
     try:
         p = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout, errors="replace"
@@ -139,7 +139,7 @@ def load_ref(path: str) -> dict[str, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--zovia", default="./target/release/zovia")
+    ap.add_argument("--alivio", default="./target/release/alivio")
     ap.add_argument("--upstream", default="vendor/linux")
     ap.add_argument(
         "--progs",
@@ -162,7 +162,7 @@ def main() -> int:
         return 2
     print(
         f"[parallel_selftest] {len(files)} files, jobs={a.jobs}, "
-        f"timeout={a.timeout}s, zovia={a.zovia}",
+        f"timeout={a.timeout}s, alivio={a.alivio}",
         file=sys.stderr,
     )
 
@@ -171,7 +171,7 @@ def main() -> int:
     done = 0
     with ProcessPoolExecutor(max_workers=a.jobs) as ex:
         futs = {
-            ex.submit(run_one, (a.zovia, a.upstream, p, a.timeout)): p
+            ex.submit(run_one, (a.alivio, a.upstream, p, a.timeout)): p
             for p in files
         }
         for fut in as_completed(futs):

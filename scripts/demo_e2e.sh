@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# End-to-end demo (Linux / cloudlab): zovia proves what the kernel can't.
+# End-to-end demo (Linux / cloudlab): alivio proves what the kernel can't.
 #
 # Three steps, run live:
 #   [A] kernel verifier alone        → expect some program(s) rejected
-#   [B] zovia produces a bundle       → show contents
+#   [B] alivio produces a bundle       → show contents
 #   [C] kernel verifier WITH bundle  → expect all programs accepted
 #
 # Usage:
@@ -20,7 +20,7 @@
 set -e
 
 # ─── config / paths ─────────────────────────────────────────────────
-ZOVIA="${ZOVIA:-$HOME/eBPF-Zone-Verifier/target/release/zovia}"
+ALIVIO="${ALIVIO:-$HOME/eBPF-Zone-Verifier/target/release/alivio}"
 VM_SSH=(ssh -i "$HOME/BCF/imgs/bookworm.id_rsa" -p 10023
         -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5
         root@localhost)
@@ -54,7 +54,7 @@ banner() { echo; printf '%.0s═' {1..72}; echo; echo "  $1"; printf '%.0s═' {
 die()    { echo "error: $*" >&2; exit 1; }
 
 # ─── pre-flight ─────────────────────────────────────────────────────
-[[ -x "$ZOVIA" ]] || die "zovia not built — see SETUP.md step 5 (path: $ZOVIA)"
+[[ -x "$ALIVIO" ]] || die "alivio not built — see SETUP.md step 5 (path: $ALIVIO)"
 "${VM_SSH[@]}" "test -x $VM_LOADER" 2>/dev/null \
     || die "VM not reachable or test_loader missing — see SETUP.md steps 6 + 7"
 
@@ -107,29 +107,29 @@ echo "$A_OUTPUT" | grep -E "PERPROG (OK|FAIL|SUMMARY)|errno=" | tail -20
 A_FAILS=$(echo "$A_OUTPUT" | grep -c "PERPROG FAIL" || true)
 echo
 if [[ "$A_FAILS" -gt 0 ]]; then
-    echo "  ↑ $A_FAILS program(s) rejected by the kernel verifier. zovia's job: discharge them."
+    echo "  ↑ $A_FAILS program(s) rejected by the kernel verifier. alivio's job: discharge them."
 else
     echo "  ↑ kernel accepted everything — this object doesn't need a bundle."
     echo "    (Demo will still produce a bundle so you can see the format.)"
 fi
 pause
 
-# ─── STEP B: zovia produces bundle ──────────────────────────────────
-banner "[B]  zovia verifies + emits proof bundle"
+# ─── STEP B: alivio produces bundle ──────────────────────────────────
+banner "[B]  alivio verifies + emits proof bundle"
 cat <<EXPLAIN_B
-zovia:   the userspace eBPF abstract-interpretation verifier (this repo).
+alivio:   the userspace eBPF abstract-interpretation verifier (this repo).
 Bundle:  sidecar .bcf-bundle file. Each entry is
              (cond_hash, kind, goal_bytes, proof_bytes)
          where cond_hash is the canonical hash of the path condition
          the kernel will recompute at the same reject site (kernel and
-         zovia agree byte-for-byte); kind is UNREACHABLE or REFINE;
+         alivio agree byte-for-byte); kind is UNREACHABLE or REFINE;
          proof is cvc5's Alethe-format witness, re-checked by the
          tiny in-kernel BCF proof checker.
 EXPLAIN_B
 echo
-echo "\$ zovia --bcf --kernel-mode verify $OBJ_HOST_PATH"
+echo "\$ alivio --bcf --kernel-mode verify $OBJ_HOST_PATH"
 echo
-time "$ZOVIA" --bcf --kernel-mode verify "$OBJ_HOST_PATH" 2>&1 \
+time "$ALIVIO" --bcf --kernel-mode verify "$OBJ_HOST_PATH" 2>&1 \
     | grep -E "Total|Pass|Fail|Timeout|Error|bundle|wrote" | tail -8
 
 if [[ -f "$BUNDLE_HOST_PATH" ]]; then
@@ -157,7 +157,7 @@ if count > 8:
 PYEOF
 else
     echo
-    echo "  (zovia did not emit a bundle — nothing to discharge for this object)"
+    echo "  (alivio did not emit a bundle — nothing to discharge for this object)"
     exit 0
 fi
 pause
@@ -178,7 +178,7 @@ echo "$C_OUTPUT" | grep -E "PERPROG (FAIL|SUMMARY)|errno=" | tail -10
 C_FAILS=$(echo "$C_OUTPUT" | grep -c "PERPROG FAIL" || true)
 echo
 if [[ "$C_FAILS" -eq 0 && "$A_FAILS" -gt 0 ]]; then
-    echo "  ↑ all programs loaded. $A_FAILS → 0 rejections, discharged by zovia's bundle."
+    echo "  ↑ all programs loaded. $A_FAILS → 0 rejections, discharged by alivio's bundle."
 elif [[ "$C_FAILS" -eq 0 ]]; then
     echo "  ↑ all programs loaded."
 else

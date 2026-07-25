@@ -16,10 +16,10 @@
 //! Roughly half of this module — the proof-FORMAT half (`BcfProof`,
 //! `BcfProofStep`, the `BCF_RULE_*` codes, `to_bytes`/`from_bytes`,
 //! `BcfError`) — is unused in the release binary. That is by design, not
-//! rot: zovia's production BCF path builds the symbolic expression DAG (the
+//! rot: alivio's production BCF path builds the symbolic expression DAG (the
 //! USED half here) and drives cvc5, which CONSTRUCTS the proof and emits
-//! opaque BCF-format bytes; zovia ships those bytes verbatim in the bundle
-//! and the KERNEL checks them. zovia never constructs or rule-checks a proof
+//! opaque BCF-format bytes; alivio ships those bytes verbatim in the bundle
+//! and the KERNEL checks them. alivio never constructs or rule-checks a proof
 //! itself in production. These types are kept as (1) a faithful spec mirror
 //! of `uapi/linux/bcf.h` and (2) round-trip + parse coverage exercised by
 //! `#[cfg(test)]` (so we verify we can read cvc5's output and the layout

@@ -15,7 +15,7 @@ set -u
 # directory can be named anything.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH=$HOME/.cargo/bin:$PATH
-export ALIVIO_CVC5=/users/yc1795/BCF/output/cvc5-libs/bin/cvc5
+export ALIVIO_CVC5=${ALIVIO_CVC5:-/users/yc1795/BCF/output/cvc5-libs/bin/cvc5}
 export Z=$REPO_ROOT/target/release/alivio
 export SP=$HOME/BCF/sweep_pivot
 export VMKEY=$HOME/BCF/imgs/bookworm.id_rsa

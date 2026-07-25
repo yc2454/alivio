@@ -8,10 +8,6 @@ usage, and map operations. On top of the mirror it generates **BCF proof
 bundles**: machine-checkable SMT proofs that a BCF-patched kernel uses to
 discharge verifier rejections at load time.
 
-*Formerly named `zovia` (after the zone domain it started with). The binary,
-the crate, and every `ALIVIO_*` environment variable use the new name; there
-are no compatibility aliases for the old ones.*
-
 **Status:**
 
 * **BCF milestone:** 360/360 real-world BPF objects (calico 337, cilium 17,
@@ -20,6 +16,49 @@ are no compatibility aliases for the old ones.*
 * **Selftest baseline:** 3267+ PASS with 0 false accepts against the Linux
   kernel BPF selftest corpus (see [CHANGES_v6.15.md](CHANGES_v6.15.md) for
   the v6.15 feature list).
+
+## Quick start
+
+Verification alone needs nothing but Rust — no kernel, no solver:
+
+```bash
+cargo build --release
+./target/release/alivio verify bcf-tests/shift_constraint.bpf.o
+```
+
+That object contains a byte load whose offset the interval domain cannot
+bound, so alivio rejects it — exactly as the kernel verifier does:
+
+```
+[Verifier] FAILURE: Stack out of bounds at pc 9: offset 0, size 1
+Section 'tracepoint/syscalls/sys_enter_execve'... FAIL
+```
+
+The load is nonetheless safe; establishing that just takes more than
+interval arithmetic. Point alivio at a BCF-patched cvc5 and it discharges
+the rejection with a machine-checkable proof:
+
+```bash
+ALIVIO_CVC5=/path/to/bcf-cvc5 \
+  ./target/release/alivio --bcf --kernel-mode verify bcf-tests/shift_constraint.bpf.o
+```
+
+```
+[INFO] [bcf] refined stack-OOB at base=R2 off=0 size=1: cvc5 proof 11688 bytes (hash 53bad2296570f686)
+[INFO] [bcf] wrote bundle: bcf-tests/shift_constraint.bpf.o.bcf-bundle (1 entries, 11920 bytes)
+[Verifier] Success! Verified 13 instructions (pruned 1 states).
+```
+
+(Proof and bundle sizes depend on your cvc5 build; the hash does not.)
+
+That `.bcf-bundle` is what a BCF-patched kernel consumes at load time to
+accept the program. Getting the solver, the patched kernel, and the VM
+loader in place is the subject of **[SETUP.md](SETUP.md)**; more sample
+objects are in [`bcf-tests/`](bcf-tests).
+
+*Formerly named `zovia` (after the zone domain it started with). The binary,
+the crate, and every `ALIVIO_*` environment variable use the new name; there
+are no compatibility aliases for the old ones.*
 
 ## Features
 
@@ -105,14 +144,27 @@ The codebase is modularized so that BCF is strictly additive:
 
 ## Installation
 
-Ensure you have Rust installed (via `rustup`). Clone the repository and build:
+**[SETUP.md](SETUP.md) is the full guide.** It is organized in three tiers;
+pick the lowest one that covers what you need, since only tier 3 requires
+Linux and a patched kernel.
+
+| Tier | What you can do | What it needs |
+|---|---|---|
+| **1 — Verifier** | Verify `.o` / `.c` / `.json` in zone or kernel mode, PCC, selftests, corpus sweeps | Rust (+ clang for `.c`) |
+| **2 — Proofs** | …plus generate `.bcf-bundle` proof bundles | + BCF-patched cvc5 (`ALIVIO_CVC5`) |
+| **3 — Kernel discharge** | …plus watch a patched kernel *accept* those programs | + patched kernel, VM, loaders (Linux + KVM) |
+
+Tier 1 is just:
 
 ```bash
 cargo build --release
 ```
 
-For BCF bundle generation you additionally need a BCF-patched cvc5; set
-`ALIVIO_CVC5=/path/to/cvc5`.
+Tiers 1 and 2 run on Linux and macOS. Tier 3 is roughly an hour on a fresh
+Linux box — its kernel side lives in [`linux-deltas/`](linux-deltas): the
+four BCF patches (canonical hash, bundle UAPI, bundle parser, per-site
+discharge hook), the `test_loader` / `ll2_loader` sources SETUP.md builds
+inside the VM, and a target BTF blob for `--target-btf`.
 
 ## Architecture Overview
 
@@ -279,39 +331,34 @@ alivio pcc cycle <json> --test <name> [--out <cert>]    # gen + check in one
 #### `dev <subcommand>`
 
 Internal harness commands; not part of the user-facing surface and subject
-to change. Run `alivio dev --help` for the list. Commonly used:
+to change. `alivio dev --help` is the list. Three matter to outside
+readers:
 
-* `dev selftest-file <prog.c> [defines] [--upstream <root>] [--func F]` — single C selftest
-* `dev selftest-suite <progs_dir>` — every `.c` selftest in a directory
-* `dev selftest-baseline-write-upstream <upstream_root> <out.json>` — full sweep against a kernel checkout (writes the gold-standard baseline)
-* `dev selftest-baseline-check-upstream <upstream_root> <baseline.json>` — regression gate against that baseline (skips non-deterministic rows)
-* `dev verify-corpus [<dir>] [--input-list FILE] --out FILE.jsonl` — JSONL emitter (one record per file/section); the single Rust entrypoint the Python harnesses sit on top of
-* `dev legacy-selftest {list|single|run|suite}` — pre-6.2 JSON corpus runner
-* `dev pcc-regress [manifest]` — PCC regression manifest
-* `dev benchmark-scan <dir> <out>` — ELF/BTF metadata extractor
+* `dev selftest-file` / `dev selftest-suite` — compile and verify upstream
+  C selftests (one file, or a directory). Exits non-zero if a file fails to
+  build, as distinct from failing to verify.
+* `dev selftest-baseline-{write,check}-upstream` — sweep a kernel checkout
+  to write the gold-standard baseline, then gate future changes against it.
+* `dev verify-corpus` — JSONL emitter, one record per file/section. The
+  single Rust entrypoint every Python harness in `scripts/` sits on.
 
 ### Configuration flags (global)
 
-All flags are global and may appear before *or* after the subcommand.
+All flags are global and may appear before *or* after the subcommand. These
+are the ones that change what you get; `alivio --help` lists the rest
+(loop-entry strictness, private-stack model, widening, path tracing,
+per-PC state caps, diagnostics).
 
 | Flag | Effect |
 | --- | --- |
-| `-q`, `--quiet` | Errors only |
-| `-v`, `--verbose` | Trace execution |
-| `--very-verbose` | Full debug |
-| `--kernel-mode` | Mirror the kernel verifier (interval domain, kernel exploration; disables bounded-loop detection, allows loop back-edges) |
-| `--zone-mode` | Zone domain (default, more precise) |
+| `--kernel-mode` | Mirror the kernel verifier: interval domain + kernel exploration order. Required for BCF work |
+| `--zone-mode` | Zone domain (default, more precise than the kernel) |
 | `--bcf` | Enable BCF symbolic tracking + proof emission; writes `.bcf-bundle` sidecar |
-| `--bcf-max-insn <N>` | BCF-mode complexity budget (default 4,000,000; base mode keeps `--max-insn`) |
 | `--target-btf <PATH>` | Kernel BTF blob for applying CO-RE relocations |
-| `--detect-bounded-loops` / `--no-detect-bounded-loops` | Pattern-match early loop convergence |
-| `--single-entry-loops` / `--multi-entry-loops` | Loop-entry strictness |
-| `--enable-private-stack` / `--disable-private-stack` | v6.12 private-stack model (default ON) |
 | `--max-insn <N>` | Step budget (default 1,000,000; also raises the BCF budget) |
-| `--max-states <N>` | Per-PC state cap for pruning (default 64) |
-| `--skip-dbm`, `--use-widening`, `--enable-path-trace` | Analysis tweaks |
-| `--debug-pc <PC>`, `--log-interval <N>` | Diagnostics |
+| `--bcf-max-insn <N>` | BCF-mode complexity budget (default 4,000,000; base mode keeps `--max-insn`) |
 | `--map-override <name:size>` | Override a map's value size, repeatable |
+| `-q` / `-v` / `--very-verbose` | Verbosity: errors only / trace / full debug |
 
 ### Debug instrumentation (environment variables)
 
@@ -362,38 +409,70 @@ focused on verification.
 
 ## Examples
 
-**1. Inspect an object file:**
+These run against objects that ship in [`bcf-tests/`](bcf-tests), so they
+work in a fresh clone.
+
+**1. Inspect an object file** — sections, programs, maps, no verification:
 ```bash
-alivio elf ./bpf_host.o
+alivio elf bcf-tests/ksnoop.bpf.o
+```
+```
+--- SECTIONS ---
+  [4] kprobe/foo (Kind: Kprobe)
+  [6] kretprobe/foo (Kind: Kprobe)
+
+--- BPF PROGRAMS ---
+  [0] ksnoop (550 insns) [Section: .text, Kind: Unknown]
+  ...
+--- BPF MAPS ---
+  [1] ksnoop_func_map (k:8, v:16296)
 ```
 
-**2. Verify one section / one function / the whole file:**
+**2. Verify one section / one function / the whole file** — this one passes
+outright, no proof needed:
 ```bash
-alivio verify ./bpf_host.o --section tc
-alivio verify ./bpf_host.o --func handle_packet
-alivio verify ./bpf_host.o            # all sections
+alivio verify bcf-tests/system_monitor.bpf.o --section kprobe/security_bprm_check
+alivio verify bcf-tests/system_monitor.bpf.o --func kprobe__security_bprm_check
+alivio verify bcf-tests/system_monitor.bpf.o              # all sections → PASS
 ```
+
+Most of the other objects in `bcf-tests/` are the opposite by design: they
+are safe programs the interval domain can't justify, so plain `verify`
+rejects them and `--bcf` is what closes the gap.
 
 **3. Build a BCF proof bundle for an object:**
 ```bash
-ALIVIO_CVC5=/path/to/bcf-cvc5 alivio --bcf --kernel-mode verify ./bpf_host.o
-# → ./bpf_host.o.bcf-bundle, ready to hand to the BCF-patched kernel loader
+ALIVIO_CVC5=/path/to/bcf-cvc5 \
+  alivio --bcf --kernel-mode verify bcf-tests/stack_ptr_varoff.bpf.o
+# → bcf-tests/stack_ptr_varoff.bpf.o.bcf-bundle, ready for the BCF-patched loader
 ```
 
-**4. Run a single legacy JSON test:**
+`bcf-tests/ksnoop.bpf.o.bcf-bundle` is a checked-in bundle for the largest
+of these objects, if you want to inspect the wire format
+(`c-ref/bcf_bundle.h`) without running a solver.
+
+**4. Run a single legacy JSON test** — list the catalogue, then pick one:
 ```bash
-alivio verify ./selftests/legacy/verifier/calls.json --test "calls: invalid kfunc call"
+alivio dev legacy-selftest list selftests/legacy/verifier/calls.json
+alivio verify selftests/legacy/verifier/calls.json --test "calls: basic sanity"
 ```
 
-**5. End-to-end BCF bundle bench on a corpus:**
+**5. Verify a C selftest** (compiles with clang against vendored headers —
+no kernel checkout needed):
+```bash
+alivio dev selftest-file selftests/progs/bpf_dctcp.c
+```
+
+**6. Run upstream selftests in kernel-compatible mode** — needs a v6.15
+kernel tree; `vendor/` is gitignored, see [SETUP.md §1.4](SETUP.md):
+```bash
+alivio --kernel-mode dev selftest-suite vendor/linux/tools/testing/selftests/bpf/progs
+```
+
+**7. End-to-end BCF bundle bench on a corpus** (tier 3; needs the VM):
 ```bash
 scripts/bench_e2e.py --list /tmp/calico_repr_list.txt --jobs 8 \
     --out /tmp/bench.tsv --kernel-test
-```
-
-**6. Run upstream selftests in kernel-compatible mode:**
-```bash
-alivio --kernel-mode dev selftest-suite vendor/linux/tools/testing/selftests/bpf/progs
 ```
 
 ## Troubleshooting
@@ -476,9 +555,22 @@ src/
 │   ├── scanner.rs, pcc_test.rs, logging.rs
 ├── cli.rs                  # clap CLI definitions
 └── main.rs                 # Entry point / subcommand dispatch
+
+linux-deltas/               # THE KERNEL SIDE of the BCF contract
+├── patches/                #   0001 canonical hash, 0002 bundle UAPI,
+│                           #   0003 bundle parser/lookup, 0004 discharge hook
+├── test_loader.c           #   in-VM loader: object + bundle → bpf(2)
+├── ll2_loader.c            #   same, with kernel verifier log_level=2
+├── include/, kernel/       #   headers + bpf/ sources the patches touch
+└── vmlinux-*.btf           #   target BTF blob for --target-btf
 c-ref/                      # Frozen C reference: bcf_bundle.h (bundle UAPI),
                             #   canonical_hash.c (hash cross-check tool)
+bcf-tests/                  # Small sample objects (+ src/) used by the
+                            #   examples above; ksnoop bundle checked in
+selftests/                  # Legacy JSON corpus (pre-6.2 verifier tests)
+scripts/                    # Python/shell harnesses (see table above)
 docs/userspace-bcf/         # BCF design docs incl. canonical-hash-spec.md
+SETUP.md                    # Full BCF stack install: kernel, cvc5, VM
 ```
 
 ## License

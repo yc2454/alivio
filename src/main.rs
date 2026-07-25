@@ -568,7 +568,22 @@ fn run_modern_selftest_file(
     };
     match res {
         Ok(report) => print_modern_report(&report),
-        Err(e) => eprintln!("Error: {e:?}"),
+        Err(e) => {
+            // A file-level Err means we never got as far as a verdict:
+            // clang failed, the source was unreadable, or the attribute
+            // scrape blew up. That is not a verification result, so it
+            // must not exit 0 — a `for f in …; do if alivio dev
+            // selftest-file "$f"; then echo COMPILES; fi; done` loop reads
+            // exit 0 as "this file builds and verifies".
+            //
+            // Per-program verdicts (FALSE-REJECT / FALSE-ACCEPT / ERROR)
+            // keep their existing exit-0 semantics: those live in
+            // `report.progs` and callers that care read the report.
+            // Exit 2 matches the rest of the CLI's harness-error code
+            // (exit 1 is reserved for "results regressed").
+            eprintln!("Error: {e:?}");
+            std::process::exit(2);
+        }
     }
 }
 
@@ -581,11 +596,16 @@ fn run_modern_selftest_dir(dir: &str, config: &VerifierConfig) {
         Ok(e) => e,
         Err(e) => {
             eprintln!("Error reading {dir}: {e}");
-            return;
+            std::process::exit(2);
         }
     };
 
     let mut totals = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize); // pass, false_reject, false_accept, skipped, error, out_of_scope
+    // File-level failures (clang error, unreadable source, scrape error):
+    // counted separately from per-program `Outcome::Error` because nothing
+    // in the file was verified at all. Drives the exit code — see
+    // `run_modern_selftest_file`.
+    let mut build_errors = 0usize;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) != Some("c") {
@@ -606,7 +626,10 @@ fn run_modern_selftest_dir(dir: &str, config: &VerifierConfig) {
                     }
                 }
             }
-            Err(e) => eprintln!("Error on {}: {e:?}", path.display()),
+            Err(e) => {
+                eprintln!("Error on {}: {e:?}", path.display());
+                build_errors += 1;
+            }
         }
     }
     println!("\n=== Suite summary ===");
@@ -614,6 +637,10 @@ fn run_modern_selftest_dir(dir: &str, config: &VerifierConfig) {
         "  pass={}  false_reject={}  false_accept={}  skipped={}  error={}  out_of_scope={}",
         totals.0, totals.1, totals.2, totals.3, totals.4, totals.5
     );
+    if build_errors > 0 {
+        println!("  build_errors={build_errors}  (files that never produced a verdict)");
+        std::process::exit(2);
+    }
 }
 
 fn collect_json_recursive(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {

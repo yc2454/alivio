@@ -95,14 +95,14 @@ instead.
 ```bash
 # 4a. Kernel bzImage → drops into BCF's output dir
 wget -O ~/BCF/output/bzImage \
-    https://github.com/yc2454/eBPF-Zone-Verifier/releases/download/kernel-47b3934f7ad8/bzImage
+    https://github.com/yc2454/alivio/releases/download/kernel-47b3934f7ad8/bzImage
 echo "0755cb22fd116733714dad663c80bfd122bfbe247cd565691f3385bfc5249d6a  $HOME/BCF/output/bzImage" \
     | sha256sum -c -
 
 # 4b. Patched libbpf → drops into the path step 7's gcc -I expects
 mkdir -p ~/BCF/build/bpf-next/tools/lib
 wget -O /tmp/libbpf-alivio.tar.gz \
-    https://github.com/yc2454/eBPF-Zone-Verifier/releases/download/kernel-47b3934f7ad8/libbpf-alivio.tar.gz
+    https://github.com/yc2454/alivio/releases/download/kernel-47b3934f7ad8/libbpf-alivio.tar.gz
 echo "3c4221b1d6275d2506d408c0f3d704a2d9b0a86b5a07f0b223810ffa93d844a9  /tmp/libbpf-alivio.tar.gz" \
     | sha256sum -c -
 tar -xzf /tmp/libbpf-alivio.tar.gz -C ~/BCF/build/bpf-next/tools/lib
@@ -115,7 +115,7 @@ libbpf = bpf-next + BCF set5 + 3 alivio patches (adds
 ## 5. Build alivio
 
 ```bash
-git clone https://github.com/yc2454/eBPF-Zone-Verifier.git ~/eBPF-Zone-Verifier
+git clone https://github.com/yc2454/alivio.git ~/eBPF-Zone-Verifier
 cd ~/eBPF-Zone-Verifier
 git checkout 37d9fdeca8dd75f12bab435546ade867f9539eb5 # Stable commit
 cargo build --release

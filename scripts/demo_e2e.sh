@@ -20,7 +20,8 @@
 set -e
 
 # ─── config / paths ─────────────────────────────────────────────────
-ALIVIO="${ALIVIO:-$HOME/eBPF-Zone-Verifier/target/release/alivio}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ALIVIO="${ALIVIO:-$REPO_ROOT/target/release/alivio}"
 VM_SSH=(ssh -i "$HOME/BCF/imgs/bookworm.id_rsa" -p 10023
         -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5
         root@localhost)

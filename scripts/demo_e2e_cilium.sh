@@ -8,7 +8,8 @@
 # Three steps, run live. Each step has a "PAUSE" — press Enter to continue.
 
 set -e
-ALIVIO="$HOME/eBPF-Zone-Verifier/target/release/alivio"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ALIVIO="${ALIVIO:-$REPO_ROOT/target/release/alivio}"
 OBJ_LOCAL="$HOME/BCF/bpf-progs/cilium/clang-17_-O1_bpf_wireguard.o"
 OBJ_NAME="clang-17_-O1_bpf_wireguard.o"
 CL_HOST="yc1795@ms0802.utah.cloudlab.us"

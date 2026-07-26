@@ -163,8 +163,9 @@ cargo build --release
 Tiers 1 and 2 run on Linux and macOS. Tier 3 is roughly an hour on a fresh
 Linux box — its kernel side lives in [`linux-deltas/`](linux-deltas): the
 four BCF patches (canonical hash, bundle UAPI, bundle parser, per-site
-discharge hook), the `test_loader` / `ll2_loader` sources SETUP.md builds
-inside the VM, and a target BTF blob for `--target-btf`.
+discharge hook) and the `test_loader` / `ll2_loader` sources SETUP.md
+builds inside the VM. (A target-BTF blob for `--target-btf` against our
+eval kernel ships as a release asset, not in the tree.)
 
 ## Architecture Overview
 
@@ -447,9 +448,8 @@ ALIVIO_CVC5=/path/to/bcf-cvc5 \
 # → bcf-tests/stack_ptr_varoff.bpf.o.bcf-bundle, ready for the BCF-patched loader
 ```
 
-`bcf-tests/ksnoop.bpf.o.bcf-bundle` is a checked-in bundle for the largest
-of these objects, if you want to inspect the wire format
-(`c-ref/bcf_bundle.h`) without running a solver.
+The bundle wire format is specified in `c-ref/bcf_bundle.h` if you want
+to inspect what these runs produce.
 
 **4. Run a single legacy JSON test** — list the catalogue, then pick one:
 ```bash
@@ -561,12 +561,11 @@ linux-deltas/               # THE KERNEL SIDE of the BCF contract
 │                           #   0003 bundle parser/lookup, 0004 discharge hook
 ├── test_loader.c           #   in-VM loader: object + bundle → bpf(2)
 ├── ll2_loader.c            #   same, with kernel verifier log_level=2
-├── include/, kernel/       #   headers + bpf/ sources the patches touch
-└── vmlinux-*.btf           #   target BTF blob for --target-btf
+└── include/, kernel/       #   headers + bpf/ sources the patches touch
 c-ref/                      # Frozen C reference: bcf_bundle.h (bundle UAPI),
                             #   canonical_hash.c (hash cross-check tool)
 bcf-tests/                  # Small sample objects (+ src/) used by the
-                            #   examples above; ksnoop bundle checked in
+                            #   examples above and by tests/bcf_phase1.rs
 selftests/                  # Legacy JSON corpus (pre-6.2 verifier tests)
 scripts/                    # Python/shell harnesses (see table above)
 docs/userspace-bcf/         # BCF design docs incl. canonical-hash-spec.md

@@ -24,7 +24,20 @@ tests/baselines/selftest_zone_backport.json
 tests/baselines/selftest_kernel_backport.json
 tests/baselines/prevail.json
 
-# Pre-built kernel + loader binaries pulled from cloudlab (too large for git;
-# ship via GitHub Releases once tagged)
-artifacts/docs/pcc_proof_steps.docx
+# Pre-built kernel + loader binaries (shipped via GitHub Releases, not git)
+artifacts/
 c-ref/build/
+
+# Untracked local research material (kept on disk, not for version control):
+# large sample objects, the target-BTF blob, and PCC design notebooks.
+bcf-tests/tcp_conn_tuner.bpf.o
+bcf-tests/xdp_synproxy_kern.bpf.o
+bcf-tests/ksnoop.bpf.o.bcf-bundle
+linux-deltas/vmlinux-cloudlab-*.btf
+docs/pcc_proof_steps.docx
+docs/pcc-checker-algorithm.md
+docs/pcc-walkthrough.md
+docs/pcc_motivating_example_conceptual.md
+docs/pcc_motivating_example_walkthrough.md
+docs/pcc_sound_poc_design.md
+docs/motivating_example_single_pass.md

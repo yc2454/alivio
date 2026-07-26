@@ -613,7 +613,8 @@ fn validate_ptr_to_cgroup(ctx: &mut ValidationContext) -> bool {
     // (CallFlags isn't plumbed in), so the more-permissive form is
     // chosen — surfaces FAs on cgrp_kfunc_failure tests that intend
     // the raw-load → release rejection ("must be referenced or
-    // trusted"), kept per feedback_additive_vs_invasive.md.
+    // trusted"). Kept as-is: differentiating would mean plumbing
+    // CallFlags through this layer for those tests alone.
     let is_map_kptr_cgroup = matches!(
         ctx.actual,
         RegType::PtrToMapKptr { pointee_btf_id, .. }

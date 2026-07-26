@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Synthetic repro for the BCF set6 `detect_conflict_eq` port
- * (project_future_improvements.md §0).
+ * Synthetic repro for the BCF set6 `detect_conflict_eq` port.
  *
  * Pattern: along the fall-through of the *second* branch, path_conds
  * accumulate `r1 != 6` (from the first branch's not-taken edge) and then

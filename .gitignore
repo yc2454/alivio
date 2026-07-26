@@ -14,8 +14,7 @@ vendor/
 __pycache__/
 *.pyc
 
-# Local agent + bench scratch (regenerated per session; not for version control)
-.claude/
+# Local bench scratch (regenerated per run; not for version control)
 bench/
 
 # Local-only full-scale baselines (regenerate via tests/baselines/capture_baseline.sh)

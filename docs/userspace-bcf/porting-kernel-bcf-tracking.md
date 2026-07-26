@@ -5,8 +5,7 @@
 expression DAG diverges structurally from the kernel's for the same
 program. Bundle plumbing works through-and-through; only DAG shape is wrong.
 
-See [`memory/feedback_kernel_vs_alivio_divergence.md`](.) for the diagnostic
-table. This doc is the concrete porting spec for fixing it.
+This doc is the concrete porting spec for fixing it.
 
 ## The kernel's architecture (read this first)
 

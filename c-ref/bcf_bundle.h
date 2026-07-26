@@ -3,7 +3,7 @@
  * BCF bundle format — userspace-BCF UAPI (proposed).
  *
  * Authoritative spec: docs/userspace-bcf/canonical-hash-spec.md (canonical
- * hash) and project memory project_userspace_bcf.md (bundle protocol).
+ * hash); the bundle wire protocol is documented in this header.
  *
  * Frozen for step 3.3 of the Phase 3 plan. Step 3.4 will drop this verbatim
  * into the bpf-next worktree's `include/uapi/linux/bcf.h` alongside BCF's

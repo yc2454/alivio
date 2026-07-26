@@ -6,8 +6,7 @@ obligations the kernel requires to load a program, which of those alivio generat
 and which are engine-shape DFS-route gaps it cannot. No kernel rebuild needed.
 
 These were built chasing `from_nat_no_log/calico_tc_skb_accepted_entrypoint`
-(2026-06-08). See `memory/project_no_log_reopen_experiment_2026-06-03.md` for the
-narrative; this README is the operational reference.
+(2026-06-08); this README is the operational reference.
 
 ## The core trick
 

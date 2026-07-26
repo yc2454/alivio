@@ -41,3 +41,6 @@ docs/pcc_motivating_example_conceptual.md
 docs/pcc_motivating_example_walkthrough.md
 docs/pcc_sound_poc_design.md
 docs/motivating_example_single_pass.md
+docs/userspace-bcf/3.4-bootstrap.md
+docs/userspace-bcf/3.5-closeout.md
+scripts/bcf_bootstrap/
